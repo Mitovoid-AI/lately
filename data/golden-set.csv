@@ -1,0 +1,26 @@
+reel_url,what_i_remembered_it_as,my_category,my_2_line_summary,the_steps_or_info_i_actually_wanted,entities_that_matter
+https://instagram.com/reel/EXAMPLE1,"github tricks reel",Dev & Tools,"Five lesser-known GitHub features for finding good repos. Focused on search qualifiers and stars-over-time.","1. Use stars:>1000 pushed:>2026-01-01 in search. 2. Check the Insights > Traffic tab. 3. Use github.dev to browse code in-browser.","repo_urls: [], tools: [github search]"
+https://instagram.com/reel/EXAMPLE2,"repo for job search",Career & Jobs,"A curated GitHub repo listing companies that sponsor visas and have open roles.","Just the repo link — that was the whole value.","repo_urls: [https://github.com/...]"
+https://instagram.com/reel/EXAMPLE3,"that momo cafe",Food & Places,"Hole-in-the-wall momo place, allegedly the best in the area. Cheap, cash only.","Name + area + what to order + rough price.","place_names: [], city: , maps_query: "
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
+,,,,,
