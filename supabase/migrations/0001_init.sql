@@ -78,8 +78,16 @@ alter table public.notes      enable row level security;
 
 -- Phase 3 will scope these to auth.uid(). For Phase 1 (single seeded user with
 -- the anon key) we grant the anon role access to its own rows by user_id.
--- These policies are intentionally permissive for local dev and MUST be
--- tightened to `auth.uid() = user_id` once magic-link auth is wired.
+--
+-- ⚠️ SECURITY: These policies are intentionally permissive for single-user local
+-- dev ONLY. Before onboarding ANY real user, replace `using (true)` with
+-- `using (auth.uid() = user_id)` — otherwise every authenticated user can read
+-- and modify everyone else's saves.
+drop policy if exists "own reels" on public.reels;
+drop policy if exists "own categories" on public.categories;
+drop policy if exists "own notes" on public.notes;
+drop policy if exists "own profile" on public.profiles;
+
 create policy "own reels" on public.reels
   for all using (true) with check (true);
 create policy "own categories" on public.categories

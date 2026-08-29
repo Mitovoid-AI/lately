@@ -3,6 +3,7 @@
 import { supabase } from "./supabase";
 import { DEV_USER_ID } from "./config";
 import { extractInstagramUrl, parseShortcode } from "./lib/instagram";
+import { enrichReel } from "./enrich";
 import type { Reel } from "./types";
 
 export type SaveResult =
@@ -37,7 +38,18 @@ export async function saveReel(
   if (error) {
     return { ok: false, error: error.message };
   }
-  return { ok: true, reel: data as Reel };
+
+  // Kick off enrichment in the background. We deliberately DON'T await it — the
+  // save is already durable, so the UI confirms instantly while the AI works.
+  const saved = data as Reel;
+  void enrichReel(saved.id);
+
+  return { ok: true, reel: saved };
+}
+
+// Re-runs enrichment on a reel (used by the retry button on partial cards).
+export async function retryReel(id: string): Promise<void> {
+  await enrichReel(id);
 }
 
 // Lists saves newest-first. Search filters over the generated tsvector column

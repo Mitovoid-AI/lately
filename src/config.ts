@@ -20,3 +20,21 @@ export const DEV_USER_ID =
   "00000000-0000-0000-0000-000000000001";
 
 export const isSupabaseConfigured = Boolean(SUPABASE_URL && SUPABASE_ANON_KEY);
+
+// --- Enrichment providers ---------------------------------------------------
+// All model names live here so a provider migration is a one-line change
+// (PLAN.md §4: "put every model name in one config file").
+export const GROQ_API_KEY = process.env.EXPO_PUBLIC_GROQ_API_KEY ?? "";
+export const GEMINI_API_KEY = process.env.EXPO_PUBLIC_GEMINI_API_KEY ?? "";
+
+// Groq Whisper: free tier ~25MB cap; reel audio is 1–5MB.
+export const GROQ_TRANSCRIBE_MODEL = "whisper-large-v3-turbo";
+export const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
+
+// Gemini Flash: free AI Studio tier for structuring caption+transcript → JSON.
+export const GEMINI_MODEL = "gemini-2.0-flash";
+export const GEMINI_BASE_URL =
+  "https://generativelanguage.googleapis.com/v1beta";
+
+export const isGroqConfigured = Boolean(GROQ_API_KEY);
+export const isGeminiConfigured = Boolean(GEMINI_API_KEY);

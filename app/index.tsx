@@ -12,7 +12,7 @@ import {
 import { useShareIntent } from "expo-share-intent";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { isSupabaseConfigured } from "../src/config";
-import { listReels, saveReel } from "../src/reels";
+import { listReels, retryReel, saveReel } from "../src/reels";
 import type { Reel } from "../src/types";
 
 export default function HomeScreen() {
@@ -51,6 +51,17 @@ export default function HomeScreen() {
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  // Re-run enrichment on a partial card, then refresh once done.
+  const handleRetry = useCallback(
+    async (id: string) => {
+      setBanner("Retrying…");
+      await retryReel(id);
+      setBanner(null);
+      await refresh(query);
+    },
+    [refresh, query],
+  );
 
   if (!isSupabaseConfigured) {
     return (
@@ -100,13 +111,13 @@ export default function HomeScreen() {
             </Text>
           )
         }
-        renderItem={({ item }) => <ReelCard reel={item} />}
+        renderItem={({ item }) => <ReelCard reel={item} onRetry={handleRetry} />}
       />
     </SafeAreaView>
   );
 }
 
-function ReelCard({ reel }: { reel: Reel }) {
+function ReelCard({ reel, onRetry }: { reel: Reel; onRetry: (id: string) => void }) {
   return (
     <View style={styles.card}>
       <View style={styles.cardHeader}>
@@ -121,9 +132,26 @@ function ReelCard({ reel }: { reel: Reel }) {
           {reel.summary}
         </Text>
       ) : null}
+
+      {reel.tags && reel.tags.length > 0 ? (
+        <View style={styles.tagRow}>
+          {reel.tags.map((t) => (
+            <Text key={t} style={styles.tag}>
+              #{t}
+            </Text>
+          ))}
+        </View>
+      ) : null}
+
       <Text style={styles.cardUrl} numberOfLines={1}>
         {reel.source_url}
       </Text>
+
+      {reel.status === "partial" ? (
+        <TouchableOpacity style={styles.retry} onPress={() => onRetry(reel.id)}>
+          <Text style={styles.retryText}>Retry</Text>
+        </TouchableOpacity>
+      ) : null}
     </View>
   );
 }
@@ -169,4 +197,8 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 16, fontWeight: "700", marginBottom: 4 },
   cardSummary: { color: "#374151", marginBottom: 6 },
   cardUrl: { color: "#9ca3af", fontSize: 12 },
+  tagRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 6 },
+  tag: { fontSize: 12, color: "#4b5563", backgroundColor: "#eef2f7", paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 },
+  retry: { marginTop: 10, alignSelf: "flex-start", backgroundColor: "#111827", paddingHorizontal: 14, paddingVertical: 6, borderRadius: 8 },
+  retryText: { color: "#fff", fontWeight: "600", fontSize: 13 },
 });
