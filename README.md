@@ -16,6 +16,34 @@ Lately turns "save for later" into "find it in seconds."
 
 No folders to maintain. No scrolling through hundreds of saves. Just search.
 
+## Repo layout
+
+Two independent projects, each with its own `package.json` and install step:
+
+| Folder | What it is | Stack |
+|---|---|---|
+| `website/` | Web app + Telegram bot. Save a link, browse and search your cards in a browser. | Next.js 15, React 19, Supabase |
+| `app/` | Android app. Saves reels straight from Instagram's share sheet. | React Native, Expo, expo-share-intent |
+| `supabase/` | Shared database — migrations and seed data. Both projects point at the same Postgres. | Postgres |
+
+Getting started:
+
+```bash
+# website + Telegram bot
+cd website && npm install
+cp .env.example .env.local   # fill in your keys
+npm run verify               # checks DB, tables, bot token, search
+npm run dev
+
+# Android app
+cd app && npm install
+cp .env.example .env
+npm start
+```
+
+Run the migrations in `supabase/migrations/` in order (`0001`, then `0002`) from
+the Supabase SQL editor before either project will work.
+
 ## Status
 
 🚧 **In active development / building in public.** This README is updated daily as features get built — check back often to see what shipped.

@@ -1,46 +1,37 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# Root ignores. Per-project ignores live in app/.gitignore and website/.gitignore.
 
-# dependencies
+# --- internal planning docs: not for users, not for the public repo -----------
+# These are working notes (roadmap, go-to-market, personal setup walkthrough).
+# Keep them locally; they are deliberately not published.
+PLAN.md
+MARKETING.md
+SETUP.md
+APP.md
+
+# --- dependencies ------------------------------------------------------------
 node_modules/
 
-# Expo
-.expo/
-dist/
-web-build/
-expo-env.d.ts
-
-# Native
-.kotlin/
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
-
-# macOS
-.DS_Store
-*.pem
-
-# local env files
+# --- env / secrets -----------------------------------------------------------
 .env
+.env.local
 .env*.local
 
-# supabase
+# --- editor / OS -------------------------------------------------------------
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- supabase cli scratch ----------------------------------------------------
 supabase/.branches
 supabase/.temp
 
-# typescript
-*.tsbuildinfo
+# --- agent + tooling scratch -------------------------------------------------
+.claude/
+.mimocode/
 
-# generated native folders
-/ios
-/android
+# --- logs --------------------------------------------------------------------
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
