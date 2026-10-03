@@ -105,6 +105,8 @@ create table if not exists public.jobs (
   max_attempts int not null default 3,
   run_at timestamptz not null default now(),
   locked_at timestamptz,
+  locked_by text,                       -- lease owner; only it may advance/release
+  heartbeat_at timestamptz,             -- lease renewal; stale → sweep_stuck_jobs()
   last_error text,
   created_at timestamptz not null default now()
 );
@@ -266,41 +268,74 @@ begin
 end;
 $$;
 
--- claim_job: atomic FIFO claim with per-user in-flight cap (PIPELINE.md §4).
---   Called by workers: select * from public.claim_job('worker-name');
-create or replace function public.claim_job(p_worker text default 'w')
-returns public.jobs
+-- Queue RPCs (PIPELINE.md §4, §7). A claim is a lease: claim_job stamps
+-- locked_by + heartbeat_at; only that worker may advance or release the job;
+-- sweep_stuck_jobs() reclaims leases whose heartbeat went stale.
+
+-- claim_job: FIFO claim of 0 or 1 due job, SKIP LOCKED so concurrent workers
+--   never get the same job, with a per-user in-flight cap of 10 (a user
+--   flooding saves waits; everyone else is unaffected).
+--   Called by workers: select * from public.claim_job('worker-id');
+drop function if exists public.claim_job(text);
+create or replace function public.claim_job(p_worker text)
+returns setof public.jobs
 language sql
 as $$
-  with candidates as (
-    select j.*
-    from public.jobs j
-    where j.locked_at is null
-      and j.run_at <= now()
-      -- per-user in-flight cap of 10: a user flooding saves waits,
-      -- everyone else is unaffected (PIPELINE.md §4)
-      and (
-        (j.payload->>'user_id') is null
-        or (
-          select count(*) from public.jobs j2
-          where j2.locked_at is not null
-            and j2.payload->>'user_id' = j.payload->>'user_id'
-        ) < 10
-      )
+  with c as (
+    select j.id from public.jobs j
+    where j.locked_at is null and j.run_at <= now()
+      and ((j.payload->>'user_id') is null or (
+        select count(*) from public.jobs j2
+        where j2.locked_at is not null and j2.payload->>'user_id' = j.payload->>'user_id') < 10)
     order by j.run_at
     limit 1
+    for update skip locked
   )
   update public.jobs j
-  set locked_at = now(),
-      attempts  = j.attempts + 1
-  from candidates c
-  where j.id = c.id
+  set locked_at = now(), heartbeat_at = now(), locked_by = p_worker, attempts = j.attempts + 1
+  from c where j.id = c.id and j.locked_at is null
   returning j.*;
 $$;
 
--- release_job: finish or requeue with backoff; dead after max_attempts.
+-- advance_job: persist progress (stage, optional payload) — false if the lease was lost.
+create or replace function public.advance_job(
+  p_job_id uuid,
+  p_worker text,
+  p_stage text,
+  p_payload jsonb default null
+)
+returns boolean
+language sql
+as $$
+  with u as (
+    update public.jobs
+    set stage = p_stage, payload = coalesce(p_payload, payload), heartbeat_at = now()
+    where id = p_job_id and locked_by = p_worker
+    returning 1
+  )
+  select exists (select 1 from u);
+$$;
+
+-- heartbeat_job: renew the lease while a long stage runs — false if it was lost.
+create or replace function public.heartbeat_job(p_job_id uuid, p_worker text)
+returns boolean
+language sql
+as $$
+  with u as (
+    update public.jobs set heartbeat_at = now()
+    where id = p_job_id and locked_by = p_worker
+    returning 1
+  )
+  select exists (select 1 from u);
+$$;
+
+-- release_job: finish (no error → delete) or requeue with backoff
+--   run_at = now() + 2^attempts minutes; dead-lettered after max_attempts.
+--   A worker that no longer holds the lease changes nothing.
+drop function if exists public.release_job(uuid, text);
 create or replace function public.release_job(
   p_job_id uuid,
+  p_worker text,
   p_error text default null
 )
 returns void
@@ -309,7 +344,9 @@ as $$
 declare
   j public.jobs;
 begin
-  select * into j from public.jobs where id = p_job_id for update;
+  select * into j from public.jobs
+  where id = p_job_id and locked_by = p_worker
+  for update;
   if not found then return; end if;
 
   if p_error is null then
@@ -323,10 +360,44 @@ begin
     delete from public.jobs where id = p_job_id;
   else
     update public.jobs
-    set locked_at = null,
+    set locked_at = null, locked_by = null, heartbeat_at = null,
         run_at    = now() + power(2, j.attempts) * interval '1 minute',
         last_error = p_error
     where id = p_job_id;
   end if;
+end;
+$$;
+
+-- sweep_stuck_jobs: reclaim leases whose worker died (no heartbeat for p_stale).
+--   Exhausted jobs go to jobs_dead; the rest are unlocked and resume from their
+--   saved stage. Returns the number of jobs touched.
+create or replace function public.sweep_stuck_jobs(
+  p_stale interval default interval '10 minutes'
+)
+returns int
+language plpgsql
+as $$
+declare
+  v_dead int;
+  v_unlocked int;
+begin
+  with dead as (
+    delete from public.jobs j
+    where j.locked_at is not null
+      and coalesce(j.heartbeat_at, j.locked_at) < now() - p_stale
+      and j.attempts >= j.max_attempts
+    returning j.*
+  )
+  insert into public.jobs_dead (id, kind, payload, stage, attempts, last_error)
+  select id, kind, payload, stage, attempts, 'stuck: worker lost' from dead;
+  get diagnostics v_dead = row_count;
+
+  update public.jobs
+  set locked_at = null, locked_by = null, heartbeat_at = null
+  where locked_at is not null
+    and coalesce(heartbeat_at, locked_at) < now() - p_stale;
+  get diagnostics v_unlocked = row_count;
+
+  return v_dead + v_unlocked;
 end;
 $$;
