@@ -47,3 +47,4 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 backend/logs/
+*.egg-info/

@@ -1,0 +1,15 @@
+# Lately backend — runtime requirements (Part 1)
+# Source of truth is pyproject.toml; this file is a pinned snapshot for
+# `pip install -r requirements.txt` (venv, Docker, deploy targets).
+# Python >= 3.12 (developed on 3.14).
+
+fastapi==0.141.1
+uvicorn[standard]==0.53.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+httpx==0.28.1
+pyjwt[crypto]==2.14.0          # Supabase JWT verification (ES256/RS256 via JWKS)
+asyncpg==0.31.0
+
+# Part 2 adds: groq, google-genai
+# Part 4 adds: supabase (py) — Meta webhook signature check uses stdlib hmac
