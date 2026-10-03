@@ -30,24 +30,19 @@ create table if not exists public.reel_content (
   created_at      timestamptz not null default now()
 );
 
--- Full-text search lives on the shared content (PIPELINE.md §6).
-create index if not exists reel_content_search_idx
-  on public.reel_content
-  using gin (to_tsvector('english',
-    coalesce(search_text, '') || ' ' ||
-    coalesce(title, '')      || ' ' ||
-    coalesce(summary, '')    || ' ' ||
-    coalesce(caption, '')    || ' ' ||
-    coalesce(array_to_string(tags, ' '), '') ||
-    coalesce(array_to_string(likely_queries, ' '), '')));
+-- Full-text search lives on the shared content (PIPELINE.md §6). Its columns and
+-- indexes arrive in the Phase 1 search migration 0004 (SEARCH.md §12): an
+-- expression index over array_to_string() is rejected (STABLE, not IMMUTABLE).
 
 -- ============================================================
 -- 2. reels — per-user saves, now pointers into reel_content
 -- ============================================================
 do $$ begin
   -- columns
-  alter table public.reels add column if not exists shortcode_key text
-    references public.reel_content(shortcode) on delete set null;
+  -- Plain join key, no FK: save_reel sets it at catch time, but reel_content
+  -- is only written later by FINALIZE (PIPELINE.md §5).
+  alter table public.reels add column if not exists shortcode_key text;
+  alter table public.reels drop constraint if exists reels_shortcode_key_fkey;
   alter table public.reels add column if not exists auth_user_id uuid
     references auth.users(id) on delete cascade;
   alter table public.reels add column if not exists note text;
@@ -58,6 +53,11 @@ exception
   when undefined_file then raise notice 'pgvector not available; skip embedding column';
   when duplicate_object then null;
 end $$;
+
+-- user_id pointed at the Telegram-era public.users (0002). Real users are
+-- auth.users now (auth_user_id); user_id stays only as a nullable legacy column.
+alter table public.reels drop constraint if exists reels_user_id_fkey;
+alter table public.reels alter column user_id drop not null;
 
 -- Backfill: existing dev rows owned by the seeded dev user → that auth user.
 -- (Dev user is expected to exist in auth.users with this id; harmless if not.)
@@ -89,6 +89,9 @@ create table if not exists public.profiles (
   quota_reset_at timestamptz,
   created_at timestamptz not null default now()
 );
+-- 0001 already created profiles without this column, so `create table if not
+-- exists` above is a no-op on any database that ran 0001.
+alter table public.profiles add column if not exists saves_free_limit int not null default 20;
 
 -- ============================================================
 -- 4. jobs / jobs_dead — the queue (PIPELINE.md §4, §7)
@@ -199,7 +202,7 @@ begin
   --    but the RPC re-validates the invariant: a URL must exist.
   v_url := coalesce(p_source_url, p_text);
   if v_url is null or v_url !~ '^https?://'
-     or v_url !* 'instagram\.com' then
+     or v_url !~* 'instagram\.com' then
     raise exception 'BAD_URL';
   end if;
 

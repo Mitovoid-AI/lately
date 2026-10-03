@@ -41,26 +41,14 @@ create table if not exists public.reels (
   thumbnail_path text,
   created_at timestamptz not null default now(),
   enriched_at timestamptz,
-  failure_reason text,
-  -- Full-text search over the fields worth remembering (Phase 1 search).
-  search_vector tsvector generated always as (
-    to_tsvector(
-      'english',
-      coalesce(reason, '') || ' ' ||
-      coalesce(title, '') || ' ' ||
-      coalesce(summary, '') || ' ' ||
-      coalesce(caption, '') || ' ' ||
-      coalesce(transcript, '') || ' ' ||
-      coalesce(category, '') || ' ' ||
-      coalesce(array_to_string(tags, ' '), '')
-    )
-  ) stored
+  failure_reason text
+  -- No search column here: a generated tsvector over array_to_string() (STABLE,
+  -- not IMMUTABLE) is rejected by Postgres. Search lives on reel_content and is
+  -- added by the Phase 1 search migration 0004 (SEARCH.md §12).
 );
 
 create index if not exists reels_user_created_idx
   on public.reels (user_id, created_at desc);
-create index if not exists reels_search_idx
-  on public.reels using gin (search_vector);
 
 -- notes: the user's own thoughts, kept separate from AI output.
 create table if not exists public.notes (
