@@ -3,6 +3,7 @@
 import asyncio
 import time
 
+import httpx
 import pytest
 
 from app.worker import loop, stages
@@ -101,3 +102,28 @@ async def test_crash_mid_job_resumes_from_saved_stage(db, make_user):
     resumed = await claim(db, "w2")
     assert resumed["stage"] == "transcribe"
     assert await db.fetchval("select public.advance_job($1, 'w1', 'vision')", job["id"]) is False
+
+
+async def test_resolve_drops_a_share_link_duplicate_of_a_saved_reel(db, make_user, monkeypatch):
+    # The user saved /reel/DupAbc1 earlier, then shares the same reel via a /share/
+    # link: RESOLVE learns it is a duplicate and the second save becomes a no-op.
+    def redirect(request):
+        return httpx.Response(302, headers={"location": "https://www.instagram.com/reel/DupAbc1/"})
+
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr(stages.httpx, "AsyncClient",
+                        lambda **kw: real_client(transport=httpx.MockTransport(redirect), **kw))
+    uid = await make_user()
+    original = await enqueue(db, uid, "DupAbc1")
+    await db.execute("delete from public.jobs")  # the original was enriched long ago
+    share = "https://www.instagram.com/share/ZzTop9"
+    dup = (await db.fetchrow("select * from public.save_reel($1, $2, 'app_share', $2)",
+                             uid, share))["reel_id"]
+
+    await loop.run_job(db, await claim(db), "w1")
+
+    reels = {r["id"] for r in await db.fetch(
+        "select id from public.reels where auth_user_id = $1", uid)}
+    assert reels == {original} and dup not in reels
+    assert await db.fetchval("select count(*) from public.jobs") == 0
+    assert await db.fetchval("select count(*) from public.jobs_dead") == 0

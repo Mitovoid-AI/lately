@@ -69,7 +69,7 @@ def _metric(db: asyncpg.Pool, door: str, stage_name: str, started: float, outcom
 
 
 @stage("resolve")
-async def resolve(db: asyncpg.Pool, job: dict[str, Any]) -> str:
+async def resolve(db: asyncpg.Pool, job: dict[str, Any]) -> str | None:
     """URL → shortcode. Follows /share/ redirects; cache-hit jumps to finalize."""
     payload = job["payload"]
     reel_id = payload["reel_id"]
@@ -94,6 +94,20 @@ async def resolve(db: asyncpg.Pool, job: dict[str, Any]) -> str:
         # Can't identify the reel yet. Stay resolvable later: retry with backoff
         # rather than dead-lettering — Instagram links may resolve on retry.
         raise RuntimeError("no shortcode after resolve")
+
+    # A /share/ link can turn out to be a reel this user already saved: the
+    # second save is a no-op (PIPELINE.md §3 step 4), so drop it and finish.
+    if reel["shortcode_key"] is None and await db.fetchval(
+        """select exists (
+             select 1 from public.reels r
+             join public.reels me on me.id = $1
+             where r.auth_user_id = me.auth_user_id and r.shortcode_key = $2
+               and r.id <> me.id)""",
+        reel_id, shortcode,
+    ):
+        await db.execute("delete from public.reels where id = $1", reel_id)
+        _metric(db, "worker", "resolve", started, "duplicate")
+        return None
 
     # Cache hit: shared content already structured → jump straight to finalize.
     hit = await db.fetchval(
