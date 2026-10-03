@@ -28,6 +28,8 @@ class Settings(BaseSettings):
     # Worker
     worker_poll_interval_seconds: float = 0.5
     worker_stuck_after_minutes: int = 10
+    worker_concurrency: int = 8
+    worker_heartbeat_seconds: float = 30.0
 
     # Optional AI keys — saves work without them; cards stay partial (Part 2)
     groq_api_key: str = ""
