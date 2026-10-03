@@ -16,6 +16,9 @@ node_modules/
 .env.local
 .env*.local
 
+# MCP client config (holds the Supabase project ref). Template: .mcp.json.example
+.mcp.json
+
 # --- editor / OS -------------------------------------------------------------
 .DS_Store
 Thumbs.db
@@ -35,3 +38,12 @@ npm-debug.*
 yarn-debug.*
 yarn-error.*
 *.log
+
+# --- python backend -----------------------------------------------------------
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+backend/logs/
