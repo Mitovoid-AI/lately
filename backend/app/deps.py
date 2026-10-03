@@ -24,26 +24,28 @@ from .config import settings
 _pool: asyncpg.Pool | None = None
 
 
-async def pool() -> asyncpg.Pool:
-    """Lazy asyncpg pool over the Supabase Postgres (pooled port 6543)."""
+async def init_pool() -> asyncpg.Pool:
+    """Create the asyncpg pool from DATABASE_URL (idempotent; app/worker startup).
+
+    statement_cache_size=0: the Supabase transaction pooler (port 6543) cannot
+    keep named prepared statements across transactions.
+    """
     global _pool
     if _pool is None:
         s = settings()
-        # Supabase pooler URL: same host, port 6543, user postgres.
-        host = s.supabase_url.split("//")[1].split(".")[0] + ".supabase.co"
-        dsn = (
-            f"postgresql://postgres:{s.supabase_service_role_key}"
-            f"@aws-0-{_region(host)}.pooler.supabase.com:6543/postgres"
+        _pool = await asyncpg.create_pool(
+            s.database_url,
+            min_size=1,
+            max_size=s.db_pool_max_size,
+            statement_cache_size=0,
         )
-        _pool = await asyncpg.create_pool(dsn, min_size=1, max_size=10)
     return _pool
 
 
-def _region(_host: str) -> str:  # pragma: no cover - deployment-specific
-    """Project region slug; override via SUPABASE_DB_DSN if needed."""
-    import os
-
-    return os.environ.get("SUPABASE_DB_REGION", "ap-south-1")
+def pool() -> asyncpg.Pool:
+    if _pool is None:
+        raise RuntimeError("pool not initialised — call init_pool()")
+    return _pool
 
 
 async def close_pool() -> None:

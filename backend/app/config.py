@@ -13,6 +13,10 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
+    # Database: Postgres URI. Cloud = Supabase transaction pooler (port 6543).
+    database_url: str
+    db_pool_max_size: int = 10
+
     # Supabase
     supabase_url: str
     supabase_service_role_key: str

@@ -12,12 +12,12 @@ from datetime import datetime
 
 import asyncpg
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel
 
+from ..config import settings
 from ..deps import CurrentUser, pool
 from ..models import NoteRequest, ReelOut, SaveRequest, SaveResponse
 from ..services import jobs as jobs_service
-from ..urls import normalize_shared_text, parse_shortcode
+from ..urls import normalize_shared_text
 
 router = APIRouter(prefix="/saves", tags=["saves"])
 
@@ -30,18 +30,15 @@ async def create_save(body: SaveRequest, user: CurrentUser) -> SaveResponse:
             422, {"error": {"code": "BAD_URL", "message": "No Instagram link found."}}
         )
 
-    shortcode = parse_shortcode(url)
-
     try:
-        conn = await pool().acquire()
-        assert conn is not None
         try:
-            row = await conn.fetchrow(
-                "select * from public.save_reel($1, $2, $3, $4)",
+            row = await pool().fetchrow(
+                "select * from public.save_reel($1, $2, $3, $4, $5)",
                 uuid.UUID(user.id),
                 body.text,
                 body.channel,
                 url,
+                settings().rate_limit_per_hour,
             )
         except asyncpg.PostgresError as exc:
             mapped = jobs_service.map_rpc_error(exc)
@@ -57,12 +54,16 @@ async def create_save(body: SaveRequest, user: CurrentUser) -> SaveResponse:
                     {"error": {"code": "RATE_LIMITED",
                                "message": "Too many saves right now."}},
                 ) from exc
+            if isinstance(mapped, jobs_service.BadUrl):
+                raise HTTPException(
+                    422,
+                    {"error": {"code": "BAD_URL",
+                               "message": "No Instagram link found."}},
+                ) from exc
             raise
-        finally:
-            await pool().release(conn)
     except HTTPException:
         raise
-    except Exception as exc:  # noqa: BLE001 — surface as 500 with code
+    except Exception as exc:
         raise HTTPException(
             500, {"error": {"code": "SAVE_FAILED", "message": str(exc)}}
         ) from exc
@@ -79,48 +80,38 @@ async def list_saves(
 ) -> list[ReelOut]:
     """Keyset-paginated list, newest first (`before` = created_at cursor)."""
     limit = max(1, min(limit, 100))
-    conn = await pool().acquire()
-    assert conn is not None
-    try:
-        rows = await conn.fetch(
-            """
-            select id, auth_user_id, source_url, shortcode, shortcode_key,
-                   status, note, created_at
-            from public.reels
-            where auth_user_id = $1
-              and ($2::timestamptz is null or created_at < $2)
-            order by created_at desc
-            limit $3
-            """,
-            uuid.UUID(user.id),
-            before,
-            limit,
-        )
-    finally:
-        await pool().release(conn)
+    rows = await pool().fetch(
+        """
+        select id, auth_user_id, source_url, shortcode, shortcode_key,
+               status, note, created_at
+        from public.reels
+        where auth_user_id = $1
+          and ($2::timestamptz is null or created_at < $2)
+        order by created_at desc
+        limit $3
+        """,
+        uuid.UUID(user.id),
+        before,
+        limit,
+    )
     return [ReelOut(**dict(r)) for r in rows]
 
 
 @router.patch("/{reel_id}", response_model=ReelOut)
 async def set_note(reel_id: uuid.UUID, body: NoteRequest, user: CurrentUser) -> ReelOut:
     """Attach the "why?" note after the save (skippable follow-up)."""
-    conn = await pool().acquire()
-    assert conn is not None
-    try:
-        row = await conn.fetchrow(
-            """
-            update public.reels
-            set note = $2
-            where id = $1 and auth_user_id = $3
-            returning id, auth_user_id, source_url, shortcode, shortcode_key,
-                      status, note, created_at
-            """,
-            reel_id,
-            body.note,
-            uuid.UUID(user.id),
-        )
-    finally:
-        await pool().release(conn)
+    row = await pool().fetchrow(
+        """
+        update public.reels
+        set note = $2
+        where id = $1 and auth_user_id = $3
+        returning id, auth_user_id, source_url, shortcode, shortcode_key,
+                  status, note, created_at
+        """,
+        reel_id,
+        body.note,
+        uuid.UUID(user.id),
+    )
     if row is None:
         raise HTTPException(404, {"error": {"code": "NOT_FOUND",
                                             "message": "Save not found."}})

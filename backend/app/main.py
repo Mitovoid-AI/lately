@@ -10,12 +10,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 
-from .deps import close_pool
+from .deps import close_pool, init_pool
 from .routers import saves
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    await init_pool()
     yield
     await close_pool()
 
