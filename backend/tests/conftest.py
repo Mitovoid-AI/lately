@@ -12,12 +12,17 @@ called, so the app under test can only ever see the test database.
 from __future__ import annotations
 
 import os
+import time
 import uuid
 from collections.abc import AsyncIterator, Awaitable, Callable
 from pathlib import Path
+from typing import Any
 
 import asyncpg
+import httpx
+import jwt
 import pytest
+from cryptography.hazmat.primitives.asymmetric import ec
 from dotenv import dotenv_values
 
 _LOCAL_DB = "postgresql://postgres:postgres@127.0.0.1:54322/postgres"
@@ -88,3 +93,58 @@ def make_user(db: asyncpg.Pool) -> Callable[..., Awaitable[uuid.UUID]]:
         return uid
 
     return _make_user
+
+
+# ---------------------------------------------------------------- API auth --
+# A P-256 key pair generated per test session stands in for Supabase Auth's
+# signing key, so no key is ever committed. The app's JWKS fetch is patched to
+# return its public half; verification itself runs the real code path.
+
+_TEST_KID = "test-kid"
+
+
+@pytest.fixture(scope="session")
+def _signing_key() -> ec.EllipticCurvePrivateKey:
+    return ec.generate_private_key(ec.SECP256R1())
+
+
+@pytest.fixture(autouse=True)
+def _test_jwks(monkeypatch: pytest.MonkeyPatch, _signing_key: ec.EllipticCurvePrivateKey) -> None:
+    from app import deps
+
+    public_jwk: dict[str, Any] = jwt.algorithms.ECAlgorithm.to_jwk(
+        _signing_key.public_key(), as_dict=True
+    )
+    public_jwk |= {"kid": _TEST_KID, "alg": "ES256", "use": "sig"}
+
+    async def fake_jwks() -> dict[str, Any]:
+        return {"keys": [public_jwk]}
+
+    monkeypatch.setattr(deps, "_jwks", fake_jwks)
+
+
+@pytest.fixture
+def jwt_for(_signing_key: ec.EllipticCurvePrivateKey) -> Callable[[uuid.UUID], str]:
+    def _jwt_for(user_id: uuid.UUID) -> str:
+        now = int(time.time())
+        claims = {"sub": str(user_id), "aud": "authenticated", "role": "authenticated",
+                  "iat": now, "exp": now + 3600}
+        return jwt.encode(claims, _signing_key, algorithm="ES256", headers={"kid": _TEST_KID})
+
+    return _jwt_for
+
+
+@pytest.fixture
+async def client() -> AsyncIterator[httpx.AsyncClient]:
+    # ASGITransport does not run the app lifespan, so the pool is opened here.
+    from app.deps import close_pool, init_pool
+    from app.main import app
+
+    await init_pool()
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://test"
+        ) as c:
+            yield c
+    finally:
+        await close_pool()

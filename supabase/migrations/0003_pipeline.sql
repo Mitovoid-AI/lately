@@ -174,6 +174,14 @@ revoke all on public.reel_content, public.reels, public.profiles,
               public.jobs, public.jobs_dead, public.metrics
   from anon;
 
+-- Signed-in clients may READ their own rows directly (RLS scopes them); every
+-- write goes through the API, so no client can touch quota, plan or the queue.
+-- (0002 revoked all from authenticated; without a grant RLS has nothing to scope.)
+revoke all on public.reel_content, public.reels, public.profiles,
+              public.jobs, public.jobs_dead, public.metrics
+  from authenticated;
+grant select on public.reel_content, public.reels, public.profiles to authenticated;
+
 -- ============================================================
 -- 7. RPCs — save_reel (catch path) and claim_job (worker claim)
 -- ============================================================

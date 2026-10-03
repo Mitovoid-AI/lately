@@ -1,11 +1,8 @@
 """Database pool + request identity (Part 1).
 
-Two access modes:
-- API routes connect with the **user's JWT** (user_jwt client) → RLS scopes
-  every row automatically (BACKEND.md §4). Used for reads and the note PATCH.
-- The catch path calls `save_reel()` via **service role** (it inserts + enqueues
-  on the user's behalf and checks quota counters). Identity is still the
-  verified JWT sub — never a client-supplied user_id.
+API routes use one service-role pool and **always** filter by the verified
+`auth_user_id` (the JWT `sub`, never a client-supplied user_id); RLS policies
+are the backstop for any direct client access (BACKEND.md §4).
 """
 
 from __future__ import annotations

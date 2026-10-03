@@ -12,6 +12,7 @@ from datetime import datetime
 
 import asyncpg
 from fastapi import APIRouter, HTTPException
+from fastapi.responses import JSONResponse
 
 from ..config import settings
 from ..deps import CurrentUser, pool
@@ -23,7 +24,7 @@ router = APIRouter(prefix="/saves", tags=["saves"])
 
 
 @router.post("", response_model=SaveResponse, status_code=201)
-async def create_save(body: SaveRequest, user: CurrentUser) -> SaveResponse:
+async def create_save(body: SaveRequest, user: CurrentUser) -> SaveResponse | JSONResponse:
     url = normalize_shared_text(body.text)
     if url is None:
         raise HTTPException(
@@ -69,7 +70,10 @@ async def create_save(body: SaveRequest, user: CurrentUser) -> SaveResponse:
         ) from exc
 
     assert row is not None
-    return SaveResponse(reel_id=row["reel_id"], deduped=bool(row["deduped"]))
+    saved = SaveResponse(reel_id=row["reel_id"], deduped=bool(row["deduped"]))
+    if saved.deduped:  # nothing was created: 200, not 201
+        return JSONResponse(status_code=200, content=saved.model_dump(mode="json"))
+    return saved
 
 
 @router.get("", response_model=list[ReelOut])
