@@ -177,16 +177,20 @@ revoke all on public.reel_content, public.reels, public.profiles,
 -- ============================================================
 
 -- save_reel: the entire CATCH path in one atomic Postgres call.
---   quota via count (no Redis), dedup via unique index, enqueue included.
+--   quota + rate via count (no Redis), dedup via unique index, enqueue included.
 -- Returns the reel id, or raises with a clear SQLSTATE for 4xx mapping:
+--   P0001 'BAD_URL'         → 422
 --   P0001 'QUOTA_EXCEEDED'  → 429
 --   P0001 'RATE_LIMITED'    → 429
---   P0001 'BAD_URL'         → 422
+-- Order: BAD_URL → existing (user, shortcode) is returned deduped → monthly
+-- quota → hourly rate → insert. Re-sharing a saved reel is never refused.
+drop function if exists public.save_reel(uuid, text, text, text);
 create or replace function public.save_reel(
   p_user_id uuid,
   p_text text,
   p_channel text default 'app_share',
-  p_source_url text default null   -- pre-extracted URL; null → derive from text
+  p_source_url text default null,   -- pre-extracted URL; null → derive from text
+  p_rate_per_hour int default 30
 )
 returns table (reel_id uuid, deduped boolean)
 language plpgsql
@@ -194,9 +198,8 @@ as $$
 declare
   v_url text;
   v_shortcode text;
-  v_existing record;
+  v_id uuid;
   v_quota int;
-  v_rate int;
 begin
   -- 1. URL extraction + tracking-param strip is done in the API (Python),
   --    but the RPC re-validates the invariant: a URL must exist.
@@ -206,73 +209,60 @@ begin
     raise exception 'BAD_URL';
   end if;
 
-  -- 2. shortcode if the URL carries one (else null; RESOLVE fixes it later)
-  v_shortcode := (
-    select m[1] from regexp_matches(
-      v_url, 'instagram\.com/(?:reel|reels|p|tv)/([A-Za-z0-9_-]+)', 'i'
-    ) as m
-    limit 1
-  );
+  -- 2. shortcode if the URL carries one (null for /share/ links; RESOLVE fills it)
+  v_shortcode := (regexp_match(
+    v_url, 'instagram\.com/(?:reel|reels|p|tv)/([A-Za-z0-9_-]+)', 'i'))[1];
 
-  -- 3. quota: saves this calendar month (Postgres count — PIPELINE.md §3 step 3)
-  select coalesce(p.saves_free_limit, 20) into v_quota
-  from public.profiles p where p.id = p_user_id;
-  if v_quota is null then
-    insert into public.profiles (id) values (p_user_id)
-    on conflict (id) do nothing;
-    v_quota := 20;
-  end if;
-
-  select count(*) into v_rate
-  from public.reels r
-  where r.auth_user_id = p_user_id
-    and r.created_at >= date_trunc('month', now());
-  if v_rate >= v_quota then
-    raise exception 'QUOTA_EXCEEDED';
-  end if;
-
-  -- 4. dedup: unique(user, shortcode) — second share of the same reel is a no-op
+  -- 3. dedup: second share of the same reel returns the existing save
   if v_shortcode is not null then
-    select id into v_existing from public.reels
-    where auth_user_id = p_user_id and shortcode_key = v_shortcode
-    limit 1;
-    if found then
-      return query select v_existing.id, true;
+    select r.id into v_id from public.reels r
+    where r.auth_user_id = p_user_id and r.shortcode_key = v_shortcode;
+    if v_id is not null then
+      return query select v_id, true;
       return;
     end if;
   end if;
 
-  -- 5. insert pending save + enqueue the enrich job (stage: resolve)
-  with reel as (
-    insert into public.reels
-      (auth_user_id, user_id, source_url, shortcode, shortcode_key,
-       status, source_channel)
-    values
-      (p_user_id, p_user_id, v_url,
-       v_shortcode, v_shortcode,
-       'pending',
-       case p_channel
-         when 'app_share' then 'app'
-         when 'meta_dm'   then 'telegram'   -- legacy check tolerates channel
-         else 'web'
-       end)
-    returning id
-  )
+  -- 4. quota: saves this calendar month (Postgres count — PIPELINE.md §3 step 3)
+  insert into public.profiles (id) values (p_user_id) on conflict (id) do nothing;
+  select p.saves_free_limit into v_quota from public.profiles p where p.id = p_user_id;
+  if (select count(*) from public.reels r
+      where r.auth_user_id = p_user_id
+        and r.created_at >= date_trunc('month', now())) >= v_quota then
+    raise exception 'QUOTA_EXCEEDED';
+  end if;
+
+  -- 5. rate: saves in the last hour
+  if (select count(*) from public.reels r
+      where r.auth_user_id = p_user_id
+        and r.created_at >= now() - interval '1 hour') >= p_rate_per_hour then
+    raise exception 'RATE_LIMITED';
+  end if;
+
+  -- 6. insert pending save + enqueue the enrich job (stage: resolve)
+  insert into public.reels
+    (auth_user_id, user_id, source_url, shortcode, shortcode_key, status, source_channel)
+  values
+    (p_user_id, p_user_id, v_url, v_shortcode, v_shortcode, 'pending',
+     case p_channel
+       when 'app_share' then 'app'
+       when 'meta_dm'   then 'telegram'   -- legacy check tolerates channel
+       else 'web'
+     end)
+  on conflict (auth_user_id, shortcode_key) where shortcode_key is not null do nothing
+  returning id into v_id;
+
+  if v_id is null then           -- lost a race to a concurrent duplicate
+    select r.id into v_id from public.reels r
+    where r.auth_user_id = p_user_id and r.shortcode_key = v_shortcode;
+    return query select v_id, true;
+    return;
+  end if;
+
   insert into public.jobs (kind, payload, stage)
-  select 'enrich',
-         jsonb_build_object('reel_id', reel.id, 'user_id', p_user_id),
-         'resolve'
-  from reel
-  returning '00000000-0000-0000-0000-000000000000'::uuid into v_existing.id;
+  values ('enrich', jsonb_build_object('reel_id', v_id, 'user_id', p_user_id), 'resolve');
 
-  -- fetch the inserted reel id back (single-row table guarantee by unique idx)
-  select r.id into v_existing.id
-  from public.reels r
-  where r.auth_user_id = p_user_id
-  order by r.created_at desc
-  limit 1;
-
-  return query select v_existing.id, false;
+  return query select v_id, false;
 end;
 $$;
 
