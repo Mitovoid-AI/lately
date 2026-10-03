@@ -50,7 +50,7 @@ def setup_logging(level: str) -> Path:
         sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     logs_dir = Path(__file__).resolve().parents[1] / "logs"
     logs_dir.mkdir(exist_ok=True)
-    logfile = logs_dir / f"debug-{datetime.now():%Y%m%d-%H%M%S}.log"
+    logfile = logs_dir / f"debug-{datetime.now().astimezone():%Y%m%d-%H%M%S}.log"
 
     fmt = logging.Formatter(
         "%(asctime)s | %(levelname)-7s | %(name)s | %(message)s", "%H:%M:%S"
@@ -90,8 +90,8 @@ def check(name: str):
             except Skip as exc:
                 log.warning("SKIP: %s", exc)
                 RESULTS.append((name, "SKIP", time.perf_counter() - started))
-            except Exception as exc:  # noqa: BLE001 — a failing check must not stop the rest
-                log.exception("FAIL: %s", exc)
+            except Exception:
+                log.exception("FAIL")
                 RESULTS.append((name, "FAIL", time.perf_counter() - started))
 
         return run
@@ -119,7 +119,7 @@ async def check_config() -> None:
         s = Settings()
     except Exception as exc:  # ValidationError — list what's missing
         missing = [
-            e["loc"][0] for e in getattr(exc, "errors", lambda: [])()
+            e["loc"][0] for e in getattr(exc, "errors", list)()
             if e.get("type", "").startswith("missing")
         ]
         if missing:
@@ -142,8 +142,11 @@ async def check_config() -> None:
 @check("urls (pure helpers)")
 async def check_urls() -> None:
     from app.urls import (
-        extract_instagram_url, is_share_link, normalize_shared_text,
-        parse_shortcode, strip_tracking_params,
+        extract_instagram_url,
+        is_share_link,
+        normalize_shared_text,
+        parse_shortcode,
+        strip_tracking_params,
     )
 
     expect("extract from shared text",
@@ -209,46 +212,49 @@ async def check_db() -> None:
     if "--live" not in sys.argv:
         raise Skip("pass --live to check the database")
 
-    from app.deps import close_pool, pool
+    from app.deps import close_pool, init_pool
 
-    conn = await pool().acquire()
-    assert conn is not None
+    db = await init_pool()
     try:
-        expect("select 1", await conn.fetchval("select 1"), 1)
+        expect("select 1", await db.fetchval("select 1"), 1)
 
+        expected_tables = ("reels", "reel_content", "profiles", "jobs", "jobs_dead", "metrics")
         tables = {
-            r[0] for r in await conn.fetch(
+            r[0] for r in await db.fetch(
                 "select tablename from pg_tables where schemaname = 'public'"
             )
         }
-        for t in ("reels", "reel_content", "jobs", "jobs_dead", "metrics"):
+        for t in expected_tables:
             log.info("  ✓ table %s %s", t, "exists" if t in tables else "MISSING")
-        missing = {"reels", "reel_content", "jobs", "jobs_dead", "metrics"} - tables
+        missing = set(expected_tables) - tables
         if missing:
-            raise AssertionError(f"tables missing — apply backend/migrations/0003_pipeline.sql: {sorted(missing)}")
+            raise AssertionError(
+                f"tables missing — apply supabase/migrations/: {sorted(missing)}")
 
+        expected_rpcs = ("save_reel", "claim_job", "release_job", "advance_job",
+                         "heartbeat_job", "sweep_stuck_jobs")
         rpcs = {
-            r[0] for r in await conn.fetch(
+            r[0] for r in await db.fetch(
                 "select proname from pg_proc where pronamespace = 'public'::regnamespace"
             )
         }
-        for fn in ("save_reel", "claim_job", "release_job"):
+        for fn in expected_rpcs:
             log.info("  ✓ rpc %s %s", fn, "exists" if fn in rpcs else "MISSING")
-        missing_rpc = {"save_reel", "claim_job", "release_job"} - rpcs
+        missing_rpc = set(expected_rpcs) - rpcs
         if missing_rpc:
-            raise AssertionError(f"RPCs missing — re-run 0003_pipeline.sql: {sorted(missing_rpc)}")
+            raise AssertionError(
+                f"RPCs missing — re-apply supabase/migrations/: {sorted(missing_rpc)}")
 
-        pending = await conn.fetchval("select count(*) from public.jobs")
-        locked = await conn.fetchval("select count(*) from public.jobs where locked_at is not null")
-        dead = await conn.fetchval("select count(*) from public.jobs_dead")
-        reels = await conn.fetchval("select count(*) from public.reels")
-        content = await conn.fetchval("select count(*) from public.reel_content")
+        pending = await db.fetchval("select count(*) from public.jobs")
+        locked = await db.fetchval("select count(*) from public.jobs where locked_at is not null")
+        dead = await db.fetchval("select count(*) from public.jobs_dead")
+        reels = await db.fetchval("select count(*) from public.reels")
+        content = await db.fetchval("select count(*) from public.reel_content")
         log.info("  queue: pending=%s locked=%s dead=%s | reels=%s reel_content=%s",
                  pending, locked, dead, reels, content)
         if dead:
             log.warning("  %s dead jobs — inspect jobs_dead (last_error column)", dead)
     finally:
-        await pool().release(conn)
         await close_pool()
 
 

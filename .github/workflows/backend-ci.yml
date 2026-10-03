@@ -1,0 +1,26 @@
+name: backend
+on:
+  push: { branches: [qa, main] }
+  pull_request: { branches: [main] }
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env: { REQUIRE_DB: "1" }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.14" }
+      - uses: supabase/setup-cli@v1
+        with: { version: latest }
+      # Local Supabase in Docker on the runner; applies supabase/migrations + seed.sql.
+      # Tests default to its DB URL (backend/tests/conftest.py).
+      - run: supabase start
+      - run: pip install -r requirements-dev.txt && pip install -e .
+        working-directory: backend
+      - run: ruff check .
+        working-directory: backend
+      - run: python -m pytest -q
+        working-directory: backend
+      - run: mypy app
+        working-directory: backend
+        continue-on-error: true   # strict mypy not yet clean; make blocking once it is

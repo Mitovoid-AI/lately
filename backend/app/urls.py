@@ -6,9 +6,8 @@ stored source_url is canonical (PIPELINE.md §3 step 1).
 
 from __future__ import annotations
 
-from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
-
 import re
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 _IG_URL_RE = re.compile(
     r"https?://(?:www\.)?instagram\.com/[^\s\"'<>]+", re.IGNORECASE
