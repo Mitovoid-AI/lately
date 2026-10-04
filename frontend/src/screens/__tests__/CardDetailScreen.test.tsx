@@ -104,3 +104,10 @@ test("the summary uses the reading text size from preferences", async () => {
   const summary = await screen.findByText(/A cozy hidden gem/);
   expect(summary).toHaveStyle({ fontSize: 20 });
 });
+
+test("the bookmark opens the stack picker", async () => {
+  await open("s-momo");
+  await screen.findByText(MOMO);
+  await fireEvent.press(screen.getByLabelText("Add to stack"));
+  expect(await screen.findByText("Cafes to try")).toBeTruthy();
+});

@@ -66,6 +66,7 @@ function RootStack() {
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="reel/[id]" />
+        <Stack.Screen name="stack/[id]" />
         <Stack.Screen name="search" options={{ animation: "fade" }} />
         <Stack.Screen name="account" />
         <Stack.Screen

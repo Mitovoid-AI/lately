@@ -13,6 +13,7 @@ import { ConfirmDialog } from "../components/ConfirmDialog";
 import { NoteBlock } from "../components/detail/NoteBlock";
 import { PlaceCard } from "../components/detail/PlaceCard";
 import { ProgressTracker } from "../components/detail/ProgressTracker";
+import { StackPicker } from "../components/detail/StackPicker";
 import { LOGO } from "../components/Header";
 import { Icon, type IconName } from "../components/Icon";
 import { Sheet } from "../components/Sheet";
@@ -114,6 +115,7 @@ export function CardDetailScreen() {
   const now = useNow();
   const readingStyle = useReadingStyle();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [captionOpen, setCaptionOpen] = useState(false);
@@ -186,6 +188,14 @@ export function CardDetailScreen() {
         <View className="h-12 flex-row items-center">
           <View className="h-2 w-2 rounded-full" style={{ backgroundColor: status.color }} />
           <Text className="ml-2 flex-1 font-sans-semibold text-label text-ink-2">{status.text}</Text>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Add to stack"
+            onPress={() => setPickerOpen(true)}
+            className="h-12 w-12 items-center justify-center"
+          >
+            <Icon name="bookmark" size={22} color={colors.accent} />
+          </Pressable>
           <Pressable accessibilityRole="button" accessibilityLabel="More" onPress={() => setMenuOpen(true)} className="h-12 w-12 items-center justify-center">
             <Icon name="more-vert" size={22} color={colors.ink2} />
           </Pressable>
@@ -330,6 +340,8 @@ export function CardDetailScreen() {
           </View>
         ) : null}
       </Sheet>
+
+      <StackPicker visible={pickerOpen} saveId={id} onClose={() => setPickerOpen(false)} />
 
       <ConfirmDialog
         visible={confirmOpen}
