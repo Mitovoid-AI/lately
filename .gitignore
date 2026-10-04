@@ -40,7 +40,10 @@ yarn-error.*
 *.log
 
 # --- python backend -----------------------------------------------------------
+# Virtual environments, whatever they are named (.venv, venv, env)
 .venv/
+venv/
+env/
 __pycache__/
 *.py[cod]
 .pytest_cache/
