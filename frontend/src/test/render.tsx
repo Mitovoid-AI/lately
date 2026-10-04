@@ -38,7 +38,13 @@ export async function renderWithProviders(
   ui: ReactElement,
   o: { api?: LatelyApi; auth?: Partial<AuthValue> } = {},
 ) {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  // gcTime Infinity: no garbage-collection timers left running after a test.
+  const client = new QueryClient({
+    defaultOptions: {
+      queries: { retry: false, gcTime: Infinity },
+      mutations: { retry: false, gcTime: Infinity },
+    },
+  });
   const api = o.api ?? demoApi();
   const auth = fakeAuth(o.auth);
   const view = await render(

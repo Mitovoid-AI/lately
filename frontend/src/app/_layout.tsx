@@ -64,7 +64,7 @@ function RootStack() {
   return (
     <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
       <Stack.Protected guard={signedIn}>
-        <Stack.Screen name="index" />
+        <Stack.Screen name="(tabs)" />
       </Stack.Protected>
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="(auth)" />
