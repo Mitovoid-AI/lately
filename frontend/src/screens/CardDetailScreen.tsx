@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState, type ReactNode } from "react";
-import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View, type TextStyle } from "react-native";
+import { ActivityIndicator, Linking, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError, type SaveDetail } from "../api/contract";
@@ -20,6 +20,7 @@ import { Skeleton } from "../components/Skeleton";
 import { Thumb } from "../components/Thumb";
 import { useToast } from "../components/Toast";
 import { useNow } from "../hooks/useNow";
+import { useReadingStyle } from "../hooks/usePreferences";
 import { savedAgo } from "../lib/dates";
 import { displayLink } from "../lib/instagram";
 import { shareOrCopy } from "../lib/share";
@@ -103,7 +104,7 @@ function Hero({ card }: { card: SaveDetail }) {
   );
 }
 
-export function CardDetailScreen({ readingStyle }: { readingStyle?: TextStyle } = {}) {
+export function CardDetailScreen() {
   const { id = "" } = useLocalSearchParams<{ id?: string }>();
   const router = useRouter();
   const api = useApi();
@@ -111,6 +112,7 @@ export function CardDetailScreen({ readingStyle }: { readingStyle?: TextStyle } 
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const now = useNow();
+  const readingStyle = useReadingStyle();
   const [menuOpen, setMenuOpen] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -209,7 +211,11 @@ export function CardDetailScreen({ readingStyle }: { readingStyle?: TextStyle } 
         </View>
 
         <View className="my-5 h-px bg-hairline" />
-        <NoteBlock note={card.note} onSave={saveNote} textStyle={readingStyle} />
+        <NoteBlock
+          note={card.note}
+          onSave={saveNote}
+          textStyle={{ fontSize: readingStyle.fontSize, lineHeight: readingStyle.lineHeight }}
+        />
 
         {card.status === "pending" ? (
           <View className="mt-5">

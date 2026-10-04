@@ -96,3 +96,11 @@ test("Export shares the title and link", async () => {
   await fireEvent.press(screen.getByText("Export"));
   expect(shareOrCopy).toHaveBeenCalledWith({ title: MOMO, url: "https://www.instagram.com/reel/MomoPt1/" });
 });
+
+test("the summary uses the reading text size from preferences", async () => {
+  const api = demoApi();
+  await api.updatePreferences({ text_size: 20 });
+  await open("s-momo", api);
+  const summary = await screen.findByText(/A cozy hidden gem/);
+  expect(summary).toHaveStyle({ fontSize: 20 });
+});
