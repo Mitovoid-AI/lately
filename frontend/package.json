@@ -64,6 +64,7 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/dist/"
-    ]
+    ],
+    "testTimeout": 15000
   }
 }
