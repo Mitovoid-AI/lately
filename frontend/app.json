@@ -1,0 +1,33 @@
+{
+  "expo": {
+    "name": "Lately",
+    "slug": "lately",
+    "version": "1.0.0",
+    "scheme": "lately",
+    "orientation": "portrait",
+    "icon": "./assets/stitch/logo.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#FAF8F5",
+        "foregroundImage": "./assets/stitch/logo.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single",
+      "favicon": "./assets/stitch/logo.png"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-font"
+    ],
+    "experiments": {
+      "typedRoutes": false
+    }
+  }
+}

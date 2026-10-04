@@ -1,4 +1,4 @@
-# Root ignores. Per-project ignores live in app/.gitignore and website/.gitignore.
+# Root ignores. Per-project ignores live in frontend/.gitignore (backend uses this file).
 
 # --- internal planning docs: not for users, not for the public repo -----------
 # These are working notes (roadmap, go-to-market, personal setup walkthrough).
