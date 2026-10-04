@@ -1,14 +1,15 @@
 // Demo content: the sample reels, notes and stacks from the Stitch designs.
 // Built relative to "now" so relative dates ("2d", "1w") always read the same.
-import { Image } from "react-native";
+import { Asset } from "expo-asset";
 
 import type { Category, SaveDetail } from "./contract";
 
 const MIN = 60_000;
 const DAY = 24 * 60 * MIN;
 
+/** Bundled image → URI (works on web and native). */
 function img(mod: number): string {
-  return Image.resolveAssetSource(mod)?.uri ?? String(mod);
+  return Asset.fromModule(mod).uri;
 }
 
 export const IMAGES = {

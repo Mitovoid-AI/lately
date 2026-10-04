@@ -4,6 +4,8 @@ const { colors } = require("./src/theme/tokens");
 module.exports = {
   content: ["./src/**/*.{js,jsx,ts,tsx}"],
   presets: [require("nativewind/preset")],
+  // Light-only app; "class" lets the navigator set the color scheme without NativeWind throwing.
+  darkMode: "class",
   theme: {
     extend: {
       colors: {
