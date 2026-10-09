@@ -10,6 +10,7 @@ pydantic-settings==2.15.0
 httpx==0.28.1
 pyjwt[crypto]==2.14.0          # Supabase JWT verification (ES256/RS256 via JWKS)
 asyncpg==0.31.0
+yt-dlp==2026.8.19           # FETCH provider: metadata only, never downloads video
 
 # Part 2 adds: groq, google-genai
 # Part 4 adds: supabase (py) — Meta webhook signature check uses stdlib hmac
