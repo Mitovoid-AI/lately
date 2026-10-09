@@ -100,11 +100,14 @@ from (
 join mine m using (id)
 """
 
-# $3 query embedding
+# $3 query embedding, sent as text: a bare `$3::vector` makes asyncpg introspect the
+# pgvector type on every call (no statement cache on the pooler), one extra round trip.
 MEANING_SQL = f"""
 with {_MINE.format(extra=', r.embedding').strip()},
 vec as (
-  select m.id, row_number() over (order by m.embedding <=> $3::vector, m.created_at desc) as rk
+  select m.id,
+         row_number() over (order by m.embedding <=> $3::text::vector,
+                                     m.created_at desc) as rk
   from mine m
   where m.embedding is not null
   order by rk limit {MEANING_LIMIT}

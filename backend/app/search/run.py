@@ -2,15 +2,15 @@
 
 Order of work (SEARCH.md §5, review gap 1):
 
-1. Parse the query once without places to get the text and the date filters,
-   and start the embedding call (cache first) right away.
-2. In parallel with it: load this user's known places and run the keyword +
-   fuzzy SQL. Neither needs the vector.
-3. Re-parse with the known places for the place hint (the text is unchanged).
-4. Wait for the vector, at most `embed_timeout` seconds in total. If it came,
-   run the meaning SQL; if the embedder is missing, failed or was too slow,
-   skip that leg.
-5. Fuse in Python.
+1. Parse the query once without places: that gives the text and the date
+   filters (places only add a hint, never change the text).
+2. Run three things at once: the user's known places, the keyword + fuzzy
+   SQL, and the meaning leg. The meaning leg first waits for the query vector
+   (cache, else the embedder, at most `embed_timeout` seconds) and runs its
+   SQL the moment the vector arrives. No embedder, a failure or a timeout
+   skips that leg; keyword and fuzzy never wait on it.
+3. Re-parse with the known places for the place hint, then fuse in Python
+   (RRF k=60, same weights and hint boosts as the single-statement SQL).
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ import asyncpg
 
 from .embed import Embedder, LruCache
 from .query import ParsedQuery, parse_query
-from .retrieve import ALL_LEGS, FUSED_CAP, Hit, fuse, lexical_rows, meaning_rows
+from .retrieve import ALL_LEGS, FUSED_CAP, Hit, LegRow, fuse, lexical_rows, meaning_rows
 
 log = logging.getLogger(__name__)
 
@@ -79,18 +79,21 @@ async def run_search(db: asyncpg.Pool, user_id: UUID, q: str, embedder: Embedder
         return SearchRun(base, [], False)
 
     want_vec = "meaning" in legs and embedder is not None
-    vec_task = asyncio.ensure_future(
-        query_vector(embedder if want_vec else None, base.text, cache=cache,
-                     timeout=embed_timeout))
-    try:
-        places, lexical = await asyncio.gather(
-            known_places(db, user_id),
-            lexical_rows(db, user_id, base, category=category, legs=legs))
-        vec = await vec_task
-    finally:
-        if not vec_task.done():
-            vec_task.cancel()
 
-    parsed = parse_query(q, now=now, known_places=places)
-    meaning = await meaning_rows(db, user_id, parsed, vec, category=category, legs=legs)
-    return SearchRun(parsed, fuse([*lexical, *meaning], parsed, limit), vec is not None)
+    async def meaning_leg() -> tuple[bool, list[LegRow]]:
+        vec = await query_vector(embedder if want_vec else None, base.text, cache=cache,
+                                 timeout=embed_timeout)
+        if vec is None:
+            return False, []
+        return True, await meaning_rows(db, user_id, base, vec, category=category, legs=legs)
+
+    # A TaskGroup cancels the other legs (and the embedding call) if one fails.
+    async with asyncio.TaskGroup() as tg:
+        places_t = tg.create_task(known_places(db, user_id))
+        lexical_t = tg.create_task(
+            lexical_rows(db, user_id, base, category=category, legs=legs))
+        meaning_t = tg.create_task(meaning_leg())
+
+    embedded, meaning = meaning_t.result()
+    parsed = parse_query(q, now=now, known_places=places_t.result())
+    return SearchRun(parsed, fuse([*lexical_t.result(), *meaning], parsed, limit), embedded)
