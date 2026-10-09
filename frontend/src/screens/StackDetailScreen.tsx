@@ -1,22 +1,28 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback } from "react";
+import { useCallback, useState } from "react";
 import { RefreshControl, Text, useWindowDimensions, View } from "react-native";
 import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import type { Save } from "../api/contract";
+import { ApiError, type Save, type StackDetail } from "../api/contract";
 import { useApi } from "../api/index";
+import { ConfirmDialog } from "../components/ConfirmDialog";
+import { ErrorState } from "../components/ErrorState";
 import { ScrollHairline } from "../components/Header";
+import { Icon } from "../components/Icon";
 import { IconButton } from "../components/motion/IconButton";
+import { PressableScale } from "../components/motion/PressableScale";
 import { Reveal, useEntranceWindow } from "../components/motion/Reveal";
-import { ReelCard } from "../components/ReelCard";
+import { cardTitle, ReelCard } from "../components/ReelCard";
 import { Skeleton, SkeletonGrid } from "../components/Skeleton";
+import { useToast } from "../components/Toast";
 import { useNow } from "../hooks/useNow";
+import { pollWhilePending } from "../hooks/useSaves";
 import { haptic } from "../lib/haptics";
+import { goBack } from "../lib/navigation";
 import { colors } from "../theme/tokens";
 import { reelsCount } from "./StacksScreen";
-import { goBack } from "../lib/navigation";
 
 const MAX_WIDTH = 1280;
 const GAP = 12;
@@ -25,36 +31,113 @@ export function StackDetailScreen() {
   const { id = "" } = useLocalSearchParams<{ id?: string }>();
   const router = useRouter();
   const api = useApi();
+  const queryClient = useQueryClient();
+  const toast = useToast();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
   const now = useNow();
-  const stack = useQuery({ queryKey: ["stack", id], queryFn: () => api.getStack(id) });
+  const stack = useQuery({
+    queryKey: ["stack", id],
+    queryFn: () => api.getStack(id),
+    refetchInterval: (q) => pollWhilePending(q.state.data?.saves),
+  });
+  const [editing, setEditing] = useState(false);
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const columns = width >= 1024 ? 4 : width >= 768 ? 3 : 2;
   const itemWidth = (Math.min(width, MAX_WIDTH) - 32 - GAP * (columns - 1)) / columns;
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({ onScroll: (e) => scrollY.set(e.contentOffset.y) });
   const entrance = useEntranceWindow(id, !stack.isLoading);
 
+  const remove = useCallback(
+    async (save: Save) => {
+      // The card leaves at once; a failure brings it back.
+      const key = ["stack", id];
+      const before = queryClient.getQueryData<StackDetail>(key);
+      queryClient.setQueryData<StackDetail>(key, (old) =>
+        old
+          ? { ...old, saves: old.saves.filter((s) => s.id !== save.id), save_count: Math.max(0, old.save_count - 1) }
+          : old,
+      );
+      haptic.light();
+      try {
+        await api.removeFromStack(id, save.id);
+        queryClient.invalidateQueries({ queryKey: ["stacks"] });
+      } catch {
+        queryClient.setQueryData(key, before);
+        haptic.error();
+        toast.show("Couldn't remove it. Try again.");
+      }
+    },
+    [api, id, queryClient, toast],
+  );
+
+  async function deleteStack() {
+    if (deleting) return;
+    setDeleting(true);
+    try {
+      await api.deleteStack(id);
+      haptic.medium();
+      setConfirmOpen(false);
+      queryClient.removeQueries({ queryKey: ["stack", id], exact: true });
+      queryClient.invalidateQueries({ queryKey: ["stacks"] });
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+      toast.show("Stack deleted");
+      router.replace("/stacks");
+    } catch {
+      haptic.error();
+      toast.show("Couldn't delete the stack. Try again.");
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   const renderItem = useCallback(
     ({ item, index }: { item: Save; index: number }) => (
       <Reveal index={index} enabled={entrance} style={{ width: itemWidth }}>
         <ReelCard save={item} now={now} href={`/reel/${item.id}`} />
+        {editing ? (
+          <PressableScale
+            accessibilityRole="button"
+            accessibilityLabel={`Remove ${cardTitle(item)}`}
+            onPress={() => remove(item)}
+            scaleTo={0.9}
+            containerStyle={{ position: "absolute", top: 8, right: 8 }}
+            className="h-9 w-9 items-center justify-center rounded-full border border-hairline bg-card"
+          >
+            <Icon name="remove-circle-outline" size={20} color={colors.danger} />
+          </PressableScale>
+        ) : null}
       </Reveal>
     ),
-    [entrance, itemWidth, now],
+    [entrance, itemWidth, now, editing, remove],
   );
+
+  const gone = stack.error instanceof ApiError && stack.error.code === "NOT_FOUND";
+  const data = stack.data;
 
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
       <View className="h-16 flex-row items-center px-2">
-        <IconButton
-          icon="arrow-back"
-          size={24}
-          color={colors.ink}
-          label="Back"
-          onPress={() => goBack(router, "/stacks")}
-        />
-        <Text className="font-sans-semibold text-body text-ink">Stacks</Text>
+        <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={() => goBack(router, "/stacks")} />
+        <Text className="flex-1 font-sans-semibold text-body text-ink">Stacks</Text>
+        {data ? (
+          <>
+            {data.saves.length > 0 ? (
+              <PressableScale
+                accessibilityRole="button"
+                onPress={() => setEditing((e) => !e)}
+                scaleTo={0.95}
+                highlightColor={colors.raised}
+                className="h-10 justify-center rounded-full px-3"
+              >
+                <Text className="font-sans-semibold text-body text-accent">{editing ? "Done" : "Edit"}</Text>
+              </PressableScale>
+            ) : null}
+            <IconButton icon="delete-outline" label="Delete stack" onPress={() => setConfirmOpen(true)} />
+          </>
+        ) : null}
         <ScrollHairline scrollY={scrollY} />
       </View>
       {stack.isLoading ? (
@@ -65,14 +148,16 @@ export function StackDetailScreen() {
           </View>
           <SkeletonGrid columns={columns} itemWidth={itemWidth} />
         </View>
-      ) : !stack.data ? (
-        <Reveal>
-          <Text className="mt-12 text-center font-sans text-body text-ink-2">{"This stack isn't here anymore."}</Text>
-        </Reveal>
+      ) : !data ? (
+        gone ? (
+          <ErrorState icon="search-off" title="This stack isn't here anymore" body="It may have been deleted." />
+        ) : (
+          <ErrorState title="Couldn't load this stack" onRetry={() => stack.refetch()} retrying={stack.isRefetching} />
+        )
       ) : (
         <Animated.FlatList
           key={`stack-${columns}`}
-          data={stack.data.saves}
+          data={data.saves}
           keyExtractor={(s: Save) => s.id}
           numColumns={columns}
           columnWrapperStyle={{ gap: GAP, paddingHorizontal: 16, alignSelf: "center", width: "100%", maxWidth: MAX_WIDTH }}
@@ -82,8 +167,8 @@ export function StackDetailScreen() {
           ListHeaderComponent={
             <Reveal style={{ width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center" }}>
               <View className="px-4 pt-5">
-                <Text className="font-display text-display-lg text-ink">{stack.data.name}</Text>
-                <Text className="mt-1 font-sans text-meta text-ink-2">{reelsCount(stack.data.save_count)}</Text>
+                <Text className="font-display text-display-lg text-ink">{data.name}</Text>
+                <Text className="mt-1 font-sans text-meta text-ink-2">{reelsCount(data.save_count)}</Text>
               </View>
             </Reveal>
           }
@@ -109,6 +194,16 @@ export function StackDetailScreen() {
           }
         />
       )}
+
+      <ConfirmDialog
+        visible={confirmOpen}
+        title={`Delete “${data?.name ?? "this stack"}”?`}
+        message="The stack goes away; its reels stay in your Library."
+        confirmLabel="Delete"
+        busy={deleting}
+        onConfirm={deleteStack}
+        onCancel={() => setConfirmOpen(false)}
+      />
     </View>
   );
 }

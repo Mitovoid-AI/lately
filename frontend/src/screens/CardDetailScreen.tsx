@@ -197,6 +197,7 @@ export function CardDetailScreen() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [captionOpen, setCaptionOpen] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const bookmark = usePop();
 
   const scrollY = useSharedValue(0);
@@ -226,6 +227,26 @@ export function CardDetailScreen() {
     queryClient.invalidateQueries({ queryKey: ["search"] });
     queryClient.invalidateQueries({ queryKey: ["stack"] });
     queryClient.invalidateQueries({ queryKey: ["curated"] });
+  }
+
+  async function retry() {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await api.retryEnrichment(id);
+      haptic.success();
+      // Back to processing: the detail polls until the new card is ready.
+      queryClient.setQueryData<SaveDetail>(["save", id], (old) =>
+        old ? { ...old, status: "pending", media_status: "pending" } : old,
+      );
+      queryClient.invalidateQueries({ queryKey: ["saves"] });
+      queryClient.invalidateQueries({ queryKey: ["stack"] });
+    } catch {
+      haptic.error();
+      toast.show("Couldn't retry. Try again later.");
+    } finally {
+      setRetrying(false);
+    }
   }
 
   async function remove() {
@@ -346,6 +367,22 @@ export function CardDetailScreen() {
             textStyle={{ fontSize: readingStyle.fontSize, lineHeight: readingStyle.lineHeight }}
           />
         </Reveal>
+
+        {card.status === "partial" ? (
+          <Reveal index={next()} style={{ marginTop: 16 }}>
+            <Text className="font-sans text-meta text-ink-2">
+              {"Lately couldn't read this reel's video. It can try again."}
+            </Text>
+            <Button
+              title="Try getting details again"
+              variant="secondary"
+              icon="refresh"
+              onPress={retry}
+              loading={retrying}
+              className="mt-3"
+            />
+          </Reveal>
+        ) : null}
 
         {card.status === "pending" ? (
           <Reveal index={next()} style={{ marginTop: 20 }}>

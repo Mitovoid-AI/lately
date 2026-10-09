@@ -2,6 +2,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import Constants from "expo-constants";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
+import { useState } from "react";
 import { Text, View } from "react-native";
 import Animated, { FadeIn, useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -27,6 +28,7 @@ import { haptic } from "../lib/haptics";
 import { DURATION } from "../theme/motion";
 import { colors } from "../theme/tokens";
 import { goBack } from "../lib/navigation";
+import { ConfirmDialog } from "../components/ConfirmDialog";
 
 const SIZES: { size: Preferences["text_size"]; name: string }[] = [
   { size: 14, name: "Small" },
@@ -79,6 +81,25 @@ export function AccountScreen() {
       toast.show("We'll email your archive when it's ready");
     } catch {
       toast.show("Couldn't start the export. Try again.");
+    }
+  }
+
+  const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  async function deleteAccount() {
+    if (deletingAccount) return;
+    setDeletingAccount(true);
+    try {
+      await api.deleteAccount();
+      haptic.medium();
+      setDeleteStep(0);
+      await auth.signOut();
+    } catch {
+      haptic.error();
+      setDeleteStep(0);
+      toast.show("Couldn't delete your account. Try again.");
+    } finally {
+      setDeletingAccount(false);
     }
   }
 
@@ -304,6 +325,18 @@ export function AccountScreen() {
               </View>
             </PressableScale>
 
+            <PressableScale
+              accessibilityRole="button"
+              onPress={() => setDeleteStep(1)}
+              scaleTo={0.98}
+              highlightColor={colors.dangerSoft}
+              containerClassName="mt-3"
+              className="flex-row items-center justify-center rounded-2xl border border-hairline px-4 py-4"
+            >
+              <Icon name="delete-forever" size={20} color={colors.danger} />
+              <Text className="ml-2 font-sans-semibold text-body text-danger">Delete account</Text>
+            </PressableScale>
+
             <View className="mt-8 items-center">
               <Image source={LOGO} style={{ width: 28, height: 28, borderRadius: 8 }} />
               <Text className="mt-2 font-sans text-meta text-ink-2">{`Lately for iOS & Web v${version}`}</Text>
@@ -312,6 +345,24 @@ export function AccountScreen() {
           </Reveal>
         </View>
       </Animated.ScrollView>
+
+      <ConfirmDialog
+        visible={deleteStep === 1}
+        title="Delete your account?"
+        message="Your saved reels, notes, cards and stacks will be deleted, and you'll be signed out."
+        confirmLabel="Continue"
+        onConfirm={() => setDeleteStep(2)}
+        onCancel={() => setDeleteStep(0)}
+      />
+      <ConfirmDialog
+        visible={deleteStep === 2}
+        title="This can't be undone"
+        message="Everything in your Lately is removed for good. Export your archive first if you want a copy."
+        confirmLabel="Delete forever"
+        busy={deletingAccount}
+        onConfirm={deleteAccount}
+        onCancel={() => setDeleteStep(0)}
+      />
     </View>
   );
 }

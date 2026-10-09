@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react-native";
+import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { NOW } from "../../test/fixtures";
 import { demoApi, renderWithProviders } from "../../test/render";
@@ -82,4 +82,38 @@ test("pressing Enter twice creates one stack", async () => {
   await fireEvent(input, "submitEditing");
   expect(await screen.findByText("Trip")).toBeTruthy();
   expect(createStack).toHaveBeenCalledTimes(1);
+});
+
+test("a reel can be removed from a stack in edit mode", async () => {
+  mockParams = { id: "st-cafes" };
+  const api = demoApi();
+  const remove = jest.spyOn(api, "removeFromStack");
+  await renderWithProviders(<StackDetailScreen />, { api });
+  await screen.findByText("Hole-in-the-wall momo spot in Koramangala");
+  await fireEvent.press(screen.getByText("Edit"));
+  await fireEvent.press(screen.getByLabelText("Remove Hole-in-the-wall momo spot in Koramangala"));
+  expect(remove).toHaveBeenCalledWith("st-cafes", "s-momo");
+  expect(await screen.findByText("3 reels")).toBeTruthy();
+  expect(screen.queryByText("Hole-in-the-wall momo spot in Koramangala")).toBeNull();
+});
+
+test("a stack can be deleted after confirming", async () => {
+  mockParams = { id: "st-cafes" };
+  const api = demoApi();
+  const del = jest.spyOn(api, "deleteStack");
+  await renderWithProviders(<StackDetailScreen />, { api });
+  await screen.findByText("Hole-in-the-wall momo spot in Koramangala");
+  await fireEvent.press(screen.getByLabelText("Delete stack"));
+  expect(screen.getByText("Delete “Cafes to try”?")).toBeTruthy();
+  await fireEvent.press(screen.getByRole("button", { name: "Delete" }));
+  await waitFor(() => expect(del).toHaveBeenCalledWith("st-cafes"));
+  await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith("/stacks"));
+});
+
+test("a failed stack load shows an error with retry", async () => {
+  mockParams = { id: "st-cafes" };
+  const api = { ...demoApi(), getStack: async () => Promise.reject(new Error("down")) };
+  await renderWithProviders(<StackDetailScreen />, { api });
+  expect(await screen.findByText("Couldn't load this stack")).toBeTruthy();
+  expect(screen.getByText("Try again")).toBeTruthy();
 });

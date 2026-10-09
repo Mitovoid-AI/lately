@@ -136,3 +136,20 @@ test("deleting refreshes curated and stack views too", async () => {
   await waitFor(() => expect(client.getQueryState(["curated"])?.isInvalidated).toBe(true));
   expect(client.getQueryState(["stack", "st-cafes"])?.isInvalidated).toBe(true);
 });
+
+test("a partial card can retry getting its details", async () => {
+  const api = demoApi();
+  const retry = jest.spyOn(api, "retryEnrichment");
+  await open("s-partial", api);
+  expect(await screen.findByText("PREVIEW UNAVAILABLE")).toBeTruthy();
+  await fireEvent.press(screen.getByText("Try getting details again"));
+  expect(retry).toHaveBeenCalledWith("s-partial");
+  expect(await screen.findByText("GETTING DETAILS")).toBeTruthy();
+});
+
+test("a failed retry says so", async () => {
+  const api = { ...demoApi(), retryEnrichment: jest.fn(async () => Promise.reject(new Error("down"))) };
+  await open("s-partial", api);
+  await fireEvent.press(await screen.findByText("Try getting details again"));
+  expect(await screen.findByText("Couldn't retry. Try again later.")).toBeTruthy();
+});
