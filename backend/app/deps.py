@@ -17,6 +17,7 @@ import jwt
 from fastapi import Depends, HTTPException, Request
 
 from .config import settings
+from .search.embed import Embedder, OpenAIEmbedder
 
 _pool: asyncpg.Pool | None = None
 
@@ -113,3 +114,22 @@ async def get_current_user(request: Request) -> AuthUser:
 
 
 CurrentUser = Annotated[AuthUser, Depends(get_current_user)]
+
+
+# --------------------------------------------------------------- embedder --
+# One shared client per process; None when no key is set (search then runs
+# keyword + fuzzy only). Tests override it via app.dependency_overrides.
+
+_embedder: OpenAIEmbedder | None = None
+
+
+def get_embedder() -> Embedder | None:
+    """The query embedder from the EMBEDDINGS_* settings (SEARCH.md §3)."""
+    global _embedder
+    s = settings()
+    if not s.embeddings_api_key:
+        return None
+    if _embedder is None:
+        _embedder = OpenAIEmbedder(s.embeddings_api_key, s.embeddings_base_url,
+                                   s.embeddings_model, s.embeddings_dimensions)
+    return _embedder
