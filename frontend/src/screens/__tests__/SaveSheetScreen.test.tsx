@@ -1,6 +1,7 @@
-import { act, fireEvent, screen } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { ApiError, type LatelyApi } from "../../api/contract";
+import { queueKey, readQueue } from "../../lib/saveQueue";
 import { NOW } from "../../test/fixtures";
 import { demoApi, renderWithProviders } from "../../test/render";
 import { SaveSheetScreen } from "../SaveSheetScreen";
@@ -76,7 +77,7 @@ test("rate limited", async () => {
   expect(await screen.findByText("That's a lot of saves at once")).toBeTruthy();
 });
 
-test("network error can be retried", async () => {
+test("offline: the save is queued on the device and can be retried now", async () => {
   mockParams = { text: link("NEW123") };
   const base = demoApi();
   const api: LatelyApi = {
@@ -84,6 +85,24 @@ test("network error can be retried", async () => {
     createSave: jest
       .fn()
       .mockRejectedValueOnce(new ApiError("NETWORK", 0))
+      .mockResolvedValueOnce({ reel_id: "s-x", deduped: false, status: "pending" }),
+  };
+  const { queueStore } = await renderWithProviders(<SaveSheetScreen />, { api });
+  expect(await screen.findByText("Saved for later")).toBeTruthy();
+  expect((await readQueue(queueStore, queueKey("demo-user"))).map((q) => q.text)).toEqual([link("NEW123")]);
+  await fireEvent.press(screen.getByText("Try again now"));
+  expect(await screen.findByText("Saved to Lately")).toBeTruthy();
+  await waitFor(async () => expect(await readQueue(queueStore, queueKey("demo-user"))).toEqual([]));
+});
+
+test("an unexpected failure offers a retry", async () => {
+  mockParams = { text: link("NEW123") };
+  const base = demoApi();
+  const api: LatelyApi = {
+    ...base,
+    createSave: jest
+      .fn()
+      .mockRejectedValueOnce(new Error("boom"))
       .mockResolvedValueOnce({ reel_id: "s-x", deduped: false, status: "pending" }),
   };
   await renderWithProviders(<SaveSheetScreen />, { api });

@@ -29,6 +29,7 @@ import { config } from "../config";
 import { createAppQueryClient } from "../lib/queryClient";
 import { colors } from "../theme/tokens";
 import { ShareRouter } from "../share/ShareRouter";
+import { SaveQueueProvider } from "../hooks/useSaveQueue";
 
 /** Where the query client reports a dead session; AppProviders points it at the current sign-out. */
 const sessionExpired = { handler: () => {} };
@@ -61,7 +62,9 @@ function AppProviders({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <ApiProvider api={api}>
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider>
+          <SaveQueueProvider>{children}</SaveQueueProvider>
+        </ToastProvider>
       </ApiProvider>
     </QueryClientProvider>
   );

@@ -27,6 +27,7 @@ import { DURATION, EASE_OUT } from "../theme/motion";
 import { CATEGORY, CATEGORY_ORDER } from "../theme/categories";
 import { colors } from "../theme/tokens";
 import { ErrorState } from "../components/ErrorState";
+import { useSaveQueue } from "../hooks/useSaveQueue";
 
 const MAX_WIDTH = 1280;
 const GAP = 12;
@@ -45,6 +46,24 @@ function SearchField({ onPress }: { onPress: () => void }) {
       <Text className="ml-2 flex-1 font-sans text-body text-ink-2">Search what you remember...</Text>
       <Icon name="mic" size={22} color={colors.ink3} />
     </PressableScale>
+  );
+}
+
+/** Saves made offline, waiting on the device for a connection. */
+function QueuedBanner({ count, busy, onRetry }: { count: number; busy: boolean; onRetry: () => void }) {
+  return (
+    <Reveal>
+      <View className="mt-3 flex-row items-center rounded-2xl border border-hairline bg-card py-2 pl-4 pr-2">
+        <Icon name="cloud-upload" size={22} color={colors.accent} />
+        <View className="ml-3 flex-1">
+          <Text className="font-sans-semibold text-body text-ink">
+            {count === 1 ? "1 reel waiting to save" : `${count} reels waiting to save`}
+          </Text>
+          <Text className="font-sans text-meta text-ink-2">{"Lately saves it when you're back online."}</Text>
+        </View>
+        <Button title="Retry" variant="ghost" onPress={onRetry} loading={busy} />
+      </View>
+    </Reveal>
   );
 }
 
@@ -91,6 +110,7 @@ export function LibraryScreen() {
   const all = useSaves();
   const saves = all.saves;
   const me = useMe().data;
+  const queue = useSaveQueue();
   const [filter, setFilter] = useState<Category | "All">("All");
 
   const categories = useMemo(
@@ -159,6 +179,9 @@ export function LibraryScreen() {
     <View className="w-full self-center" style={{ maxWidth: MAX_WIDTH }}>
       <View className="px-4 pt-2">
         <SearchField onPress={() => router.push("/search")} />
+        {queue.queued.length > 0 ? (
+          <QueuedBanner count={queue.queued.length} busy={queue.flushing} onRetry={() => queue.flush()} />
+        ) : null}
       </View>
       {empty ? null : (
         <>
