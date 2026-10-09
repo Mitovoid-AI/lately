@@ -46,6 +46,9 @@ class Settings(BaseSettings):
     embeddings_dimensions: int = 768
     search_embed_timeout_seconds: float = 2.0
 
+    # GET /admin/health requires header X-Admin-Key == this. Empty = endpoint disabled (404).
+    admin_key: str = ""
+
     # Optional AI keys — saves work without them; cards stay partial (Part 2)
     groq_api_key: str = ""
 
