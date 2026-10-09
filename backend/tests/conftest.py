@@ -172,3 +172,28 @@ async def client() -> AsyncIterator[httpx.AsyncClient]:
             yield c
     finally:
         await close_pool()
+
+
+# ------------------------------------------------------- enrichment (WS E) --
+# Every test runs with an offline enrichment runtime: no fetch providers, no
+# LLM, no Groq, FakeEmbedder, and an HTTP client that refuses all requests, so
+# no test can reach Instagram or a paid API even with real keys in .env.
+
+
+def _refuse_network(request: httpx.Request) -> httpx.Response:
+    raise AssertionError(f"unexpected network call in a test: {request.method} {request.url}")
+
+
+@pytest.fixture(autouse=True)
+def offline_enrichment() -> Any:
+    from app.enrich import runtime as enrich_runtime
+    from app.enrich.fetch import ThumbnailStore
+    from app.search.embed import FakeEmbedder
+
+    http = httpx.AsyncClient(transport=httpx.MockTransport(_refuse_network))
+    rt = enrich_runtime.Runtime(http=http, fetchers=[],
+                                thumbnails=ThumbnailStore(http, "http://storage.test", ""),
+                                embedder=FakeEmbedder())
+    enrich_runtime.set_runtime(rt)
+    yield rt
+    enrich_runtime.set_runtime(None)

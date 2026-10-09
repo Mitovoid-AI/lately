@@ -12,7 +12,7 @@ from app.worker import stages
 def test_stage_graph_is_complete_and_terminates():
     """Every NEXT value is a registered stage or None — no dead ends."""
     assert set(stages.STAGES) == {
-        "resolve", "fetch", "transcribe", "vision", "structure", "finalize"
+        "resolve", "fetch", "transcribe", "vision", "structure", "finalize", "embed"
     }
     for name, nxt in stages.NEXT.items():
         assert nxt is None or nxt in stages.STAGES, f"dead end at {name}"
@@ -32,9 +32,12 @@ def test_stage_registry_rejects_unknown_stage():
     assert "nonexistent" not in stages.STAGES
 
 
-@pytest.mark.parametrize("stage_name", ["fetch", "transcribe", "vision", "structure"])
-async def test_later_parts_raise_not_implemented(stage_name):
-    """Unbuilt stages raise NotImplementedError so the loop requeues politely."""
-    fn = stages.STAGES[stage_name]
-    with pytest.raises(NotImplementedError):
-        await fn(None, {"payload": {}})
+def test_reschedule_clamps_delay():
+    """Budget waits become a Reschedule of at least one second."""
+    assert stages.Reschedule(0, "x").delay_s == 1
+    assert stages.Reschedule(42, "x").delay_s == 42
+
+
+@pytest.mark.parametrize(("attempts", "last"), [(1, False), (2, False), (3, True)])
+def test_last_attempt(attempts, last):
+    assert stages._last_attempt({"attempts": attempts, "max_attempts": 3}) is last
