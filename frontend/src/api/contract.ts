@@ -113,6 +113,8 @@ export interface StackDetail extends Stack {
 export interface SearchHit {
   save: Save;
   why: string[];
+  /** Which search legs found it ("keyword", "fuzzy", "meaning"); absent in local/demo search. */
+  matched_by?: string[];
 }
 
 export interface CuratedSection {
@@ -183,10 +185,44 @@ export interface LatelyApi {
   getStack(id: string): Promise<StackDetail>;
   /** POST /stacks/{id}/saves {save_id} */
   addToStack(stackId: string, saveId: string): Promise<void>;
+  /** DELETE /stacks/{id}/saves/{save_id} → 204 (the save itself stays) */
+  removeFromStack(stackId: string, saveId: string): Promise<void>;
+  /** DELETE /stacks/{id} → 204 (its saves stay in the Library) */
+  deleteStack(id: string): Promise<void>;
   /** GET /curated */
   getCurated(): Promise<CuratedFeed>;
   /** POST /me/export → 202 */
   requestExport(): Promise<{ status: "queued" }>;
+  /** POST /retries/{reel_id} → 202: re-run enrichment for a partial card (it goes back to pending) */
+  retryEnrichment(reelId: string): Promise<void>;
+  /** DELETE /me → 204: deletes the account and everything saved in it */
+  deleteAccount(): Promise<void>;
 }
 
 export type Endpoint = keyof LatelyApi;
+
+// A Record over Endpoint so adding a method to LatelyApi without listing it here fails to compile.
+const ENDPOINT_SET: Record<Endpoint, true> = {
+  createSave: true,
+  listSaves: true,
+  getSave: true,
+  setNote: true,
+  deleteSave: true,
+  getMe: true,
+  getPreferences: true,
+  updatePreferences: true,
+  search: true,
+  listStacks: true,
+  createStack: true,
+  getStack: true,
+  addToStack: true,
+  removeFromStack: true,
+  deleteStack: true,
+  getCurated: true,
+  requestExport: true,
+  retryEnrichment: true,
+  deleteAccount: true,
+};
+
+/** Every call in the contract. */
+export const ENDPOINTS = Object.keys(ENDPOINT_SET) as Endpoint[];

@@ -54,7 +54,7 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
   const latency = opts.now ? 0 : 150; // visible loading states in the browser, instant in tests
   const seed = buildDemoSeed(now());
   let saves: DemoSave[] = seed.saves;
-  const stacks: DemoStack[] = seed.stacks;
+  let stacks: DemoStack[] = seed.stacks;
   let created = 0;
 
   const wait = () => (latency ? new Promise((r) => setTimeout(r, latency)) : Promise.resolve());
@@ -259,6 +259,46 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
       find(saveId);
       if (!st.save_ids.includes(saveId)) st.save_ids = [saveId, ...st.save_ids];
       st.updated_at = new Date(now()).toISOString();
+    },
+
+    async removeFromStack(stackId, saveId) {
+      await wait();
+      const st = findStack(stackId);
+      st.save_ids = st.save_ids.filter((x) => x !== saveId);
+      st.updated_at = new Date(now()).toISOString();
+    },
+
+    async deleteStack(id) {
+      await wait();
+      findStack(id);
+      stacks = stacks.filter((st) => st.id !== id);
+    },
+
+    async retryEnrichment(reelId) {
+      await wait();
+      const s = find(reelId);
+      // A retried card goes back to processing; this time the demo "fetch" finds the reel.
+      const recovered = s.status === "partial" && !s.title;
+      Object.assign(s, {
+        status: "pending",
+        media_status: "pending",
+        shortcode: s.shortcode === "PARTIAL" ? "PARTIAL-retried" : s.shortcode,
+        ready_at: now() + PENDING_MS,
+      });
+      if (recovered) {
+        Object.assign(s, {
+          title: s.caption?.split("\n")[0]?.replace(/…$/, "") ?? "Recovered reel",
+          thumbnail_url: IMAGES.yoga,
+          summary: "A short follow-along routine from the reel's caption and audio.",
+        });
+      }
+    },
+
+    async deleteAccount() {
+      await wait();
+      saves = [];
+      stacks = [];
+      await writeJson(store, PREFS_KEY, {});
     },
 
     async getCurated(): Promise<CuratedFeed> {
