@@ -139,9 +139,7 @@ def parse_json(text: str) -> dict[str, Any]:
     start, end = text.find("{"), text.rfind("}")
     if start < 0 or end <= start:
         raise ValueError("no JSON object in reply")
-    data = json.loads(text[start:end + 1])
-    if not isinstance(data, dict):
-        raise ValueError("reply is not a JSON object")
+    data: dict[str, Any] = json.loads(text[start:end + 1])  # {...} always decodes to a dict
     return data
 
 
