@@ -50,6 +50,7 @@ os.environ.setdefault("SUPABASE_JWT_AUDIENCE", "authenticated")
 
 _TRUNCATE = (
     "truncate public.jobs, public.jobs_dead, public.metrics, public.reels, "
+    "public.stacks, public.stack_saves, public.preferences, "  # 0006 (workstream A)
     "public.reel_content, public.profiles restart identity cascade"
 )
 
