@@ -77,7 +77,7 @@ async def test_get_saves_only_returns_own_reels(client, make_user, jwt_for):
     await client.post("/saves", json={"text": reel_url("OWNB")}, headers=auth(jwt_for(b)))
     r = await client.get("/saves", headers=auth(jwt_for(a)))
     assert r.status_code == 200
-    assert [s["shortcode_key"] for s in r.json()] == ["OWNA"]
+    assert [s["shortcode"] for s in r.json()] == ["OWNA"]
 
 
 async def test_get_saves_keyset_pagination(client, make_user, jwt_for):
@@ -85,10 +85,10 @@ async def test_get_saves_keyset_pagination(client, make_user, jwt_for):
     for code in ("PG1", "PG2", "PG3"):
         await client.post("/saves", json={"text": reel_url(code)}, headers=headers)
     page1 = (await client.get("/saves", params={"limit": 2}, headers=headers)).json()
-    assert [s["shortcode_key"] for s in page1] == ["PG3", "PG2"]
+    assert [s["shortcode"] for s in page1] == ["PG3", "PG2"]
     page2 = (await client.get("/saves", params={"before": page1[1]["created_at"]},
                               headers=headers)).json()
-    assert [s["shortcode_key"] for s in page2] == ["PG1"]
+    assert [s["shortcode"] for s in page2] == ["PG1"]
 
 
 async def test_patch_note_404_for_other_users_reel(client, make_user, jwt_for):
