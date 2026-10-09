@@ -11,10 +11,11 @@ from __future__ import annotations
 import json
 import uuid
 
-from fastapi import APIRouter, HTTPException
+import asyncpg
+from fastapi import APIRouter, HTTPException, Response
 
 from ..deps import CurrentUser, pool
-from ..models import ConnectedAccount, MeOut
+from ..models import ConnectedAccount, MeOut, PreferencesOut, PreferencesPatch, api_error
 
 router = APIRouter(prefix="/me", tags=["me"])
 
@@ -23,6 +24,7 @@ _ME_SQL = """
 select p.id, p.email, p.full_name, p.handle, p.avatar_url, p.plan,
        p.saves_free_limit, p.created_at::date as member_since,
        (select count(*) from public.reels r where r.auth_user_id = p.id) as total_saves,
+       (select count(*) from public.stacks s where s.auth_user_id = p.id) as stacks_count,
        (select count(*) from public.reels r
          where r.auth_user_id = p.id
            and r.created_at >= date_trunc('month', now())) as saves_this_month,
@@ -72,7 +74,88 @@ async def get_me(user: CurrentUser) -> MeOut:
         saves_limit=row["saves_free_limit"],
         resets_on=row["resets_on"],
         total_saves=row["total_saves"],
-        stacks_count=0,  # stacks are not in the backend yet
+        stacks_count=row["stacks_count"],
         member_since=row["member_since"],
         connected_accounts=accounts,
     )
+
+
+# ---------------------------------------------------------------- preferences
+
+_PREF_COLUMNS = tuple(PreferencesOut.model_fields)
+
+
+async def _preferences(db: asyncpg.Pool | asyncpg.Connection, uid: uuid.UUID) -> PreferencesOut:
+    row = await db.fetchrow(
+        f"select {', '.join(_PREF_COLUMNS)} from public.preferences where auth_user_id = $1", uid)
+    return PreferencesOut(**dict(row)) if row else PreferencesOut()
+
+
+@router.get("/preferences", response_model=PreferencesOut)
+async def get_preferences(user: CurrentUser) -> PreferencesOut:
+    return await _preferences(pool(), uuid.UUID(user.id))
+
+
+@router.patch("/preferences", response_model=PreferencesOut)
+async def update_preferences(body: PreferencesPatch, user: CurrentUser) -> PreferencesOut:
+    """Partial update: only the fields sent change; the rest keep their value
+    (or the contract default when the user never set them)."""
+    uid = uuid.UUID(user.id)
+    changes = body.model_dump(exclude_unset=True)
+    db = pool()
+    if not changes:
+        return await _preferences(db, uid)
+    cols = [c for c in _PREF_COLUMNS if c in changes]  # whitelisted names only
+    placeholders = ", ".join(f"${i}" for i in range(2, len(cols) + 2))
+    updates = ", ".join(f"{c} = excluded.{c}" for c in cols)
+    try:
+        row = await db.fetchrow(
+            f"""insert into public.preferences (auth_user_id, {', '.join(cols)})
+                values ($1, {placeholders})
+                on conflict (auth_user_id) do update set {updates}, updated_at = now()
+                returning {', '.join(_PREF_COLUMNS)}""",
+            uid, *(changes[c] for c in cols))
+    except asyncpg.ForeignKeyViolationError as exc:  # the account was deleted
+        raise api_error(404, "NOT_FOUND", "Account not found.") from exc
+    return PreferencesOut(**dict(row))
+
+
+# --------------------------------------------------------------------- export
+
+@router.post("/export", status_code=202)
+async def request_export(user: CurrentUser) -> dict[str, str]:
+    """Queue a data export (the worker side builds and delivers it). One queued
+    export per user at a time; asking again while it waits is a no-op."""
+    await pool().execute(
+        """
+        insert into public.jobs (kind, payload, stage)
+        select 'export', jsonb_build_object('user_id', $1::uuid), 'export'
+        where not exists (
+          select 1 from public.jobs
+          where kind = 'export' and payload->>'user_id' = $1::text and locked_at is null)
+        """,
+        uuid.UUID(user.id))
+    return {"status": "queued"}
+
+
+# ------------------------------------------------------------- delete account
+
+@router.delete("", status_code=204)
+async def delete_me(user: CurrentUser) -> Response:
+    """Delete the account and everything that belongs to it (Play Store in-app
+    deletion). Removing the auth user cascades to profiles, reels (and their
+    stack memberships), stacks and preferences; queued work for the user is
+    dropped. Shared reel_content cards stay: they hold no user data."""
+    uid = uuid.UUID(user.id)
+    async with pool().acquire() as con, con.transaction():
+        if not await con.fetchval("select exists (select 1 from auth.users where id = $1)", uid):
+            raise api_error(404, "NOT_FOUND", "Account not found.")
+        for table in ("public.jobs", "public.jobs_dead"):
+            await con.execute(
+                f"""delete from {table}
+                    where payload->>'user_id' = $1::uuid::text
+                       or payload->>'reel_id' in (
+                         select id::text from public.reels where auth_user_id = $1::uuid)""",
+                uid)
+        await con.execute("delete from auth.users where id = $1", uid)
+    return Response(status_code=204)
