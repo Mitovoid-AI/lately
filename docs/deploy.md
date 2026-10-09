@@ -1,0 +1,76 @@
+# Deploying Lately
+
+Two pieces: the **backend** (one Docker image, `api` + `worker` processes on
+Fly.io) and the **Android app** (an `.aab` uploaded to Play Console).
+Founder-only prerequisites are in `docs/launch-checklist.md`.
+
+## 1. Database (Supabase prod project)
+
+```bash
+# from the repo root, once per project
+supabase link --project-ref <prod-ref>
+supabase db push            # applies supabase/migrations/*.sql in order
+```
+
+Never run `backend/scripts/db_reset.py` or the test suite against prod: both
+wipe tables. Tests use the disposable project's `lately_test_*` databases
+(`backend/scripts/make_test_db.py`).
+
+## 2. Backend on Fly.io
+
+```bash
+cd backend
+fly launch --no-deploy --copy-config --name lately-api      # once; edit app name in fly.toml
+fly secrets set \
+  DATABASE_URL='postgresql://postgres.<ref>:<pw>@aws-0-ap-south-1.pooler.supabase.com:6543/postgres' \
+  SUPABASE_URL='https://<ref>.supabase.co' \
+  SUPABASE_SERVICE_ROLE_KEY='...' \
+  SUPABASE_JWT_AUDIENCE='authenticated' \
+  EMBEDDINGS_API_KEY='...' \
+  LLM_API_KEY='...' LLM_MODEL='...' \
+  GROQ_API_KEY='...' \
+  ADMIN_KEY="$(openssl rand -hex 24)"
+fly deploy
+fly scale count api=1 worker=1
+```
+
+Every setting and its default is documented in `backend/.env.example`.
+
+**Check it:**
+
+```bash
+curl https://lately-api.fly.dev/healthz
+python scripts/debug.py --live --api https://lately-api.fly.dev     # all PASS
+curl -H "X-Admin-Key: $ADMIN_KEY" https://lately-api.fly.dev/admin/health
+```
+
+Logs: `fly logs -p worker` (enrichment), `fly logs -p api`.
+
+**Instagram from cloud IPs:** the worker's FETCH stage may be blocked from
+Fly's IPs. Cards still finalize as `partial` (caption from the phone), and
+users can retry. For full cards at scale set `SCRAPER_API_URL` +
+`SCRAPER_API_KEY`, or run one worker on a residential connection:
+`python -m app.worker` with the same secrets in `backend/.env`.
+
+## 3. Android release build
+
+```bash
+cd frontend
+# .env (git-ignored): live mode against the deployed API
+#   EXPO_PUBLIC_API_MODE=live
+#   EXPO_PUBLIC_API_URL=https://lately-api.fly.dev
+#   EXPO_PUBLIC_SUPABASE_URL=https://<ref>.supabase.co
+#   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=...
+
+# Option A — EAS (free Expo account; Expo stores the signing key)
+npx eas-cli login
+npx eas-cli build -p android --profile production        # → .aab
+
+# Option B — local Gradle (keystore stays on your machine; back it up)
+npx expo prebuild -p android --clean
+cd android && ./gradlew bundleRelease                     # → app/build/outputs/bundle/release/app-release.aab
+```
+
+Upload the `.aab` in Play Console → Testing → Closed testing first (see the
+12-testers / 14-days rule in the launch checklist). Bump `versionCode` in
+`frontend/app.json` for every upload.
