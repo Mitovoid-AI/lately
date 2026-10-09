@@ -111,6 +111,8 @@ function RootStack() {
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
+      {/* Privacy Policy and Terms are readable before and after sign-in. */}
+      <Stack.Screen name="legal/[doc]" />
       {/* Email links and Google sign-in land here whether or not a session exists yet. */}
       <Stack.Screen name="auth-callback" options={{ animation: "fade" }} />
     </Stack>

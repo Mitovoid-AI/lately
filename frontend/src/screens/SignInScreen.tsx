@@ -452,6 +452,22 @@ export function SignInScreen() {
               </Text>
             </Pressable>
           </View>
+
+          <Text className="mt-4 text-center font-sans text-meta text-ink-3">
+            {"By continuing you agree to Lately's "}
+            <Text accessibilityRole="link" onPress={() => router.push("/legal/terms")} className="font-sans-medium text-ink-2 underline">
+              Terms
+            </Text>
+            {" and "}
+            <Text
+              accessibilityRole="link"
+              onPress={() => router.push("/legal/privacy")}
+              className="font-sans-medium text-ink-2 underline"
+            >
+              Privacy Policy
+            </Text>
+            .
+          </Text>
         </View>
       </ScrollView>
 

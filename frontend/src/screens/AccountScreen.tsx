@@ -311,6 +311,26 @@ export function AccountScreen() {
           </Reveal>
 
           <Reveal index={4}>
+            <SettingsSection icon="gavel" title="Legal">
+              <SettingsRow
+                icon="privacy-tip"
+                title="Privacy Policy"
+                subtitle="What Lately stores and who processes it"
+                onPress={() => router.push("/legal/privacy")}
+                right={<Icon name="chevron-right" size={20} color={colors.ink2} />}
+              />
+              <SettingsRow
+                icon="description"
+                title="Terms of Service"
+                subtitle="The rules for using Lately"
+                onPress={() => router.push("/legal/terms")}
+                right={<Icon name="chevron-right" size={20} color={colors.ink2} />}
+                divider
+              />
+            </SettingsSection>
+          </Reveal>
+
+          <Reveal index={5}>
             <PressableScale
               accessibilityRole="button"
               onPress={() => auth.signOut()}
@@ -339,7 +359,7 @@ export function AccountScreen() {
 
             <View className="mt-8 items-center">
               <Image source={LOGO} style={{ width: 28, height: 28, borderRadius: 8 }} />
-              <Text className="mt-2 font-sans text-meta text-ink-2">{`Lately for iOS & Web v${version}`}</Text>
+              <Text className="mt-2 font-sans text-meta text-ink-2">{`Lately v${version}`}</Text>
               <Text className="font-sans text-meta text-ink-3">Made for mindful reading & quiet curation</Text>
             </View>
           </Reveal>

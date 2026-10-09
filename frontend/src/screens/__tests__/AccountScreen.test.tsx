@@ -117,3 +117,11 @@ test("cancelling the first step deletes nothing", async () => {
   await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
   expect(deleteAccount).not.toHaveBeenCalled();
 });
+
+test("privacy policy and terms open from Account", async () => {
+  await open();
+  await fireEvent.press(screen.getByText("Privacy Policy"));
+  expect(mockRouter.push).toHaveBeenCalledWith("/legal/privacy");
+  await fireEvent.press(screen.getByText("Terms of Service"));
+  expect(mockRouter.push).toHaveBeenCalledWith("/legal/terms");
+});

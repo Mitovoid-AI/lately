@@ -87,3 +87,11 @@ test("no share, no mention", async () => {
   await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out", mode: "live" } });
   expect(screen.queryByText("Sign in to finish saving the reel you shared.")).toBeNull();
 });
+
+test("sign-in links to the terms and privacy policy", async () => {
+  await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out", mode: "live" } });
+  await fireEvent.press(screen.getByRole("link", { name: "Terms" }));
+  expect(mockRouter.push).toHaveBeenCalledWith("/legal/terms");
+  await fireEvent.press(screen.getByRole("link", { name: "Privacy Policy" }));
+  expect(mockRouter.push).toHaveBeenCalledWith("/legal/privacy");
+});
