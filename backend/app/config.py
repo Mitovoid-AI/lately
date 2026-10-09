@@ -31,9 +31,16 @@ class Settings(BaseSettings):
     worker_concurrency: int = 8
     worker_heartbeat_seconds: float = 30.0
 
+    # Embeddings (SEARCH.md §3): any OpenAI-compatible /embeddings endpoint.
+    # Empty key = search runs keyword + fuzzy only.
+    embeddings_api_key: str = ""
+    embeddings_base_url: str = "https://api.openai.com/v1"
+    embeddings_model: str = "text-embedding-3-small"
+    embeddings_dimensions: int = 768
+    search_embed_timeout_seconds: float = 2.0
+
     # Optional AI keys — saves work without them; cards stay partial (Part 2)
     groq_api_key: str = ""
-    gemini_api_key: str = ""
 
 
 @lru_cache

@@ -132,9 +132,9 @@ async def check_config() -> None:
     log.info("  jwt_audience = %r (empty = audience check skipped)", s.supabase_jwt_audience)
     log.info("  rate_limit_per_hour = %d, worker_poll = %ss",
              s.rate_limit_per_hour, s.worker_poll_interval_seconds)
-    log.info("  AI keys: groq=%s gemini=%s",
+    log.info("  AI keys: groq=%s embeddings=%s",
              "set" if s.groq_api_key else "ABSENT (cards stay partial — fine for Part 1)",
-             "set" if s.gemini_api_key else "ABSENT (fine for Part 1)")
+             "set" if s.embeddings_api_key else "ABSENT (search runs keyword + fuzzy only)")
     if not s.supabase_service_role_key.startswith("ey"):
         log.warning("  service_role_key doesn't look like a JWT — double-check it")
 
