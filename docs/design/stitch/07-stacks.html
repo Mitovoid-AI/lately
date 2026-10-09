@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>07 Stacks — light</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400..600;1,6..72,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #FAF8F5;
+      color: #1C1A17;
+      -webkit-font-smoothing: antialiased;
+    }
+    .font-serif-editorial {
+      font-family: 'Newsreader', serif;
+    }
+    .hairline-border {
+      border-color: #E7E1D8;
+    }
+    /* Hide scrollbar */
+    .no-scrollbar::-webkit-scrollbar {
+      display: none;
+    }
+    .no-scrollbar {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  </style>
+</head>
+<body class="bg-[#FAF8F5] text-[#1C1A17] flex justify-center min-h-screen">
+  <!-- Mobile Screen Container 390px -->
+  <div class="w-[390px] min-h-screen flex flex-col bg-[#FAF8F5] relative shadow-sm">
+    
+    <!-- Top Header (exact to 02 Library — light) -->
+    <header class="sticky top-0 z-30 bg-[#FAF8F5]/95 backdrop-blur-sm px-4 py-3 flex items-center justify-between border-b border-[#E7E1D8]">
+      <div class="flex items-center space-x-2.5">
+        <img src="https://lh3.googleusercontent.com/aida/AEtjO1W2ZC0vUI61PmwwDvLgXv1eO3xhigBrlybDUPx3pZNUlHycnDYrf4larORZ5jWOi2i4Cq5soOFwEyBq_Py3qbM1TyLxFHrLcHVKgy2l7GjEZHPUr5ZPbaAhvUcuLZrNiBfZ1yfrY_gON4vIa7_CgZlXlAihpAnT95m5PfQ4f-eLSKu4KL1LB55SryfqFu5FBS7erCtzNTOSoDUBfXBatUiSZNtpsTH4iQ4rhAiRwGENLLUoeZCTBh5f9eU" alt="Lately Logo" class="w-8 h-8 rounded-xl object-contain drop-shadow-sm">
+        <span class="font-serif-editorial text-[22px] tracking-tight font-medium text-[#1C1A17]">Lately</span>
+      </div>
+      <div class="flex items-center space-x-3">
+        <button class="text-[#6B655D] hover:text-[#1C1A17] p-1 transition-colors" aria-label="Bookmarks">
+          <svg class="w-5 h-5 stroke-[1.75]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M17.593 3.322c1.1.128 1.907 1.077 1.907 2.185V21L12 17.25 4.5 21V5.507c0-1.108.806-2.057 1.907-2.185a48.507 48.507 0 0111.186 0z" />
+          </svg>
+        </button>
+        <div class="relative cursor-pointer">
+          <img src="https://lh3.googleusercontent.com/aida/AEtjO1WtyAm1FDmc-21FkMgVfbpnCKIpoa5HDtcmO29wsRpIhQk3Kmezs8KwBVwppwkKWf1-EEUOE-Q5aC-axQV9YOZ_KwFIKehSZ5nxKsJfvFPdMgPPeZnpfWsOo5sfT6TVFzxHV6_4FDpSc8UgWKGF9_erFT4rYA98McehAFr9Emm3GxKeh04dUKGT9x2ATYKan56Wewdv5znbnncqv8VHbf2ebum-Bg3-v7KohcejYatW1HZV-M4Vi1aVIYw" alt="Profile Avatar" class="w-8 h-8 rounded-full object-cover border border-[#E7E1D8]">
+        </div>
+      </div>
+    </header>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 px-4 pt-5 pb-28">
+      
+      <!-- Title & Action Section -->
+      <div class="flex items-start justify-between mb-5">
+        <div>
+          <h1 class="font-serif-editorial text-[28px] font-normal leading-tight text-[#1C1A17] tracking-tight">Stacks</h1>
+          <p class="text-[13px] text-[#6B655D] mt-0.5 font-normal">Your saves, grouped your way.</p>
+        </div>
+        <button class="mt-1 inline-flex items-center px-3 py-1.5 rounded-full border border-[#D98A0B] text-[#D98A0B] text-[13px] font-medium hover:bg-[#D98A0B]/5 active:scale-95 transition-all">
+          <svg class="w-3.5 h-3.5 mr-1 stroke-[2.2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+          </svg>
+          New stack
+        </button>
+      </div>
+
+      <!-- 2-Column Grid of Stack Tiles (12px gap) -->
+      <div class="grid grid-cols-2 gap-3">
+        
+        <!-- Tile 1: Cafes to try -->
+        <article class="flex flex-col cursor-pointer group">
+          <!-- 2x2 Collage Frame (rounded 14px, 2px gaps, border hairline) -->
+          <div class="w-full aspect-square rounded-[14px] overflow-hidden p-0.5 bg-[#E7E1D8] border border-[#E7E1D8] shadow-[0_1px_3px_rgba(0,0,0,0.03)] group-hover:border-[#D98A0B]/50 transition-colors">
+            <div class="grid grid-cols-2 grid-rows-2 gap-[2px] w-full h-full rounded-[12px] overflow-hidden bg-[#FAF8F5]">
+              <img src="https://lh3.googleusercontent.com/aida/AEtjO1W1TUrk-8vkpcuPq-dN5bRkhXpPLeo-o39yA5xFk7xxVAdeylQy3a0unt--lgDZ7tjbOHqPPmw8gl-eadtNSoAVf3oP7qMxe7LbndpuseGLIbDXP2ESbKMUg7xJ98a9m7H6ShTj_XemziZPJ5mh7v3x-4g88xSAhuSWTpKVZnAKreDpjvpgvQJanOupaw44d82HZFY4yfOk5lLIvEatoZkFzvZI4Chb4WIRjmCkN95kCnu9YgVcUFABaaE" alt="Kyoto cafe" class="w-full h-full object-cover">
+              <img src="https://lh3.googleusercontent.com/aida/AEtjO1XPH3OVa4DavJQcleV_JO-dpTkB5nLqJUiOmlK6rUfBJjaQMLmM6M3sCSNb7VAuA_TKmd7BqHYd1cZSiC199ym6fFtdZXzmMbdyo2ddMTeLrjSYIi_RQzgpcdyagYHZlnztLhuvgsq6LUKdb_u6E5_BRU9HBO4NdIR9O4IqVBAq8xTkcUoEJAxX8-0Ba_aVM6yTnTJzsyCUCjAMpJW7Zdr_U7V73RGRTySGOQCg64c_F4TGLeP5H7ciYfU" alt="Drip coffee" class="w-full h-full object-cover">
+              <img src="https://lh3.googleusercontent.com/aida/AEtjO1UwZUaJP-DO6K3mzdyMGzi81xrSZjeNfTNuwp4JzCUndzg96xIA0QXC5-ZUySaJEijy_0V5tLD_KPmcOTJdb6uo69FG7uHC0Icj2egLF7RSu1GzjsBR2UQtvM-CzJSTnbq5qDENuL1eIyeckDbbG8YfLnlvw_1mYr23eTtDDXI-8VWkg8X5je4aDZvV4g7bjdvWrmYUysp5SLNpA6ld7qTZ6oSa0xMbJ-YlqokOJvfZtZrHkJgxeW4Kxow" alt="Espresso bar" class="w-full h-full object-cover">
+              <div class="relative w-full h-full">
+                <img src="https://lh3.googleusercontent.com/aida/AEtjO1W1TUrk-8vkpcuPq-dN5bRkhXpPLeo-o39yA5xFk7xxVAdeylQy3a0unt--lgDZ7tjbOHqPPmw8gl-eadtNSoAVf3oP7qMxe7LbndpuseGLIbDXP2ESbKMUg7xJ98a9m7H6ShTj_XemziZPJ5mh7v3x-4g88xSAhuSWTpKVZnAKreDpjvpgvQJanOupaw44d82HZFY4yfOk5lLIvEatoZkFzvZI4Chb4WIRjmCkN95kCnu9YgVcUFABaaE" alt="Cafe corner" class="w-full h-full object-cover filter brightness-[0.9] scale-110">
+              </div>
+            </div>
+          </div>
+          <!-- Meta details -->
+          <div class="mt-2.5 px-0.5">
+            <h2 class="text-[15px] font-semibold text-[#1C1A17] tracking-tight group-hover:text-[#D98A0B] transition-colors leading-snug">Cafes to try</h2>
+            <div class="flex items-center text-[13px] text-[#6B655D] mt-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#E07A5F] mr-1.5 shrink-0"></span>
+              <span>12 reels · updated 2d</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Tile 2: Job hunt -->
+        <article class="flex flex-col cursor-pointer group">
+          <div class="w-full aspect-square rounded-[14px] overflow-hidden p-0.5 bg-[#E7E1D8] border border-[#E7E1D8] shadow-[0_1px_3px_rgba(0,0,0,0.03)] group-hover:border-[#D98A0B]/50 transition-colors">
+            <div class="grid grid-cols-2 grid-rows-2 gap-[2px] w-full h-full rounded-[12px] overflow-hidden bg-[#FAF8F5]">
+              <img src="https://lh3.googleusercontent.com/aida/AEtjO1UiGiYKhF5StI405lH6Ax_X-eDUuuw1_KdLVICFqK7-2IZU4rBhi5jmQyuiG8nZV7WXmus_v2pPGinio0Yl4S5a_8uwwC0P3XAGhDe0MnDaNOnuV7NmTPhs5SNCwrCp4QnaZ0qkf6YskKzUqyXxMU6oWxwIDlviYMaB2xnZSYSyEX14MZDboDd8yiFjhAss5PNC6jQjjLZy_IOf9wUYm3HsTepzvu0z4WT7hZYC9PZa7p1oYMqcH51q7bA" alt="Dev desk setup" class="w-full h-full object-cover">
+              <div class="w-full h-full bg-[#EFECE6] flex items-center justify-center p-2 text-center">
+                <span class="text-[10px] font-medium text-[#6B655D] leading-tight">Remote Visa Guide</span>
+              </div>
+              <div class="w-full h-full bg-[#E6E1D8] flex items-center justify-center p-2 text-center">
+                <span class="text-[10px] font-medium text-[#6B655D] leading-tight">Berlin Relocation</span>
+              </div>
+              <img src="https://lh3.googleusercontent.com/aida/AEtjO1UiGiYKhF5StI405lH6Ax_X-eDUuuw1_KdLVICFqK7-2IZU4rBhi5jmQyuiG8nZV7WXmus_v2pPGinio0Yl4S5a_8uwwC0P3XAGhDe0MnDaNOnuV7NmTPhs5SNCwrCp4QnaZ0qkf6YskKzUqyXxMU6oWxwIDlviYMaB2xnZSYSyEX14MZDboDd8yiFjhAss5PNC6jQjjLZy_IOf9wUYm3HsTepzvu0z4WT7hZYC9PZa7p1oYMqcH51q7bA" alt="IDE monitor" class="w-full h-full object-cover filter brightness-95 scale-125">
+            </div>
+          </div>
+          <div class="mt-2.5 px-0.5">
+            <h2 class="text-[15px] font-semibold text-[#1C1A17] tracking-tight group-hover:text-[#D98A0B] transition-colors leading-snug">Job hunt</h2>
+            <div class="flex items-center text-[13px] text-[#6B655D] mt-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#8E7DBE] mr-1.5 shrink-0"></span>
+              <span>9 reels · updated 3d</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Tile 3: Manali trip -->
+        <article class="flex flex-col cursor-pointer group">
+          <div class="w-full aspect-square rounded-[14px] overflow-hidden p-0.5 bg-[#E7E1D8] border border-[#E7E1D8] shadow-[0_1px_3px_rgba(0,0,0,0.03)] group-hover:border-[#D98A0B]/50 transition-colors">
+            <div class="grid grid-cols-2 grid-rows-2 gap-[2px] w-full h-full rounded-[12px] overflow-hidden bg-[#FAF8F5]">
+              <img src="https://lh3.googleusercontent.com/aida/AEtjO1WdwVVRVBUGbb3ZTxpLUCUthknA0v81fUBRKqDiU9-AT4I6efHC6DMREzRuXAFal2_RbIaKgOm46R0I4uRGAlXo176g87OClhDKMTYHBjmlRX-coN2RswyN7Mrw4ji6y6dIKbwI9QQLVp9SUmX_EC6EyVpLgNkLfGrZ2n0prlte2aiLD0XFb65ztpG8xJ0YBL0XZRJnnI8Mh01CQ-kOZylgvsRfO-veIFsL9xgHgTD0S6JGxciTeVUeog" alt="Trekking boots" class="w-full h-full object-cover">
+              <div class="w-full h-full bg-[#E5ECE5] flex items-center justify-center p-2 text-center">
+                <span class="text-[10px] font-medium text-[#4A5D4E] leading-tight">Solang Pass Trail</span>
+              </div>
+              <img src="https://lh3.googleusercontent.com/aida/AEtjO1WdwVVRVBUGbb3ZTxpLUCUthknA0v81fUBRKqDiU9-AT4I6efHC6DMREzRuXAFal2_RbIaKgOm46R0I4uRGAlXo176g87OClhDKMTYHBjmlRX-coN2RswyN7Mrw4ji6y6dIKbwI9QQLVp9SUmX_EC6EyVpLgNkLfGrZ2n0prlte2aiLD0XFb65ztpG8xJ0YBL0XZRJnnI8Mh01CQ-kOZylgvsRfO-veIFsL9xgHgTD0S6JGxciTeVUeog" alt="Mist forest" class="w-full h-full object-cover filter contrast-105 scale-110">
+              <div class="w-full h-full bg-[#ECE7DE] flex items-center justify-center p-2 text-center">
+                <span class="text-[10px] font-medium text-[#6B655D] leading-tight">Old Manali Cafe</span>
+              </div>
+            </div>
+          </div>
+          <div class="mt-2.5 px-0.5">
+            <h2 class="text-[15px] font-semibold text-[#1C1A17] tracking-tight group-hover:text-[#D98A0B] transition-colors leading-snug">Manali trip</h2>
+            <div class="flex items-center text-[13px] text-[#6B655D] mt-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#E07A5F] mr-1.5 shrink-0"></span>
+              <span>7 reels · updated 1w</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Tile 4: Mobility routine -->
+        <article class="flex flex-col cursor-pointer group">
+          <div class="w-full aspect-square rounded-[14px] overflow-hidden p-0.5 bg-[#E7E1D8] border border-[#E7E1D8] shadow-[0_1px_3px_rgba(0,0,0,0.03)] group-hover:border-[#D98A0B]/50 transition-colors">
+            <div class="grid grid-cols-2 grid-rows-2 gap-[2px] w-full h-full rounded-[12px] overflow-hidden bg-[#FAF8F5]">
+              <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDlX8Q1eBaiwF718d60dq_lJx1XoDOharxnno-wgKWGJAjjbooJj5ekWPLtjMjIfgZO6XmmJ3TuwObY_GbRUjUNBZ4i1VeGhiMUgke8xKCYsASph2m32BcK__zo6lSQgOA2-STmAAzqwK8XdRflK-BeeySXrH4pSQoLZJTULBNLze4bgraNx08hmDg9B9spILTfHzARA6oh3_Oak0Hb5EBR5YC9SIFairOxi4Qv3DyYVW3mWQvzcdGEcypp-HgrdUrRNDnmknAlkRk" alt="Mobility yoga stretching" class="w-full h-full object-cover">
+              <div class="w-full h-full bg-[#EBECE7] flex items-center justify-center p-2 text-center">
+                <span class="text-[10px] font-medium text-[#586358] leading-tight">Thoracic Opener</span>
+              </div>
+              <div class="w-full h-full bg-[#F0EDE6] flex items-center justify-center p-2 text-center">
+                <span class="text-[10px] font-medium text-[#6B655D] leading-tight">Hip 90/90 Flow</span>
+              </div>
+              <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuDlX8Q1eBaiwF718d60dq_lJx1XoDOharxnno-wgKWGJAjjbooJj5ekWPLtjMjIfgZO6XmmJ3TuwObY_GbRUjUNBZ4i1VeGhiMUgke8xKCYsASph2m32BcK__zo6lSQgOA2-STmAAzqwK8XdRflK-BeeySXrH4pSQoLZJTULBNLze4bgraNx08hmDg9B9spILTfHzARA6oh3_Oak0Hb5EBR5YC9SIFairOxi4Qv3DyYVW3mWQvzcdGEcypp-HgrdUrRNDnmknAlkRk" alt="Yoga mat detail" class="w-full h-full object-cover filter brightness-95 scale-125">
+            </div>
+          </div>
+          <div class="mt-2.5 px-0.5">
+            <h2 class="text-[15px] font-semibold text-[#1C1A17] tracking-tight group-hover:text-[#D98A0B] transition-colors leading-snug">Mobility routine</h2>
+            <div class="flex items-center text-[13px] text-[#6B655D] mt-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#4E9F70] mr-1.5 shrink-0"></span>
+              <span>5 reels · updated 4d</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Tile 5: Dev tools -->
+        <article class="flex flex-col cursor-pointer group">
+          <div class="w-full aspect-square rounded-[14px] overflow-hidden p-0.5 bg-[#E7E1D8] border border-[#E7E1D8] shadow-[0_1px_3px_rgba(0,0,0,0.03)] group-hover:border-[#D98A0B]/50 transition-colors">
+            <div class="grid grid-cols-2 grid-rows-2 gap-[2px] w-full h-full rounded-[12px] overflow-hidden bg-[#FAF8F5]">
+              <img src="https://lh3.googleusercontent.com/aida/AEtjO1UiGiYKhF5StI405lH6Ax_X-eDUuuw1_KdLVICFqK7-2IZU4rBhi5jmQyuiG8nZV7WXmus_v2pPGinio0Yl4S5a_8uwwC0P3XAGhDe0MnDaNOnuV7NmTPhs5SNCwrCp4QnaZ0qkf6YskKzUqyXxMU6oWxwIDlviYMaB2xnZSYSyEX14MZDboDd8yiFjhAss5PNC6jQjjLZy_IOf9wUYm3HsTepzvu0z4WT7hZYC9PZa7p1oYMqcH51q7bA" alt="Terminal code" class="w-full h-full object-cover">
+              <div class="w-full h-full bg-[#E5E9EE] flex items-center justify-center p-2 text-center">
+                <span class="text-[10px] font-medium text-[#486382] leading-tight">FastAPI Tips</span>
+              </div>
+              <div class="w-full h-full bg-[#ECEBE7] flex items-center justify-center p-2 text-center">
+                <span class="text-[10px] font-medium text-[#6B655D] leading-tight">CSS Subgrid</span>
+              </div>
+              <img src="https://lh3.googleusercontent.com/aida/AEtjO1UiGiYKhF5StI405lH6Ax_X-eDUuuw1_KdLVICFqK7-2IZU4rBhi5jmQyuiG8nZV7WXmus_v2pPGinio0Yl4S5a_8uwwC0P3XAGhDe0MnDaNOnuV7NmTPhs5SNCwrCp4QnaZ0qkf6YskKzUqyXxMU6oWxwIDlviYMaB2xnZSYSyEX14MZDboDd8yiFjhAss5PNC6jQjjLZy_IOf9wUYm3HsTepzvu0z4WT7hZYC9PZa7p1oYMqcH51q7bA" alt="Mechanical keyboard" class="w-full h-full object-cover scale-110">
+            </div>
+          </div>
+          <div class="mt-2.5 px-0.5">
+            <h2 class="text-[15px] font-semibold text-[#1C1A17] tracking-tight group-hover:text-[#D98A0B] transition-colors leading-snug">Dev tools</h2>
+            <div class="flex items-center text-[13px] text-[#6B655D] mt-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#4A7BB0] mr-1.5 shrink-0"></span>
+              <span>14 reels · updated 2d</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Tile 6: Outfit ideas -->
+        <article class="flex flex-col cursor-pointer group">
+          <div class="w-full aspect-square rounded-[14px] overflow-hidden p-0.5 bg-[#E7E1D8] border border-[#E7E1D8] shadow-[0_1px_3px_rgba(0,0,0,0.03)] group-hover:border-[#D98A0B]/50 transition-colors">
+            <div class="grid grid-cols-2 grid-rows-2 gap-[2px] w-full h-full rounded-[12px] overflow-hidden bg-[#FAF8F5]">
+              <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAO1_-b9h5BiywY509nzH_667lEGpHL8TvcRLd_H-gmVXO3JBFT7HYn5s0tU_27Oqu4EEzOhp3vFbvHRhBKctgH-O-XF9OwQmmTshQvIfniNoIO7KAOszEKpTgJRejsY0khl9J8kgu0ozHxEe6fjVk8ZYfFMX8HYN0mgim25m5zoRLSmWxUBzombTEPexVH7U2GBGS5Bhrjy58St4SB8_bz6HV9ozMNr94WRyH_pVg7WgkWyfkdX3Tu-T-j147Ps_K5qG2i2jZE-wM" alt="Linen flatlay outfit" class="w-full h-full object-cover">
+              <div class="w-full h-full bg-[#EFECE6] flex items-center justify-center p-2 text-center">
+                <span class="text-[10px] font-medium text-[#736352] leading-tight">Autumn Linen Capsule</span>
+              </div>
+              <div class="w-full h-full bg-[#ECE8E1] flex items-center justify-center p-2 text-center">
+                <span class="text-[10px] font-medium text-[#6B655D] leading-tight">Neutral Footwear</span>
+              </div>
+              <img src="https://lh3.googleusercontent.com/aida-public/AB6AXuAO1_-b9h5BiywY509nzH_667lEGpHL8TvcRLd_H-gmVXO3JBFT7HYn5s0tU_27Oqu4EEzOhp3vFbvHRhBKctgH-O-XF9OwQmmTshQvIfniNoIO7KAOszEKpTgJRejsY0khl9J8kgu0ozHxEe6fjVk8ZYfFMX8HYN0mgim25m5zoRLSmWxUBzombTEPexVH7U2GBGS5Bhrjy58St4SB8_bz6HV9ozMNr94WRyH_pVg7WgkWyfkdX3Tu-T-j147Ps_K5qG2i2jZE-wM" alt="Canvas tote & accessories" class="w-full h-full object-cover scale-125 filter contrast-105">
+            </div>
+          </div>
+          <div class="mt-2.5 px-0.5">
+            <h2 class="text-[15px] font-semibold text-[#1C1A17] tracking-tight group-hover:text-[#D98A0B] transition-colors leading-snug">Outfit ideas</h2>
+            <div class="flex items-center text-[13px] text-[#6B655D] mt-0.5">
+              <span class="w-1.5 h-1.5 rounded-full bg-[#D48B47] mr-1.5 shrink-0"></span>
+              <span>6 reels · updated 5d</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- Tile 7: Empty state / Add New Stack (Dashed border 14px) -->
+        <button class="flex flex-col text-left group">
+          <div class="w-full aspect-square rounded-[14px] border-2 border-dashed border-[#D9D3C8] hover:border-[#D98A0B] bg-transparent flex flex-col items-center justify-center transition-all p-3 group-active:scale-[0.98]">
+            <div class="w-10 h-10 rounded-full bg-[#F3EFEA] group-hover:bg-[#D98A0B]/10 flex items-center justify-center text-[#6B655D] group-hover:text-[#D98A0B] transition-colors mb-2">
+              <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+              </svg>
+            </div>
+            <span class="text-[13px] font-medium text-[#1C1A17] group-hover:text-[#D98A0B] transition-colors text-center">New stack</span>
+            <span class="text-[11px] text-[#6B655D] mt-0.5 text-center">Create collection</span>
+          </div>
+          <div class="mt-2.5 px-0.5 opacity-0 select-none">
+            <!-- Spacer to align baseline with cards above -->
+            <span class="text-[15px] font-semibold">Spacer</span>
+            <span class="text-[13px]">Spacer</span>
+          </div>
+        </button>
+
+      </div>
+    </main>
+
+    <!-- Bottom Tab Bar (Curated, Library, Save, Stacks — Stacks ACTIVE in marigold #D98A0B) -->
+    <nav class="fixed bottom-0 w-[390px] bg-[#FAF8F5]/98 backdrop-blur-md border-t border-[#E7E1D8] z-40 px-2 py-2 flex items-center justify-around shadow-sm">
+      <!-- Curated -->
+      <a href="#" class="flex flex-col items-center justify-center flex-1 py-1 text-[#6B655D] hover:text-[#1C1A17] transition-colors">
+        <svg class="w-5 h-5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.042A8.967 8.967 0 006 3.75c-1.052 0-2.062.18-3 .512v14.25A8.987 8.987 0 016 18c2.305 0 4.408.867 6 2.292m0-14.25a8.966 8.966 0 016-2.292c1.052 0 2.062.18 3 .512v14.25A8.987 8.987 0 0018 18a8.967 8.967 0 00-6 2.292m0-14.25v14.25" />
+        </svg>
+        <span class="text-[10px] font-medium mt-1">Curated</span>
+      </a>
+
+      <!-- Library -->
+      <a href="#" class="flex flex-col items-center justify-center flex-1 py-1 text-[#6B655D] hover:text-[#1C1A17] transition-colors">
+        <svg class="w-5 h-5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
+        </svg>
+        <span class="text-[10px] font-medium mt-1">Library</span>
+      </a>
+
+      <!-- Save -->
+      <a href="#" class="flex flex-col items-center justify-center flex-1 py-1 text-[#6B655D] hover:text-[#1C1A17] transition-colors">
+        <svg class="w-5 h-5 stroke-[1.8]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M12 9v6m3-3H9m12 0a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <span class="text-[10px] font-medium mt-1">Save</span>
+      </a>
+
+      <!-- Stacks (ACTIVE) -->
+      <a href="#" class="flex flex-col items-center justify-center flex-1 py-1 text-[#D98A0B]">
+        <svg class="w-5 h-5 stroke-[2]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 12.75V12A2.25 2.25 0 014.5 9.75h15A2.25 2.25 0 0121.75 12v.75m-8.69-6.44l-2.12-2.12a1.5 1.5 0 00-1.061-.44H4.5A2.25 2.25 0 002.25 6v12a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9a2.25 2.25 0 00-2.25-2.25h-5.379a1.5 1.5 0 01-1.06-.44z" />
+        </svg>
+        <span class="text-[10px] font-semibold mt-1">Stacks</span>
+      </a>
+    </nav>
+
+  </div>
+</body>
+</html>

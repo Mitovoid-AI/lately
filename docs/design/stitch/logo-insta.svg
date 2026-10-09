@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <!-- Instagram Sunset Gradient -->
+    <linearGradient id="igGrad" x1="0%" y1="100%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#405de6" />
+      <stop offset="15%" stop-color="#5851db" />
+      <stop offset="30%" stop-color="#833ab4" />
+      <stop offset="50%" stop-color="#c13584" />
+      <stop offset="68%" stop-color="#e1306c" />
+      <stop offset="78%" stop-color="#fd1d1d" />
+      <stop offset="88%" stop-color="#f56040" />
+      <stop offset="94%" stop-color="#f77737" />
+      <stop offset="98%" stop-color="#fcaf45" />
+      <stop offset="100%" stop-color="#ffdc80" />
+    </linearGradient>
+
+    <!-- Radial highlight on yolk -->
+    <radialGradient id="yolkGrad" cx="38%" cy="32%" r="65%">
+      <stop offset="0%" stop-color="#ffea79" />
+      <stop offset="25%" stop-color="#ffb834" />
+      <stop offset="65%" stop-color="#f56040" />
+      <stop offset="100%" stop-color="#c13584" />
+    </radialGradient>
+
+    <!-- Shadow filter -->
+    <filter id="badgeShadow" x="-15%" y="-15%" width="130%" height="130%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#833ab4" flood-opacity="0.25" />
+      <feDropShadow dx="0" dy="4" stdDeviation="6" flood-color="#000000" flood-opacity="0.12" />
+    </filter>
+
+    <filter id="eggShadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity="0.18" />
+    </filter>
+  </defs>
+
+  <!-- Background squircle with Instagram gradient -->
+  <rect x="24" y="24" width="464" height="464" rx="112" fill="url(#igGrad)" filter="url(#badgeShadow)" />
+  
+  <!-- Subtle inner border / highlight ring -->
+  <rect x="25" y="25" width="462" height="462" rx="111" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-opacity="0.3" />
+
+  <!-- Egg White Outer Shape -->
+  <g filter="url(#eggShadow)">
+    <path d="M 256, 86
+             C 334, 86 384, 186 384, 274
+             C 384, 350 326, 404 256, 404
+             C 186, 404 128, 350 128, 274
+             C 128, 186 178, 86 256, 86 Z"
+          fill="#FFFFFF" />
+  </g>
+
+  <!-- Egg Yolk with Instagram sunset radial vibe -->
+  <circle cx="256" cy="286" r="68" fill="url(#yolkGrad)" />
+  
+  <!-- Yolk Specular Highlights -->
+  <!-- Primary curved glint -->
+  <ellipse cx="236" cy="260" rx="18" ry="12" transform="rotate(-30 236 260)" fill="#FFFFFF" opacity="0.92" />
+  <!-- Secondary small glint -->
+  <circle cx="274" cy="308" r="5" fill="#FFFFFF" opacity="0.55" />
+</svg>
