@@ -336,6 +336,24 @@ A script runs every query against every config and reports:
 Run it on every change to the STRUCTURE prompt, embedding text, weights, or
 ranking. Add a method only when the table shows misses it would fix.
 
+**Fixture baseline (2026-10-10)** — `scripts/eval_search.py` on
+`tests/fixtures/golden-fixture.csv` (8 queries, 6 cards), `--embedder fake`,
+against the cloud test database from a dev laptop (~90 ms network round trip,
+so ~180 ms of every p95 is the network floor). The fixture is too easy to
+separate the configs; it guards against regressions, the real golden set
+decides.
+
+| Config | recall@1 | recall@5 | MRR | p95 ms |
+|---|---|---|---|---|
+| keyword only | 1.00 | 1.00 | 1.00 | 240 |
+| keyword + fuzzy | 1.00 | 1.00 | 1.00 | 239 |
+| keyword + fuzzy + meaning | 1.00 | 1.00 | 1.00 | 217–246 |
+
+Since review gap 1, the legs run as separate statements: keyword + fuzzy
+start at once, the meaning leg starts the moment the query vector arrives,
+and RRF (same k, weights and hint boosts as the SQL above) runs in Python
+(`app/search/run.py`, `app/search/retrieve.py`).
+
 ---
 
 ## 12. Schema changes (migration 0004 sketch)
