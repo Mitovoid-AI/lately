@@ -1,0 +1,80 @@
+[
+  {
+    "shortcode": "MANALI1",
+    "title": "Hampta Pass trek from Manali — 5 day plan",
+    "category": "Food & Places",
+    "tags": ["trek", "himalaya", "itinerary"],
+    "entity_names": ["Hampta Pass", "Manali", "Himachal Pradesh"],
+    "likely_queries": ["manali trek route", "himachal trekking ideas", "pahad trip plan"],
+    "visual_description": "snowy mountains, hikers with backpacks, tents by a river",
+    "transcript": "day one we start from jobra",
+    "caption": "5 days, one pass, zero regrets",
+    "summary": "A five-day route over Hampta Pass starting near Manali, with camps and daily distances.",
+    "note": "do this with college friends"
+  },
+  {
+    "shortcode": "MOMO1",
+    "title": "Best momos in Lajpat Nagar under ₹100",
+    "category": "Food & Places",
+    "tags": ["momos", "street food", "cheap eats"],
+    "entity_names": ["Lajpat Nagar", "Delhi"],
+    "likely_queries": ["that momo cafe", "cheap momos delhi", "momos wali jagah"],
+    "visual_description": "steaming dumplings at a roadside stall",
+    "transcript": null,
+    "caption": "steam, spice, and a hundred rupees",
+    "summary": "A roundup of cheap dumpling stalls in a south Delhi market.",
+    "note": null
+  },
+  {
+    "shortcode": "GITHUB1",
+    "title": "5 hidden GitHub search tricks",
+    "category": "Dev & Tools",
+    "tags": ["github", "search", "productivity"],
+    "entity_names": ["GitHub", "github.dev"],
+    "likely_queries": ["github tricks", "find good repos"],
+    "visual_description": "screen recording of github search",
+    "transcript": null,
+    "caption": "stop scrolling, start filtering",
+    "summary": "Search qualifiers and shortcuts that make finding code faster.",
+    "note": "use for finding repos"
+  },
+  {
+    "shortcode": "JOBS1",
+    "title": "Repo listing companies that sponsor visas",
+    "category": "Career & Jobs",
+    "tags": ["jobs", "visa", "github repo"],
+    "entity_names": ["GitHub"],
+    "likely_queries": ["repo for job search", "visa sponsor companies list"],
+    "visual_description": "scrolling a github readme",
+    "transcript": null,
+    "caption": "bookmark this before your next application",
+    "summary": "An open list of employers known to sponsor work visas.",
+    "note": null
+  },
+  {
+    "shortcode": "PASTA1",
+    "title": "One-pot creamy pasta in 15 minutes",
+    "category": "Food & Places",
+    "tags": ["recipe", "pasta", "quick dinner"],
+    "entity_names": [],
+    "likely_queries": ["easy pasta recipe", "quick dinner idea"],
+    "visual_description": "pasta in a pan",
+    "transcript": null,
+    "caption": "one pan, no drama",
+    "summary": "A weeknight pasta cooked in a single pot with cream and garlic.",
+    "note": null
+  },
+  {
+    "shortcode": "GOA1",
+    "title": "Hidden beaches in South Goa",
+    "category": "Food & Places",
+    "tags": ["beach", "travel", "goa"],
+    "entity_names": ["Palolem", "South Goa", "Goa"],
+    "likely_queries": ["goa beaches", "beach trip ideas"],
+    "visual_description": "turquoise water, palm trees, empty beach",
+    "transcript": null,
+    "caption": "skip the crowds",
+    "summary": "Quiet beaches south of Palolem that most tourists miss.",
+    "note": "december trip?"
+  }
+]
