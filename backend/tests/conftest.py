@@ -52,6 +52,7 @@ _TRUNCATE = (
     "truncate public.jobs, public.jobs_dead, public.metrics, public.reels, "
     "public.reel_content, public.profiles restart identity cascade"
 )
+_TRUNCATE += "; truncate public.provider_budget"  # 0007 (enrichment)
 
 
 @pytest.fixture
