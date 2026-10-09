@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import settings
 from .deps import close_pool, init_pool
 from .routers import me, saves
+from .routers import stacks  # workstream A
 
 
 @asynccontextmanager
@@ -29,6 +30,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(title="Lately API", version="0.1.0", lifespan=lifespan)
 app.include_router(saves.router)
 app.include_router(me.router)
+app.include_router(stacks.router)
 
 # The web build calls the API from another origin (Expo web on :8081/:8082 in dev).
 # Native apps send no Origin header and are unaffected. Auth is the bearer token,
