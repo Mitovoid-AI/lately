@@ -160,3 +160,33 @@ async def delete_save(save_id: uuid.UUID, user: CurrentUser) -> Response:
             "delete from public.jobs where payload->>'reel_id' = $1 and locked_at is null",
             str(save_id))
     return Response(status_code=204)
+
+
+# ------------------------------------------------------------------ retries --
+
+retries_router = APIRouter(prefix="/retries", tags=["saves"])
+
+
+@retries_router.post("/{reel_id}", status_code=202)
+async def retry_enrichment(reel_id: uuid.UUID, user: CurrentUser) -> dict[str, str]:
+    """Re-enqueue enrichment for a partial save, or a pending one whose job
+    died (PIPELINE.md §7: the retry button resumes from FETCH; a save whose
+    shortcode was never resolved starts at RESOLVE). Idempotent while a job for
+    the save is queued. An enriched save has nothing to retry: 404."""
+    uid = uuid.UUID(user.id)
+    async with pool().acquire() as con, con.transaction():
+        reel = await con.fetchrow(
+            "select status, shortcode_key from public.reels "
+            "where id = $1 and auth_user_id = $2 for update",
+            reel_id, uid)
+        if reel is None or reel["status"] == "enriched":
+            raise api_error(404, "NOT_FOUND", "Nothing to retry for this save.")
+        queued = await con.fetchval(
+            "select exists (select 1 from public.jobs "
+            "where kind = 'enrich' and payload->>'reel_id' = $1)", str(reel_id))
+        if not queued:
+            stage = "fetch" if reel["shortcode_key"] else "resolve"
+            await jobs_service.enqueue_enrich(con, str(reel_id), str(uid), stage)
+            await con.execute(
+                "update public.reels set status = 'pending' where id = $1", reel_id)
+    return {"status": "queued"}
