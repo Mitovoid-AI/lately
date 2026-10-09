@@ -35,6 +35,8 @@ log = logging.getLogger("lately.enrich")
 
 BROWSER_UA = ("Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 "
               "(KHTML, like Gecko) Chrome/126.0 Mobile Safari/537.36")
+DESKTOP_UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+              "(KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36")
 
 
 @dataclass
@@ -192,9 +194,12 @@ class EmbedPageProvider:
         self._timeout = timeout
 
     async def fetch(self, shortcode: str, url: str) -> FetchResult | None:
+        # /p/ + a desktop iframe navigation gets the classic server-rendered embed;
+        # /reel/ with a mobile UA answered with an empty SPA error shell (live, 2026-10).
         resp = await self._client.get(
-            f"https://www.instagram.com/reel/{shortcode}/embed/captioned/",
-            headers={"User-Agent": BROWSER_UA, "Accept-Language": "en-US,en;q=0.9"},
+            f"https://www.instagram.com/p/{shortcode}/embed/captioned/",
+            headers={"User-Agent": DESKTOP_UA, "Accept-Language": "en-US,en;q=0.9",
+                     "Sec-Fetch-Dest": "iframe", "Sec-Fetch-Mode": "navigate"},
             timeout=self._timeout, follow_redirects=True)
         if resp.status_code != 200:
             log.info("embed page %s: HTTP %s", shortcode, resp.status_code)

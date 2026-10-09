@@ -57,7 +57,9 @@ async def test_embed_provider_requests_captioned_embed_url():
         return httpx.Response(200, text=FIXTURE.read_text(encoding="utf-8"))
 
     r = await EmbedPageProvider(client_for(handler)).fetch("C8xYz12", URL)
-    assert seen == ["https://www.instagram.com/reel/C8xYz12/embed/captioned/"]
+    # /p/ + a desktop iframe request gets the classic server-rendered embed; the
+    # /reel/ path with a mobile UA answered with an empty SPA error shell (live, 2026-10).
+    assert seen == ["https://www.instagram.com/p/C8xYz12/embed/captioned/"]
     assert r.creator_handle == "delhi.foodtrails"
 
 
