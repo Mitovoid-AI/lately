@@ -70,7 +70,7 @@ def test_card_embedding_text_includes_note_and_likely_queries():
 
 def test_lru_cache_evicts_oldest():
     c = LruCache(maxsize=2)
-    c.put("a", [1.0]); c.put("b", [2.0]); c.put("c", [3.0])  # noqa: E702
+    c.put("a", [1.0]); c.put("b", [2.0]); c.put("c", [3.0])
     assert c.get("a") is None and c.get("c") == [3.0]
 
 
