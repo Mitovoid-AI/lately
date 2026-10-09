@@ -1,0 +1,42 @@
+# Fly.io app for the Lately backend. Copy per environment:
+#   fly launch --no-deploy --copy-config --name lately-api-qa   (qa)
+#   fly launch --no-deploy --copy-config --name lately-api      (prod)
+# Region bom (Mumbai) sits next to the Supabase project (ap-south-1).
+app = "lately-api-qa"
+primary_region = "bom"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  WORKER_CONCURRENCY = "4"
+  CORS_ORIGINS = ""
+
+[processes]
+  api = "uvicorn app.main:app --host 0.0.0.0 --port 8080 --proxy-headers"
+  worker = "python -m app.worker"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["api"]
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "30s"
+    method = "GET"
+    path = "/healthz"
+    timeout = "5s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["api"]
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+  processes = ["worker"]
