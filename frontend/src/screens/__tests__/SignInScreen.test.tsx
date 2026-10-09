@@ -1,5 +1,6 @@
 import { fireEvent, screen } from "@testing-library/react-native";
 
+import { PendingShareContext } from "../../share/ShareRouter";
 import { renderWithProviders } from "../../test/render";
 import { CheckEmailScreen } from "../CheckEmailScreen";
 import { SignInScreen } from "../SignInScreen";
@@ -70,4 +71,19 @@ test("check email: back with no history returns to sign in", async () => {
   await fireEvent.press(screen.getByLabelText("Back"));
   expect(mockRouter.back).not.toHaveBeenCalled();
   expect(mockRouter.replace).toHaveBeenCalledWith("/sign-in");
+});
+
+test("a reel shared before signing in is mentioned", async () => {
+  await renderWithProviders(
+    <PendingShareContext.Provider value="https://www.instagram.com/reel/ABC/">
+      <SignInScreen />
+    </PendingShareContext.Provider>,
+    { auth: { status: "signed-out", mode: "live" } },
+  );
+  expect(screen.getByText("Sign in to finish saving the reel you shared.")).toBeTruthy();
+});
+
+test("no share, no mention", async () => {
+  await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out", mode: "live" } });
+  expect(screen.queryByText("Sign in to finish saving the reel you shared.")).toBeNull();
 });

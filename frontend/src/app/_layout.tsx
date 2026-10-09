@@ -11,9 +11,10 @@ import {
 import { QueryClientProvider } from "@tanstack/react-query";
 import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
+import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { StyleSheet, Text, View } from "react-native";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { Platform, StyleSheet, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useReducedMotion } from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -27,6 +28,7 @@ import { Button } from "../components/Button";
 import { config } from "../config";
 import { createAppQueryClient } from "../lib/queryClient";
 import { colors } from "../theme/tokens";
+import { ShareRouter } from "../share/ShareRouter";
 
 /** Where the query client reports a dead session; AppProviders points it at the current sign-out. */
 const sessionExpired = { handler: () => {} };
@@ -62,6 +64,18 @@ function AppProviders({ children }: { children: ReactNode }) {
         <ToastProvider>{children}</ToastProvider>
       </ApiProvider>
     </QueryClientProvider>
+  );
+}
+
+/** Instagram's share sheet → Lately: hand the shared text to the share router. */
+function ShareIntake({ children }: { children: ReactNode }) {
+  const { hasShareIntent, shareIntent, resetShareIntent } = useShareIntentContext();
+  const incoming = hasShareIntent ? (shareIntent.text ?? shareIntent.webUrl ?? null) : null;
+  const consume = useCallback(() => resetShareIntent(), [resetShareIntent]);
+  return (
+    <ShareRouter incoming={incoming} onConsumed={consume}>
+      {children}
+    </ShareRouter>
   );
 }
 
@@ -128,11 +142,16 @@ export default function RootLayout() {
     <GestureHandlerRootView style={styles.root}>
       <SafeAreaProvider>
         <StatusBar style="dark" />
-        <AuthProvider>
-          <AppProviders>
-            <RootStack />
-          </AppProviders>
-        </AuthProvider>
+        {/* Android only: iOS would need a share extension (disabled in the config plugin). */}
+        <ShareIntentProvider options={{ disabled: Platform.OS !== "android", resetOnBackground: true }}>
+          <AuthProvider>
+            <AppProviders>
+              <ShareIntake>
+                <RootStack />
+              </ShareIntake>
+            </AppProviders>
+          </AuthProvider>
+        </ShareIntentProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

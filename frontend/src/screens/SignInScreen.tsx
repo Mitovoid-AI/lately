@@ -28,6 +28,7 @@ import { useToast } from "../components/Toast";
 import { haptic } from "../lib/haptics";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "../theme/motion";
 import { colors } from "../theme/tokens";
+import { usePendingShare } from "../share/ShareRouter";
 
 const IMG = {
   trail: require("../../assets/stitch/signin-trail.jpg"),
@@ -314,6 +315,7 @@ export function SignInScreen() {
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const signUp = tab === "sign-up";
+  const pendingShare = usePendingShare();
 
   async function choose(provider: Provider) {
     if (auth.mode === "demo") {
@@ -391,6 +393,17 @@ export function SignInScreen() {
               </View>
             </Reveal>
           )}
+
+          {pendingShare ? (
+            <Reveal index={6} style={{ width: "100%" }}>
+              <View className="mt-6 w-full flex-row items-center rounded-2xl border border-hairline bg-card px-4 py-3">
+                <Icon name="ios-share" size={20} color={colors.accent} />
+                <Text className="ml-3 flex-1 font-sans-medium text-body text-ink">
+                  Sign in to finish saving the reel you shared.
+                </Text>
+              </View>
+            </Reveal>
+          ) : null}
 
           <Reveal index={6} style={{ width: "100%" }}>
           <View className="mt-6 w-full gap-3">
