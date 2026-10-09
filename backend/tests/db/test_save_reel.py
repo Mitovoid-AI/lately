@@ -75,7 +75,8 @@ async def test_save_reel_returns_inserted_id_not_latest(db, make_user):
 
 async def test_save_reel_quota_exceeded(db, make_user):
     uid = await make_user()
-    await db.execute("insert into public.profiles (id, saves_free_limit) values ($1, 2)", uid)
+    await db.execute("insert into public.profiles (id, saves_free_limit) values ($1, 2) "
+                     "on conflict (id) do update set saves_free_limit = excluded.saves_free_limit", uid)
     await save(db, uid, reel_url("Q1"))
     await save(db, uid, reel_url("Q2"))
     with pytest.raises(asyncpg.RaiseError, match="QUOTA_EXCEEDED"):
@@ -84,7 +85,8 @@ async def test_save_reel_quota_exceeded(db, make_user):
 
 async def test_save_reel_duplicate_at_quota_returns_deduped(db, make_user):
     uid = await make_user()
-    await db.execute("insert into public.profiles (id, saves_free_limit) values ($1, 1)", uid)
+    await db.execute("insert into public.profiles (id, saves_free_limit) values ($1, 1) "
+                     "on conflict (id) do update set saves_free_limit = excluded.saves_free_limit", uid)
     first = await save(db, uid, URL)
     again = await save(db, uid, URL)
     assert again["deduped"] is True and again["reel_id"] == first["reel_id"]

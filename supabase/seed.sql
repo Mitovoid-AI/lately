@@ -2,8 +2,10 @@
 -- Run after 0001_init.sql. The user id here matches EXPO_PUBLIC_DEV_USER_ID.
 -- Safe to re-run: existing rows are left untouched.
 
+-- profiles.id references auth.users (0005), so only when that auth user exists.
 insert into public.profiles (id, plan)
-values ('00000000-0000-0000-0000-000000000001', 'free')
+select u.id, 'free' from auth.users u
+where u.id = '00000000-0000-0000-0000-000000000001'
 on conflict (id) do nothing;
 
 -- Only seed categories if this user has none yet, so re-running doesn't duplicate.

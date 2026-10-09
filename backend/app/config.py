@@ -22,6 +22,13 @@ class Settings(BaseSettings):
     supabase_service_role_key: str
     supabase_jwt_audience: str = ""
 
+    # Browser origins allowed to call the API (comma-separated). Native apps need none.
+    cors_origins: str = "http://localhost:8081,http://localhost:8082"
+
+    @property
+    def cors_origin_list(self) -> list[str]:
+        return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
     # Catch-path limits (PIPELINE.md §3 step 3: Postgres count, no Redis at v1)
     rate_limit_per_hour: int = 30
 

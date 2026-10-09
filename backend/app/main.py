@@ -10,11 +10,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.exception_handlers import http_exception_handler
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
+from .config import settings
 from .deps import close_pool, init_pool
-from .routers import saves
+from .routers import me, saves
 
 
 @asynccontextmanager
@@ -26,6 +28,17 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(title="Lately API", version="0.1.0", lifespan=lifespan)
 app.include_router(saves.router)
+app.include_router(me.router)
+
+# The web build calls the API from another origin (Expo web on :8081/:8082 in dev).
+# Native apps send no Origin header and are unaffected. Auth is the bearer token,
+# never cookies, so credentials stay off.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings().cors_origin_list,
+    allow_methods=["GET", "POST", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+)
 
 
 @app.exception_handler(StarletteHTTPException)

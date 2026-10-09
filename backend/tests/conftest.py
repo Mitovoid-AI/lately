@@ -11,6 +11,7 @@ called, so the app under test can only ever see the test database.
 
 from __future__ import annotations
 
+import json
 import os
 import time
 import uuid
@@ -93,6 +94,28 @@ def make_user(db: asyncpg.Pool) -> Callable[..., Awaitable[uuid.UUID]]:
         return uid
 
     return _make_user
+
+
+@pytest.fixture
+def make_auth_user(db: asyncpg.Pool) -> Callable[..., Awaitable[uuid.UUID]]:
+    """An auth.users row shaped like the ones Supabase Auth writes on sign-up
+    (metadata from the identity provider, `provider` in app metadata)."""
+
+    async def _make_auth_user(
+        local: str, *, meta: dict[str, Any] | None = None, provider: str = "email"
+    ) -> uuid.UUID:
+        uid = uuid.uuid4()
+        await db.execute(
+            "insert into auth.users (id, email, aud, role, raw_user_meta_data, raw_app_meta_data) "
+            "values ($1, $2, 'authenticated', 'authenticated', $3::jsonb, $4::jsonb)",
+            uid,
+            f"{local}@{TEST_EMAIL_DOMAIN}",
+            json.dumps(meta or {}),
+            json.dumps({"provider": provider, "providers": [provider]}),
+        )
+        return uid
+
+    return _make_auth_user
 
 
 # ---------------------------------------------------------------- API auth --

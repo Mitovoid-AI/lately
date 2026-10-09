@@ -1,6 +1,6 @@
 """Pydantic request/response models for the Part 1 API surface."""
 
-from datetime import datetime
+from datetime import date, datetime
 from uuid import UUID
 
 from pydantic import BaseModel, Field
@@ -34,6 +34,32 @@ class NoteRequest(BaseModel):
     """The follow-up "why?" note (PIPELINE.md §3 step 6). Skippable."""
 
     note: str = Field(min_length=1, max_length=500)
+
+
+class ConnectedAccount(BaseModel):
+    """A sign-in method linked to the account (Supabase Auth identity)."""
+
+    provider: str
+    label: str
+    status: str
+
+
+class MeOut(BaseModel):
+    """GET /me — the app's `Me` contract (frontend/src/api/contract.ts)."""
+
+    id: UUID
+    email: str
+    name: str
+    handle: str
+    avatar_url: str | None = None
+    plan: str
+    saves_this_month: int
+    saves_limit: int
+    resets_on: date
+    total_saves: int
+    stacks_count: int
+    member_since: date
+    connected_accounts: list[ConnectedAccount]
 
 
 class ErrorResponse(BaseModel):

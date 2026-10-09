@@ -61,7 +61,8 @@ async def test_post_saves_accepts_share_link_and_igsh_params(client, make_user, 
 
 async def test_post_saves_429_quota(client, make_user, jwt_for, db):
     uid = await make_user()
-    await db.execute("insert into public.profiles (id, saves_free_limit) values ($1, 1)", uid)
+    await db.execute("insert into public.profiles (id, saves_free_limit) values ($1, 1) "
+                     "on conflict (id) do update set saves_free_limit = excluded.saves_free_limit", uid)
     headers = auth(jwt_for(uid))
     assert (await client.post("/saves", json={"text": reel_url("QA1")}, headers=headers)
             ).status_code == 201
