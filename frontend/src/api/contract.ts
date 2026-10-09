@@ -12,6 +12,16 @@ export type Category =
   | "Style & Vibes"
   | "Watch Later";
 
+/** The six categories the app knows; anything else from the API is treated as none. */
+export const CATEGORIES: readonly Category[] = [
+  "Dev & Tools",
+  "Food & Places",
+  "Career & Jobs",
+  "Fitness",
+  "Style & Vibes",
+  "Watch Later",
+];
+
 export type Channel = "app_share" | "web" | "meta_dm";
 
 export interface Save {
@@ -50,7 +60,7 @@ export interface SaveResult {
 }
 
 export interface ConnectedAccount {
-  provider: "instagram" | "google";
+  provider: "instagram" | "google" | "email";
   label: string;
   status: "active" | "secured";
 }
@@ -149,8 +159,8 @@ export class ApiError extends Error {
 export interface LatelyApi {
   /** POST /saves {text, channel: "app_share"} → 201, or 200 when deduped */
   createSave(text: string): Promise<SaveResult>;
-  /** GET /saves?before=<created_at>&limit=<n> — newest first */
-  listSaves(p?: { before?: string; limit?: number }): Promise<Save[]>;
+  /** GET /saves?before=<created_at>&limit=<n>&category=<name> — newest first */
+  listSaves(p?: { before?: string; limit?: number; category?: Category }): Promise<Save[]>;
   /** GET /saves/{id} */
   getSave(id: string): Promise<SaveDetail>;
   /** PATCH /saves/{id} {note} */

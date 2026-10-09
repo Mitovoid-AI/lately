@@ -159,8 +159,9 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
       const before = p.before ? Date.parse(p.before) : Infinity;
       return sorted()
         .filter((s) => Date.parse(s.created_at) < before)
-        .slice(0, limit)
-        .map((s) => toSave(present(s)));
+        .map((s) => toSave(present(s)))
+        .filter((s) => !p.category || s.category === p.category)
+        .slice(0, limit);
     },
 
     async getSave(id) {

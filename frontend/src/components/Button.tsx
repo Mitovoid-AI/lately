@@ -1,7 +1,11 @@
-import { ActivityIndicator, Pressable, Text, View } from "react-native";
+import { useState } from "react";
+import { ActivityIndicator, Text, View } from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 
+import type { HapticKind } from "../lib/haptics";
 import { colors } from "../theme/tokens";
 import { Icon, type IconName } from "./Icon";
+import { PressableScale } from "./motion/PressableScale";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
@@ -23,6 +27,16 @@ const ICON_COLOR: Record<Variant, string> = {
   ghost: colors.ink2,
   danger: colors.danger,
 };
+/** The tone each variant deepens to while pressed. */
+const PRESSED: Record<Variant, string> = {
+  primary: colors.accentPressed,
+  secondary: colors.raised,
+  ghost: colors.raised,
+  danger: "#F9CFCD",
+};
+
+// Label ↔ spinner swap: a quick dissolve instead of a hard cut.
+const SWAP_IN = FadeIn.duration(150);
 
 export function Button({
   title,
@@ -31,6 +45,8 @@ export function Button({
   icon,
   disabled = false,
   loading = false,
+  size = "md",
+  haptic,
   className = "",
 }: {
   title: string;
@@ -39,31 +55,48 @@ export function Button({
   icon?: IconName;
   disabled?: boolean;
   loading?: boolean;
+  size?: "md" | "lg";
+  haptic?: HapticKind;
+  /** Layout classes (margins, width, flex). */
   className?: string;
 }) {
   const inactive = disabled || loading;
+  // Dissolve only when loading flips, never on the button's first appearance.
+  const [prevLoading, setPrevLoading] = useState(loading);
+  const [swapped, setSwapped] = useState(false);
+  if (prevLoading !== loading) {
+    setPrevLoading(loading);
+    setSwapped(true);
+  }
+  const entering = swapped ? SWAP_IN : undefined;
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="button"
-      accessibilityState={{ disabled: inactive }}
+      accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
       onPress={onPress}
-      className={`h-12 flex-row items-center justify-center rounded-ctl px-4 ${BOX[variant]} ${
-        inactive ? "opacity-50" : "active:opacity-80"
-      } ${className}`}
+      haptic={haptic}
+      dimmed={disabled && !loading}
+      highlightColor={PRESSED[variant]}
+      containerClassName={className}
+      className={`${size === "lg" ? "h-14" : "h-12"} flex-row items-center justify-center rounded-ctl px-4 ${BOX[variant]}`}
     >
       {loading ? (
-        <ActivityIndicator color={ICON_COLOR[variant]} />
+        <Animated.View key="busy" entering={entering}>
+          <ActivityIndicator color={ICON_COLOR[variant]} />
+        </Animated.View>
       ) : (
-        <View className="flex-row items-center">
-          {icon ? (
-            <View className="mr-2">
-              <Icon name={icon} size={20} color={ICON_COLOR[variant]} />
-            </View>
-          ) : null}
-          <Text className={`font-sans-semibold text-body ${LABEL[variant]}`}>{title}</Text>
-        </View>
+        <Animated.View key="label" entering={entering}>
+          <View className="flex-row items-center">
+            {icon ? (
+              <View className="mr-2">
+                <Icon name={icon} size={20} color={ICON_COLOR[variant]} />
+              </View>
+            ) : null}
+            <Text className={`font-sans-semibold text-body ${LABEL[variant]}`}>{title}</Text>
+          </View>
+        </Animated.View>
       )}
-    </Pressable>
+    </PressableScale>
   );
 }

@@ -4,10 +4,14 @@ import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 import { demoApi, renderWithProviders } from "../../test/render";
 import { AccountScreen } from "../AccountScreen";
 
-const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => true };
+let mockCanGoBack = true;
+const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => mockCanGoBack };
 jest.mock("expo-router", () => ({ useRouter: () => mockRouter }));
 
-beforeEach(() => jest.clearAllMocks());
+beforeEach(() => {
+  jest.clearAllMocks();
+  mockCanGoBack = true;
+});
 
 /** Let preference mutations finish so their cache updates happen inside the test. */
 const settled = (client: QueryClient) => waitFor(() => expect(client.isMutating()).toBe(0));
@@ -68,4 +72,12 @@ test("log out and back", async () => {
   expect(auth.signOut).toHaveBeenCalled();
   await fireEvent.press(screen.getByLabelText("Back"));
   expect(mockRouter.back).toHaveBeenCalled();
+});
+
+test("back with no history goes to the Library", async () => {
+  mockCanGoBack = false;
+  await open();
+  await fireEvent.press(screen.getByLabelText("Back"));
+  expect(mockRouter.back).not.toHaveBeenCalled();
+  expect(mockRouter.replace).toHaveBeenCalledWith("/");
 });

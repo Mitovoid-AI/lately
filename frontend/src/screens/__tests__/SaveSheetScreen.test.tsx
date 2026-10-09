@@ -139,3 +139,27 @@ test("closing with nothing to go back to opens the Library", async () => {
   expect(mockRouter.back).not.toHaveBeenCalled();
   expect(mockRouter.replace).toHaveBeenCalledWith("/");
 });
+
+test("a failed note save says so and keeps the sheet open", async () => {
+  mockParams = { text: link("NEW123") };
+  const api = { ...demoApi(), setNote: jest.fn(async () => Promise.reject(new ApiError("NETWORK", 0))) };
+  await renderWithProviders(<SaveSheetScreen />, { api });
+  await screen.findByText("Saved to Lately");
+  await fireEvent.changeText(screen.getByPlaceholderText("e.g. cafe to try in June"), "for june");
+  await fireEvent.press(screen.getByText("Save note"));
+  expect(await screen.findByText("Couldn't save your note. Try again.")).toBeTruthy();
+  expect(mockRouter.back).not.toHaveBeenCalled();
+});
+
+test("a double tap on Save note sends one request", async () => {
+  mockParams = { text: link("NEW123") };
+  const api = demoApi();
+  const setNote = jest.spyOn(api, "setNote");
+  await renderWithProviders(<SaveSheetScreen />, { api });
+  await screen.findByText("Saved to Lately");
+  await fireEvent.changeText(screen.getByPlaceholderText("e.g. cafe to try in June"), "for june");
+  const button = screen.getByText("Save note");
+  await fireEvent.press(button);
+  await fireEvent.press(button);
+  expect(setNote).toHaveBeenCalledTimes(1);
+});

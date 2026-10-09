@@ -4,7 +4,8 @@ import { renderWithProviders } from "../../test/render";
 import { CheckEmailScreen } from "../CheckEmailScreen";
 import { SignInScreen } from "../SignInScreen";
 
-const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn() };
+let mockCanGoBack = true;
+const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => mockCanGoBack };
 let mockParams: Record<string, string> = {};
 jest.mock("expo-router", () => ({
   useRouter: () => mockRouter,
@@ -14,6 +15,7 @@ jest.mock("expo-router", () => ({
 beforeEach(() => {
   jest.clearAllMocks();
   mockParams = {};
+  mockCanGoBack = true;
 });
 
 test("shows the sign-in options and switches to sign up", async () => {
@@ -59,4 +61,13 @@ test("check email: Verify needs six digits", async () => {
   await fireEvent.changeText(screen.getByPlaceholderText("000000"), "123456");
   await fireEvent.press(screen.getByText("Verify"));
   expect(auth.verifyCode).toHaveBeenCalledWith("me@x.com", "123456");
+});
+
+test("check email: back with no history returns to sign in", async () => {
+  mockCanGoBack = false;
+  mockParams = { email: "me@x.com" };
+  await renderWithProviders(<CheckEmailScreen />, { auth: { status: "signed-out", mode: "live" } });
+  await fireEvent.press(screen.getByLabelText("Back"));
+  expect(mockRouter.back).not.toHaveBeenCalled();
+  expect(mockRouter.replace).toHaveBeenCalledWith("/sign-in");
 });

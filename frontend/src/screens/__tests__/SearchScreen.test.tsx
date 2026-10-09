@@ -5,7 +5,8 @@ import { NOW } from "../../test/fixtures";
 import { renderWithProviders } from "../../test/render";
 import { SearchScreen } from "../SearchScreen";
 
-const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => true };
+let mockCanGoBack = true;
+const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => mockCanGoBack };
 let mockParams: Record<string, string> = {};
 jest.mock("expo-router", () => ({
   useRouter: () => mockRouter,
@@ -17,6 +18,7 @@ const MOMO = "Hole-in-the-wall momo spot in Koramangala";
 beforeEach(async () => {
   jest.clearAllMocks();
   mockParams = {};
+  mockCanGoBack = true;
   await AsyncStorage.clear();
   jest.useFakeTimers({ now: NOW, advanceTimers: true });
 });
@@ -81,4 +83,12 @@ test("a q param runs on open", async () => {
   });
   expect(await screen.findByText(MOMO)).toBeTruthy();
   expect(screen.getByDisplayValue("cafe")).toBeTruthy();
+});
+
+test("back with no history goes to the Library", async () => {
+  mockCanGoBack = false;
+  await renderWithProviders(<SearchScreen />);
+  await fireEvent.press(screen.getByLabelText("Back"));
+  expect(mockRouter.back).not.toHaveBeenCalled();
+  expect(mockRouter.replace).toHaveBeenCalledWith("/");
 });

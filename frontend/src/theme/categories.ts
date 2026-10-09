@@ -11,4 +11,4 @@ export const CATEGORY: Record<Category, { color: string; icon: IconName }> = {
   "Watch Later": { color: "#6B655D", icon: "schedule" },
 };
 
-export const CATEGORY_ORDER = Object.keys(CATEGORY) as Category[];
+export { CATEGORIES as CATEGORY_ORDER } from "../api/contract";

@@ -1,8 +1,9 @@
-import { Linking, Pressable, Text, View } from "react-native";
+import { Linking, Text, View } from "react-native";
 
 import type { Place } from "../../api/contract";
 import { colors } from "../../theme/tokens";
 import { Icon } from "../Icon";
+import { PressableScale } from "../motion/PressableScale";
 
 export function mapsUrl(place: Place): string {
   return (
@@ -21,13 +22,14 @@ export function PlaceCard({ place }: { place: Place }) {
         <Text className="font-sans-semibold text-body text-ink">{place.name}</Text>
         <Text className="font-sans text-meta text-ink-2">{place.address}</Text>
       </View>
-      <Pressable
+      <PressableScale
         accessibilityRole="link"
         onPress={() => Linking.openURL(mapsUrl(place))}
-        className="h-10 items-center justify-center rounded-ctl border border-accent px-3 active:bg-raised"
+        highlightColor={colors.raised}
+        className="h-10 items-center justify-center rounded-ctl border border-accent px-3"
       >
         <Text className="font-sans-semibold text-meta text-accent">Open in Maps</Text>
-      </Pressable>
+      </PressableScale>
     </View>
   );
 }

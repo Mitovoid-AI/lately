@@ -13,7 +13,9 @@ import { useFonts } from "expo-font";
 import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { View } from "react-native";
+import { StyleSheet, View } from "react-native";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { useReducedMotion } from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { createDemoApi } from "../api/demo";
@@ -59,15 +61,24 @@ function AppProviders({ children }: { children: ReactNode }) {
 
 function RootStack() {
   const { status } = useAuth();
+  // Navigation keeps the platform's own transitions (and the iOS back swipe); with Reduce
+  // Motion every push becomes a cross-fade.
+  const reduced = useReducedMotion();
   if (status === "loading") return <View className="flex-1 bg-canvas" />;
   const signedIn = status === "signed-in";
   return (
-    <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: colors.canvas } }}>
+    <Stack
+      screenOptions={{
+        headerShown: false,
+        contentStyle: { backgroundColor: colors.canvas },
+        animation: reduced ? "fade" : "default",
+      }}
+    >
       <Stack.Protected guard={signedIn}>
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="reel/[id]" />
         <Stack.Screen name="stack/[id]" />
-        <Stack.Screen name="search" options={{ animation: "fade" }} />
+        <Stack.Screen name="search" options={{ animation: "fade", animationDuration: 220 }} />
         <Stack.Screen name="account" />
         <Stack.Screen
           name="save-sheet"
@@ -77,6 +88,8 @@ function RootStack() {
       <Stack.Protected guard={!signedIn}>
         <Stack.Screen name="(auth)" />
       </Stack.Protected>
+      {/* Email links and Google sign-in land here whether or not a session exists yet. */}
+      <Stack.Screen name="auth-callback" options={{ animation: "fade" }} />
     </Stack>
   );
 }
@@ -95,13 +108,17 @@ export default function RootLayout() {
   });
   if (!loaded) return null;
   return (
-    <SafeAreaProvider>
-      <StatusBar style="dark" />
-      <AuthProvider>
-        <AppProviders>
-          <RootStack />
-        </AppProviders>
-      </AuthProvider>
-    </SafeAreaProvider>
+    <GestureHandlerRootView style={styles.root}>
+      <SafeAreaProvider>
+        <StatusBar style="dark" />
+        <AuthProvider>
+          <AppProviders>
+            <RootStack />
+          </AppProviders>
+        </AuthProvider>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
+
+const styles = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.canvas } });

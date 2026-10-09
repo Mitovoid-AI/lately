@@ -106,3 +106,15 @@ test("toSave fills fields today's backend does not send", () => {
   expect(s.thumbnail_url).toBeNull();
   expect(s.channel).toBe("app_share");
 });
+
+test("toSave drops categories the app does not know", () => {
+  const base = { id: "r1", source_url: "u", status: "enriched", note: null, created_at: "2026-10-04T00:00:00Z" };
+  expect(toSave({ ...base, category: "Travel" }).category).toBeNull();
+  expect(toSave({ ...base, category: "Fitness" }).category).toBe("Fitness");
+});
+
+test("listSaves passes a category filter", async () => {
+  const f = fakeFetch({ status: 200, body: [] });
+  await setup(f).api.listSaves({ category: "Food & Places", limit: 25 });
+  expect(f.mock.calls[0][0]).toBe("http://api.test/saves?limit=25&category=Food%20%26%20Places");
+});

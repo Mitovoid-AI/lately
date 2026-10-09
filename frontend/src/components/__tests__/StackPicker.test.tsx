@@ -26,3 +26,13 @@ test("a new stack can be made from the picker", async () => {
   await waitFor(() => expect(addToStack).toHaveBeenCalledWith(expect.stringMatching(/^st-/), "s-github"));
   expect(await screen.findByText("Added to Weekend")).toBeTruthy();
 });
+
+test("a double tap adds once", async () => {
+  const api = demoApi();
+  const addToStack = jest.spyOn(api, "addToStack");
+  await renderWithProviders(<StackPicker visible saveId="s-github" onClose={() => {}} />, { api });
+  const row = await screen.findByText("Cafes to try");
+  await fireEvent.press(row);
+  await fireEvent.press(row);
+  await waitFor(() => expect(addToStack).toHaveBeenCalledTimes(1));
+});

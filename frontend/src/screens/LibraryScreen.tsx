@@ -1,16 +1,29 @@
 import { useRouter } from "expo-router";
-import { useMemo, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, ScrollView, Text, useWindowDimensions, View } from "react-native";
+import { useCallback, useMemo, useState } from "react";
+import { Platform, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import Animated, {
+  useAnimatedReaction,
+  useAnimatedScrollHandler,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { scheduleOnRN } from "react-native-worklets";
 
-import type { Category } from "../api/contract";
+import type { Category, Save } from "../api/contract";
 import { Button } from "../components/Button";
 import { Chip } from "../components/Chip";
 import { Header } from "../components/Header";
 import { Icon, type IconName } from "../components/Icon";
+import { PressableScale } from "../components/motion/PressableScale";
+import { PopIn, Reveal, useEntranceWindow } from "../components/motion/Reveal";
 import { ReelCard } from "../components/ReelCard";
+import { SkeletonGrid } from "../components/Skeleton";
 import { useNow } from "../hooks/useNow";
 import { useMe, useSaves } from "../hooks/useSaves";
+import { haptic } from "../lib/haptics";
+import { DURATION, EASE_OUT } from "../theme/motion";
 import { CATEGORY, CATEGORY_ORDER } from "../theme/categories";
 import { colors } from "../theme/tokens";
 
@@ -20,15 +33,17 @@ const SIDE = 16;
 
 function SearchField({ onPress }: { onPress: () => void }) {
   return (
-    <Pressable
+    <PressableScale
       accessibilityRole="search"
       onPress={onPress}
+      scaleTo={0.985}
+      highlightColor={colors.raised}
       className="h-12 flex-row items-center rounded-xl border border-hairline bg-card px-3"
     >
       <Icon name="search" size={22} color={colors.ink2} />
       <Text className="ml-2 flex-1 font-sans text-body text-ink-2">Search what you remember...</Text>
       <Icon name="mic" size={22} color={colors.ink3} />
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -40,22 +55,28 @@ function EmptyState({ onPaste }: { onPaste: () => void }) {
   ];
   return (
     <View className="items-center px-6 pt-12">
-      <Text className="text-center font-display text-display-lg text-ink">Your Lately is empty — for now</Text>
-      <Text className="mt-2 text-center font-sans text-body text-ink-2">
-        Save a reel from Instagram and it shows up here.
-      </Text>
+      <Reveal index={0}>
+        <Text className="text-center font-display text-display-lg text-ink">Your Lately is empty — for now</Text>
+        <Text className="mt-2 text-center font-sans text-body text-ink-2">
+          Save a reel from Instagram and it shows up here.
+        </Text>
+      </Reveal>
       <View className="mt-8 w-full max-w-[340px] gap-3">
         {steps.map((s, i) => (
-          <View key={s.text} className="flex-row items-center rounded-2xl border border-hairline bg-card p-4">
-            <View className="h-9 w-9 items-center justify-center rounded-full bg-raised">
-              <Text className="font-sans-semibold text-body text-accent">{i + 1}</Text>
+          <Reveal key={s.text} index={i + 1}>
+            <View className="flex-row items-center rounded-2xl border border-hairline bg-card p-4">
+              <View className="h-9 w-9 items-center justify-center rounded-full bg-raised">
+                <Text className="font-sans-semibold text-body text-accent">{i + 1}</Text>
+              </View>
+              <Text className="ml-3 flex-1 font-sans-medium text-body text-ink">{s.text}</Text>
+              <Icon name={s.icon} size={22} color={colors.ink3} />
             </View>
-            <Text className="ml-3 flex-1 font-sans-medium text-body text-ink">{s.text}</Text>
-            <Icon name={s.icon} size={22} color={colors.ink3} />
-          </View>
+          </Reveal>
         ))}
       </View>
-      <Button title="Paste a link instead" variant="secondary" icon="link" onPress={onPaste} className="mt-8 w-full max-w-[340px]" />
+      <Reveal index={4} style={{ width: "100%", maxWidth: 340 }}>
+        <Button title="Paste a link instead" variant="secondary" icon="link" onPress={onPaste} className="mt-8" />
+      </Reveal>
     </View>
   );
 }
@@ -74,13 +95,61 @@ export function LibraryScreen() {
     [saves],
   );
   const active = filter !== "All" && !categories.includes(filter) ? "All" : filter;
-  const shown = active === "All" ? saves : saves.filter((s) => s.status !== "pending" && s.category === active);
+  const shown = useMemo(
+    () => (active === "All" ? saves : saves.filter((s) => s.status !== "pending" && s.category === active)),
+    [saves, active],
+  );
 
   const columns = width >= 1024 ? 4 : width >= 768 ? 3 : 2;
   const inner = Math.min(width, MAX_WIDTH) - SIDE * 2;
   const itemWidth = (inner - GAP * (columns - 1)) / columns;
   const empty = !isLoading && saves.length === 0;
-  const paste = () => router.push("/save-sheet");
+  const paste = useCallback(() => router.push("/save-sheet"), [router]);
+
+  // Cards stagger in when content arrives and again for each new filter; cards mounted later
+  // by scrolling simply appear, so the list never flickers.
+  const entrance = useEntranceWindow(active, !isLoading);
+
+  // Scroll drives the header hairline and tucks the paste button away while reading down.
+  const scrollY = useSharedValue(0);
+  const lastY = useSharedValue(0);
+  const fabAway = useSharedValue(0);
+  const fabTarget = useSharedValue(0);
+  const [fabTouchable, setFabTouchable] = useState(true);
+  const onScroll = useAnimatedScrollHandler({
+    onScroll: (e) => {
+      const y = e.contentOffset.y;
+      const dy = y - lastY.get();
+      lastY.set(y);
+      scrollY.set(y);
+      const next = y < 80 ? 0 : dy > 6 ? 1 : dy < -6 ? 0 : fabTarget.get();
+      if (next !== fabTarget.get()) {
+        fabTarget.set(next);
+        fabAway.set(withTiming(next, { duration: DURATION.state + 40, easing: EASE_OUT }));
+      }
+    },
+  });
+  useAnimatedReaction(
+    () => fabTarget.get(),
+    (target, prev) => {
+      if (prev !== null && target !== prev) scheduleOnRN(setFabTouchable, target === 0);
+    },
+  );
+  const fabStyle = useAnimatedStyle(() => ({
+    opacity: 1 - fabAway.get(),
+    transform: [{ translateY: 16 * fabAway.get() }, { scale: 1 - 0.08 * fabAway.get() }],
+  }));
+
+  const pick = useCallback((c: Category | "All") => setFilter(c), []);
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: Save; index: number }) => (
+      <Reveal index={index} enabled={entrance} style={{ width: itemWidth }}>
+        <ReelCard save={item} now={now} href={`/reel/${item.id}`} />
+      </Reveal>
+    ),
+    [entrance, itemWidth, now],
+  );
 
   const listHeader = (
     <View className="w-full self-center" style={{ maxWidth: MAX_WIDTH }}>
@@ -90,10 +159,22 @@ export function LibraryScreen() {
       {empty ? null : (
         <>
           {categories.length > 0 ? (
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingHorizontal: SIDE, gap: 8 }} className="mt-3">
-              <Chip label="All" active={active === "All"} onPress={() => setFilter("All")} />
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              contentContainerStyle={{ paddingHorizontal: SIDE, gap: 8 }}
+              className="mt-3"
+            >
+              <Chip label="All" active={active === "All"} haptic="selection" onPress={() => pick("All")} />
               {categories.map((c) => (
-                <Chip key={c} label={c} dotColor={CATEGORY[c].color} active={active === c} onPress={() => setFilter(c)} />
+                <Chip
+                  key={c}
+                  label={c}
+                  dotColor={CATEGORY[c].color}
+                  active={active === c}
+                  haptic="selection"
+                  onPress={() => pick(c)}
+                />
               ))}
             </ScrollView>
           ) : null}
@@ -113,42 +194,74 @@ export function LibraryScreen() {
         initial={me?.name?.[0]}
         onAvatar={() => router.push("/account")}
         onBookmark={() => router.push("/stacks")}
+        scrollY={scrollY}
       />
-      <FlatList
+      <Animated.FlatList
         key={`grid-${columns}`}
         data={empty ? [] : shown}
-        keyExtractor={(s) => s.id}
+        keyExtractor={(s: Save) => `${active}:${s.id}`}
         numColumns={columns}
         columnWrapperStyle={{ gap: GAP, paddingHorizontal: SIDE, alignSelf: "center", width: "100%", maxWidth: MAX_WIDTH }}
         contentContainerStyle={{ paddingBottom: 120, gap: 20 }}
         ListHeaderComponent={listHeader}
         ListEmptyComponent={
           isLoading ? (
-            <ActivityIndicator className="mt-12" color={colors.accent} />
+            <SkeletonGrid columns={columns} itemWidth={itemWidth} />
           ) : empty ? (
             <EmptyState onPaste={paste} />
           ) : null
         }
-        renderItem={({ item }) => (
-          <View style={{ width: itemWidth }}>
-            <ReelCard save={item} now={now} onPress={() => router.push(`/reel/${item.id}`)} />
-          </View>
-        )}
+        renderItem={renderItem}
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        initialNumToRender={6}
+        maxToRenderPerBatch={6}
+        windowSize={9}
+        removeClippedSubviews={Platform.OS === "android"}
         onEndReached={fetchNextPage}
         onEndReachedThreshold={0.5}
-        refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor={colors.accent} />}
+        refreshControl={
+          <RefreshControl
+            refreshing={isRefetching}
+            onRefresh={() => {
+              haptic.light();
+              refetch();
+            }}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+            progressBackgroundColor={colors.card}
+          />
+        }
       />
       {empty ? null : (
-        <Pressable
-          accessibilityRole="button"
-          onPress={paste}
-          className="absolute bottom-4 right-4 h-12 flex-row items-center rounded-full bg-accent pl-3.5 pr-4 active:opacity-90"
-          style={{ shadowColor: colors.accent, shadowOpacity: 0.3, shadowRadius: 16, shadowOffset: { width: 0, height: 4 } }}
-        >
-          <Icon name="add" size={22} color={colors.onAccent} />
-          <Text className="ml-1.5 font-sans-semibold text-meta text-on-accent">Paste link</Text>
-        </Pressable>
+        <Animated.View style={[styles.fab, { pointerEvents: fabTouchable ? "auto" : "none" }, fabStyle]}>
+          <PopIn delay={240}>
+          <PressableScale
+            accessibilityRole="button"
+            onPress={paste}
+            haptic="light"
+            scaleTo={0.94}
+            highlightColor={colors.accentPressed}
+            className="h-12 flex-row items-center rounded-full bg-accent pl-3.5 pr-4"
+            containerStyle={styles.fabShadow}
+          >
+            <Icon name="add" size={22} color={colors.onAccent} />
+            <Text className="ml-1.5 font-sans-semibold text-meta text-on-accent">Paste link</Text>
+          </PressableScale>
+          </PopIn>
+        </Animated.View>
       )}
     </View>
   );
 }
+
+const styles = StyleSheet.create({
+  fab: { position: "absolute", right: 16, bottom: 16 },
+  fabShadow: {
+    borderRadius: 999,
+    shadowColor: colors.accent,
+    shadowOpacity: 0.3,
+    shadowRadius: 16,
+    shadowOffset: { width: 0, height: 4 },
+  },
+});

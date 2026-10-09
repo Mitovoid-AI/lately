@@ -1,11 +1,15 @@
 import { fireEvent, screen } from "@testing-library/react-native";
 
 import { NOW } from "../../test/fixtures";
-import { renderWithProviders } from "../../test/render";
+import { demoApi, renderWithProviders } from "../../test/render";
 import { CuratedScreen } from "../CuratedScreen";
 
 const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => true };
-jest.mock("expo-router", () => ({ useRouter: () => mockRouter }));
+jest.mock("expo-router", () => ({
+  useRouter: () => mockRouter,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  Link: require("../../test/expoRouterMock").mockLink(() => mockRouter),
+}));
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -31,4 +35,11 @@ test("See all searches the hero's topic; cards open", async () => {
   expect(mockRouter.push).toHaveBeenCalledWith("/search?q=cafe");
   await fireEvent.press(screen.getByText("Drip coffee at home: the 3-minute recipe"));
   expect(mockRouter.push).toHaveBeenCalledWith("/reel/s-drip");
+});
+
+test("a failed curated load shows an error with retry", async () => {
+  const api = { ...demoApi(), getCurated: async () => Promise.reject(new Error("down")) };
+  await renderWithProviders(<CuratedScreen />, { api });
+  expect(await screen.findByText("Couldn't load your picks")).toBeTruthy();
+  expect(screen.getByText("Try again")).toBeTruthy();
 });

@@ -1,50 +1,72 @@
 import { useQuery } from "@tanstack/react-query";
-import { useRouter } from "expo-router";
-import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
+import { Link, useRouter } from "expo-router";
+import { RefreshControl, ScrollView, Text, View } from "react-native";
+import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { CuratedSection, Save } from "../api/contract";
 import { useApi } from "../api/index";
 import { Header } from "../components/Header";
-import { ReelCard, cardTitle } from "../components/ReelCard";
+import { PressableScale } from "../components/motion/PressableScale";
+import { Reveal } from "../components/motion/Reveal";
+import { ReelCard, ZoomLink, cardTitle } from "../components/ReelCard";
+import { Skeleton, SkeletonGroup, SkeletonRow } from "../components/Skeleton";
 import { Thumb } from "../components/Thumb";
 import { useNow } from "../hooks/useNow";
 import { useMe } from "../hooks/useSaves";
 import { relativeShort } from "../lib/dates";
+import { haptic } from "../lib/haptics";
 import { colors } from "../theme/tokens";
 
-function ListRow({ save, now, onPress }: { save: Save; now: number; onPress: () => void }) {
+function ListRow({ save, now }: { save: Save; now: number }) {
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} className="flex-row items-center py-3 active:opacity-80">
-      <View style={{ width: 64 }}>
-        <Thumb uri={save.status === "enriched" ? save.thumbnail_url : null} aspect={64 / 80} radius={10} />
-      </View>
-      <View className="ml-3 flex-1">
-        <Text numberOfLines={2} className="font-sans-semibold text-title text-ink">
-          {cardTitle(save)}
-        </Text>
-        {save.note ? (
-          <Text numberOfLines={1} className="mt-1 font-sans-italic text-meta text-ink-2">{`“${save.note}”`}</Text>
-        ) : null}
-      </View>
-      <Text className="ml-3 font-sans text-meta text-ink-3">{relativeShort(save.created_at, now)}</Text>
-    </Pressable>
+    <ZoomLink href={`/reel/${save.id}`}>
+      <PressableScale
+        accessibilityRole="button"
+        scaleTo={1}
+        highlightColor={colors.raised}
+        className="-mx-2 flex-row items-center rounded-xl px-2 py-3"
+      >
+        <View style={{ width: 64 }}>
+          <Link.AppleZoom>
+            <Thumb uri={save.status === "enriched" ? save.thumbnail_url : null} aspect={64 / 80} radius={10} />
+          </Link.AppleZoom>
+        </View>
+        <View className="ml-3 flex-1">
+          <Text numberOfLines={2} className="font-sans-semibold text-title text-ink">
+            {cardTitle(save)}
+          </Text>
+          {save.note ? (
+            <Text numberOfLines={1} className="mt-1 font-sans-italic text-meta text-ink-2">{`“${save.note}”`}</Text>
+          ) : null}
+        </View>
+        <Text className="ml-3 font-sans text-meta text-ink-3">{relativeShort(save.created_at, now)}</Text>
+      </PressableScale>
+    </ZoomLink>
   );
 }
 
-function Section({ section, now, open }: { section: CuratedSection; now: number; open: (id: string) => void }) {
+function Section({ section, now, index }: { section: CuratedSection; now: number; index: number }) {
   if (section.saves.length === 0) return null;
   return (
-    <View className="mt-8">
+    <Reveal index={index} style={{ marginTop: 32 }}>
       <Text className="px-4 font-display text-ink" style={{ fontSize: 20, lineHeight: 26 }}>
         {section.title}
       </Text>
       {section.subtitle ? <Text className="mt-0.5 px-4 font-sans text-meta text-ink-2">{section.subtitle}</Text> : null}
       {section.kind === "row" ? (
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3" contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          decelerationRate="fast"
+          snapToInterval={162}
+          snapToAlignment="start"
+          className="mt-3"
+          contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
+        >
           {section.saves.map((s) => (
             <View key={s.id} style={{ width: 150 }}>
-              <ReelCard save={s} now={now} onPress={() => open(s.id)} />
+              <ReelCard save={s} now={now} href={`/reel/${s.id}`} />
             </View>
           ))}
         </ScrollView>
@@ -52,12 +74,12 @@ function Section({ section, now, open }: { section: CuratedSection; now: number;
         <View className="mt-1 px-4">
           {section.saves.map((s, i) => (
             <View key={s.id} className={i > 0 ? "border-t border-hairline" : ""}>
-              <ListRow save={s} now={now} onPress={() => open(s.id)} />
+              <ListRow save={s} now={now} />
             </View>
           ))}
         </View>
       )}
-    </View>
+    </Reveal>
   );
 }
 
@@ -69,8 +91,9 @@ export function CuratedScreen() {
   const now = useNow();
   const me = useMe().data;
   const feed = useQuery({ queryKey: ["curated"], queryFn: () => api.getCurated() });
-  const open = (id: string) => router.push(`/reel/${id}`);
   const hero = feed.data?.hero;
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler({ onScroll: (e) => scrollY.set(e.contentOffset.y) });
 
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
@@ -79,45 +102,81 @@ export function CuratedScreen() {
         initial={me?.name?.[0]}
         onAvatar={() => router.push("/account")}
         onBookmark={() => router.push("/stacks")}
+        scrollY={scrollY}
       />
-      <ScrollView contentContainerStyle={{ paddingBottom: 48 }}>
+      <Animated.ScrollView
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        contentContainerStyle={{ paddingBottom: 48 }}
+        refreshControl={
+          <RefreshControl
+            refreshing={feed.isRefetching}
+            onRefresh={() => {
+              haptic.light();
+              feed.refetch();
+            }}
+            tintColor={colors.accent}
+            colors={[colors.accent]}
+            progressBackgroundColor={colors.card}
+          />
+        }
+      >
         <View className="w-full max-w-[720px] self-center">
           <View className="px-4 pt-5">
             <Text className="font-display-regular text-ink" style={{ fontSize: 32, lineHeight: 38 }}>
               Curated for you
             </Text>
             {feed.data ? (
-              <Text className="mt-1 font-sans text-body text-ink-2">{`${feed.data.date_label} · picked from your saves`}</Text>
+              <Reveal>
+                <Text className="mt-1 font-sans text-body text-ink-2">{`${feed.data.date_label} · picked from your saves`}</Text>
+              </Reveal>
             ) : null}
           </View>
 
-          {feed.isLoading ? <ActivityIndicator className="mt-12" color={colors.accent} /> : null}
+          {feed.isLoading ? (
+            <SkeletonGroup style={{ paddingHorizontal: 16, marginTop: 24 }}>
+              <Skeleton style={{ height: 12, width: 110, borderRadius: 6 }} />
+              <Skeleton style={{ marginTop: 12, aspectRatio: 16 / 11, borderRadius: 14 }} />
+              <Skeleton style={{ marginTop: 12, height: 22, width: "70%", borderRadius: 8 }} />
+              <Skeleton style={{ marginTop: 8, height: 12, width: "45%", borderRadius: 6 }} />
+              <View className="mt-8">
+                <SkeletonRow />
+                <SkeletonRow />
+              </View>
+            </SkeletonGroup>
+          ) : null}
 
           {hero && hero.save_ids.length > 0 ? (
-            <View className="mt-6 px-4">
+            <Reveal index={1} style={{ marginTop: 24, paddingHorizontal: 16 }}>
               <Text className="font-sans-semibold text-label text-ink-2">{hero.label}</Text>
-              <Pressable accessibilityRole="button" onPress={() => open(hero.save_ids[0])} className="mt-3 active:opacity-90">
-                <Thumb uri={hero.image_url} aspect={16 / 11} className="border border-hairline" />
-              </Pressable>
+              <ZoomLink href={`/reel/${hero.save_ids[0]}`}>
+                <PressableScale accessibilityRole="button" scaleTo={0.98} containerClassName="mt-3">
+                  <Link.AppleZoom>
+                    <Thumb uri={hero.image_url} aspect={16 / 11} className="border border-hairline" />
+                  </Link.AppleZoom>
+                </PressableScale>
+              </ZoomLink>
               <Text className="mt-3 font-display text-ink" style={{ fontSize: 22, lineHeight: 28 }}>
                 {hero.title}
               </Text>
               <Text className="mt-1 font-sans text-meta text-ink-2">{hero.subtitle}</Text>
-              <Pressable
+              <PressableScale
                 accessibilityRole="button"
                 onPress={() => router.push(`/search?q=${encodeURIComponent(hero.query)}`)}
-                className="mt-2 h-10 justify-center self-start"
+                scaleTo={0.96}
+                containerClassName="mt-2 self-start"
+                className="h-10 justify-center"
               >
                 <Text className="font-sans-semibold text-body text-accent">{`See all ${hero.save_ids.length}`}</Text>
-              </Pressable>
-            </View>
+              </PressableScale>
+            </Reveal>
           ) : null}
 
-          {(feed.data?.sections ?? []).map((s) => (
-            <Section key={s.title} section={s} now={now} open={open} />
+          {(feed.data?.sections ?? []).map((s, i) => (
+            <Section key={s.title} section={s} now={now} index={i + 2} />
           ))}
         </View>
-      </ScrollView>
+      </Animated.ScrollView>
     </View>
   );
 }

@@ -7,7 +7,7 @@ import type { Endpoint, LatelyApi } from "./contract";
  * backend; everything else is still answered by demo data. When the backend
  * ships an endpoint from the contract, add it here.
  */
-export const LIVE_ENDPOINTS: ReadonlySet<Endpoint> = new Set<Endpoint>(["createSave", "listSaves", "setNote"]);
+export const LIVE_ENDPOINTS: ReadonlySet<Endpoint> = new Set<Endpoint>(["createSave", "listSaves", "setNote", "getMe"]);
 
 export function createApi(o: {
   mode: "demo" | "live";

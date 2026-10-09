@@ -134,3 +134,10 @@ test("curated feed has a hero and sections", async () => {
   expect(feed.hero.query).toBe("cafe");
   expect(feed.sections.length).toBeGreaterThanOrEqual(2);
 });
+
+test("listSaves can filter by category", async () => {
+  const { api } = setup();
+  const fitness = await api.listSaves({ category: "Fitness", limit: 100 });
+  expect(fitness.length).toBeGreaterThan(0);
+  expect(fitness.every((s) => s.category === "Fitness")).toBe(true);
+});

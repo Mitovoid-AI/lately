@@ -1,8 +1,9 @@
 import type { ReactNode } from "react";
-import { Pressable, Text, View } from "react-native";
+import { Text, View } from "react-native";
 
 import { colors } from "../../theme/tokens";
 import { Icon, type IconName } from "../Icon";
+import { PressableScale } from "../motion/PressableScale";
 
 /** Section heading (Newsreader + accent icon) and its white card. */
 export function SettingsSection({ icon, title, children }: { icon: IconName; title: string; children: ReactNode }) {
@@ -19,7 +20,11 @@ export function SettingsSection({ icon, title, children }: { icon: IconName; tit
   );
 }
 
-/** A settings row: icon tile, title + subtitle, and an optional right side. */
+/**
+ * A settings row: icon tile, title + subtitle, and an optional right side. A pressable row
+ * doesn't shrink (a full-width row scaling reads as the screen squishing); a raised tint
+ * washes in behind it instead.
+ */
 export function SettingsRow({
   icon,
   title,
@@ -39,11 +44,13 @@ export function SettingsRow({
 }) {
   return (
     <View className={divider ? "mt-4 border-t border-hairline pt-4" : ""}>
-      <Pressable
+      <PressableScale
         accessibilityRole={onPress ? "button" : undefined}
         disabled={!onPress}
         onPress={onPress}
-        className="flex-row items-center active:opacity-80"
+        scaleTo={1}
+        highlightColor={onPress ? colors.raised : undefined}
+        className="-m-2 flex-row items-center rounded-xl p-2"
       >
         <View className="h-11 w-11 items-center justify-center rounded-xl bg-raised">
           <Icon name={icon} size={20} color={colors.ink2} />
@@ -55,7 +62,7 @@ export function SettingsRow({
           </Text>
         </View>
         {right}
-      </Pressable>
+      </PressableScale>
       {children}
     </View>
   );

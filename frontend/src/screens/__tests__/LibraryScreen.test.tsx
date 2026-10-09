@@ -1,11 +1,15 @@
 import { fireEvent, screen } from "@testing-library/react-native";
 
-import type { LatelyApi } from "../../api/contract";
+import { ApiError, type LatelyApi } from "../../api/contract";
 import { demoApi, renderWithProviders } from "../../test/render";
 import { LibraryScreen } from "../LibraryScreen";
 
 const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn() };
-jest.mock("expo-router", () => ({ useRouter: () => mockRouter }));
+jest.mock("expo-router", () => ({
+  useRouter: () => mockRouter,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  Link: require("../../test/expoRouterMock").mockLink(() => mockRouter),
+}));
 
 const MOMO = "Hole-in-the-wall momo spot in Koramangala";
 const GITHUB = "5 GitHub search tricks to find great repos";
@@ -65,4 +69,21 @@ test("an empty library shows the first-run state", async () => {
   expect(await screen.findByText("Your Lately is empty — for now")).toBeTruthy();
   await fireEvent.press(screen.getByText("Paste a link instead"));
   expect(mockRouter.push).toHaveBeenCalledWith("/save-sheet");
+});
+
+test("a failed load says so instead of showing an empty library", async () => {
+  const api: LatelyApi = { ...demoApi(), listSaves: async () => Promise.reject(new ApiError("NETWORK", 0)) };
+  await renderWithProviders(<LibraryScreen />, { api });
+  expect(await screen.findByText("Couldn't load your reels")).toBeTruthy();
+  expect(screen.queryByText("Your Lately is empty — for now")).toBeNull();
+  expect(screen.getByText("Try again")).toBeTruthy();
+});
+
+test("a category chip asks the API for that category", async () => {
+  const api = demoApi();
+  const listSaves = jest.spyOn(api, "listSaves");
+  await renderWithProviders(<LibraryScreen />, { api });
+  await screen.findByText(MOMO);
+  await fireEvent.press(screen.getByText("Fitness"));
+  expect(listSaves).toHaveBeenCalledWith(expect.objectContaining({ category: "Fitness" }));
 });

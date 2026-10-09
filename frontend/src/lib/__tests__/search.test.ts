@@ -29,3 +29,13 @@ test("regex metacharacters are treated as plain text", () => {
 test("a blank query matches nothing", () => {
   expect(matchSaves(saves, "   ")).toEqual([]);
 });
+
+test("every suggested search finds something in the demo library", () => {
+  for (const q of ["that cafe reel", "workout for back pain", "repo for job search"]) {
+    expect(matchSaves(saves, q).length).toBeGreaterThan(0);
+  }
+});
+
+test("cards matching more of the query rank first", () => {
+  expect(matchSaves(saves, "repo for job search")[0].save.title).toBe("Companies that sponsor visas — GitHub list");
+});

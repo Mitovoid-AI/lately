@@ -10,6 +10,8 @@ let mockParams: Record<string, string> = {};
 jest.mock("expo-router", () => ({
   useRouter: () => mockRouter,
   useLocalSearchParams: () => mockParams,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  Link: require("../../test/expoRouterMock").mockLink(() => mockRouter),
 }));
 
 const NAMES = ["Cafes to try", "Job hunt", "Manali trip", "Mobility routine", "Dev tools", "Outfit ideas"];
@@ -59,4 +61,25 @@ test("an empty stack says how to add to it", async () => {
   mockParams = { id: trip.id };
   await renderWithProviders(<StackDetailScreen />, { api });
   expect(await screen.findByText("No reels here yet — add one from a card's bookmark.")).toBeTruthy();
+});
+
+test("a failed stacks load shows an error with retry", async () => {
+  const api = { ...demoApi(), listStacks: async () => Promise.reject(new Error("down")) };
+  await renderWithProviders(<StacksScreen />, { api });
+  expect(await screen.findByText("Couldn't load your stacks")).toBeTruthy();
+  expect(screen.getByText("Try again")).toBeTruthy();
+});
+
+test("pressing Enter twice creates one stack", async () => {
+  const api = demoApi();
+  const createStack = jest.spyOn(api, "createStack");
+  await renderWithProviders(<StacksScreen />, { api });
+  await screen.findByText("Cafes to try");
+  await fireEvent.press(screen.getByText("+ New stack"));
+  const input = screen.getByPlaceholderText("e.g. Cafes to try");
+  await fireEvent.changeText(input, "Trip");
+  await fireEvent(input, "submitEditing");
+  await fireEvent(input, "submitEditing");
+  expect(await screen.findByText("Trip")).toBeTruthy();
+  expect(createStack).toHaveBeenCalledTimes(1);
 });

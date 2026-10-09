@@ -2,6 +2,7 @@
 // token; a 401 refreshes it once and retries.
 import {
   ApiError,
+  CATEGORIES,
   type ApiErrorCode,
   type Category,
   type Channel,
@@ -24,7 +25,7 @@ export function toSave(raw: Record<string, unknown>): Save {
     created_at: String(raw.created_at),
     title: str("title"),
     caption: str("caption"),
-    category: str("category") as Category | null,
+    category: CATEGORIES.find((c) => c === str("category")) ?? null,
     thumbnail_url: str("thumbnail_url"),
     creator: str("creator"),
     channel: (str("channel") as Channel | null) ?? "app_share",
@@ -97,7 +98,7 @@ export function createHttpApi(o: {
   return {
     createSave: (text) => request("POST", "/saves", { text, channel: "app_share" }),
     listSaves: async (p = {}) =>
-      (await request<Record<string, unknown>[]>("GET", `/saves${query({ before: p.before, limit: p.limit })}`)).map(
+      (await request<Record<string, unknown>[]>("GET", `/saves${query({ before: p.before, limit: p.limit, category: p.category })}`)).map(
         toSave,
       ),
     getSave: async (id) => toDetail(await request("GET", `/saves/${encodeURIComponent(id)}`)),

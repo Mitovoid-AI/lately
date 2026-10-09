@@ -1,40 +1,58 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useState } from "react";
-import { ActivityIndicator, FlatList, Pressable, Text, TextInput, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { FlatList, Text, View } from "react-native";
+import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { SearchHit } from "../api/contract";
 import { useApi } from "../api/index";
 import { Chip } from "../components/Chip";
 import { Icon } from "../components/Icon";
+import { IconButton } from "../components/motion/IconButton";
+import { PressableScale } from "../components/motion/PressableScale";
+import { Reveal, useEntranceWindow } from "../components/motion/Reveal";
 import { cardTitle } from "../components/ReelCard";
+import { SkeletonGroup, SkeletonRow } from "../components/Skeleton";
+import { TextField } from "../components/TextField";
 import { Thumb } from "../components/Thumb";
 import { useNow } from "../hooks/useNow";
 import { relativeShort } from "../lib/dates";
 import { loadRecent, pushRecent } from "../lib/recent";
 import { deviceStore } from "../lib/storage";
+import { DURATION } from "../theme/motion";
 import { colors } from "../theme/tokens";
 
 const TRY = ["that cafe reel", "workout for back pain", "repo for job search"];
 
-function TryChips({ onPick }: { onPick: (q: string) => void }) {
+// The screen fades up and the field's focus ring blooms: it reads as the Library's search bar
+// opening up. (No entering animation on the field itself: it must be focusable on mount.)
+const CLEAR_IN = FadeIn.duration(DURATION.state);
+const CLEAR_OUT = FadeOut.duration(120);
+
+function TryChips({ onPick, start = 0 }: { onPick: (q: string) => void; start?: number }) {
   return (
-    <View className="mt-6">
+    <Reveal index={start} style={{ marginTop: 24 }}>
       <Text className="font-sans-semibold text-label text-ink-2">TRY</Text>
       <View className="mt-3 flex-row flex-wrap gap-2">
         {TRY.map((t) => (
           <Chip key={t} label={t} onPress={() => onPick(t)} />
         ))}
       </View>
-    </View>
+    </Reveal>
   );
 }
 
 function ResultRow({ hit, now, onPress }: { hit: SearchHit; now: number; onPress: () => void }) {
   const s = hit.save;
   return (
-    <Pressable accessibilityRole="button" onPress={onPress} className="flex-row py-3 active:opacity-80">
+    <PressableScale
+      accessibilityRole="button"
+      onPress={onPress}
+      scaleTo={1}
+      highlightColor={colors.raised}
+      className="-mx-2 flex-row rounded-xl px-2 py-3"
+    >
       <View style={{ width: 64 }}>
         <Thumb uri={s.status === "enriched" ? s.thumbnail_url : null} aspect={64 / 80} radius={10} />
       </View>
@@ -55,7 +73,7 @@ function ResultRow({ hit, now, onPress }: { hit: SearchHit; now: number; onPress
           ))}
         </View>
       </View>
-    </Pressable>
+    </PressableScale>
   );
 }
 
@@ -83,34 +101,59 @@ export function SearchScreen() {
     enabled: debounced.length > 0,
   });
 
-  const remember = async (q: string) => setRecent(await pushRecent(deviceStore, q));
+  const remember = useCallback(async (q: string) => setRecent(await pushRecent(deviceStore, q)), []);
   const pick = (q: string) => setQuery(q);
   const hits = results.data ?? [];
   const blank = query.trim().length === 0;
+  const searching = results.isLoading || debounced !== query.trim();
+  // Each new set of results staggers in; rows scrolled into view later just appear.
+  const entrance = useEntranceWindow(debounced, !searching);
+
+  const renderItem = useCallback(
+    ({ item, index }: { item: SearchHit; index: number }) => (
+      <Reveal index={index} enabled={entrance}>
+        <ResultRow
+          hit={item}
+          now={now}
+          onPress={() => {
+            remember(query);
+            router.push(`/reel/${item.save.id}`);
+          }}
+        />
+      </Reveal>
+    ),
+    [entrance, now, query, remember, router],
+  );
 
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
       <View className="h-16 flex-row items-center border-b border-hairline px-2">
-        <Pressable accessibilityRole="button" accessibilityLabel="Back" onPress={() => router.back()} className="h-12 w-12 items-center justify-center">
-          <Icon name="arrow-back" size={24} color={colors.ink} />
-        </Pressable>
-        <View className="mr-2 h-11 flex-1 flex-row items-center rounded-xl border border-accent bg-card px-3">
-          <Icon name="search" size={20} color={colors.ink2} />
-          <TextInput
+        <IconButton
+          icon="arrow-back"
+          size={24}
+          color={colors.ink}
+          label="Back"
+          onPress={() => router.back()}
+        />
+        <View style={{ flex: 1, marginRight: 8 }}>
+          <TextField
             value={query}
             onChangeText={setQuery}
             onSubmitEditing={() => remember(query)}
             placeholder="Search what you remember…"
-            placeholderTextColor={colors.ink3}
             autoFocus
             returnKeyType="search"
-            className="ml-2 h-full flex-1 font-sans text-body text-ink"
+            tone="card"
+            inputClassName="ml-2 -mr-1"
+            leading={<Icon name="search" size={20} color={colors.ink2} />}
+            trailing={
+              query ? (
+                <Animated.View entering={CLEAR_IN} exiting={CLEAR_OUT} style={{ marginRight: -12 }}>
+                  <IconButton icon="close" size={18} color={colors.ink3} label="Clear" onPress={() => setQuery("")} />
+                </Animated.View>
+              ) : null
+            }
           />
-          {query ? (
-            <Pressable accessibilityRole="button" accessibilityLabel="Clear" onPress={() => setQuery("")} className="h-10 w-8 items-center justify-center">
-              <Icon name="close" size={18} color={colors.ink3} />
-            </Pressable>
-          ) : null}
         </View>
       </View>
 
@@ -118,53 +161,66 @@ export function SearchScreen() {
         <View className="w-full max-w-[640px] self-center px-4 pt-5">
           {recent.length ? (
             <View>
-              <Text className="font-sans-semibold text-label text-ink-2">Recent</Text>
-              {recent.map((r) => (
-                <Pressable key={r} accessibilityRole="button" onPress={() => pick(r)} className="h-12 flex-row items-center">
-                  <Icon name="history" size={20} color={colors.ink3} />
-                  <Text className="ml-3 font-sans text-body text-ink">{r}</Text>
-                </Pressable>
+              <Reveal index={0}>
+                <Text className="font-sans-semibold text-label text-ink-2">Recent</Text>
+              </Reveal>
+              {recent.map((r, i) => (
+                <Reveal key={r} index={i + 1}>
+                  <PressableScale
+                    accessibilityRole="button"
+                    onPress={() => pick(r)}
+                    scaleTo={1}
+                    highlightColor={colors.raised}
+                    className="-mx-2 h-12 flex-row items-center rounded-xl px-2"
+                  >
+                    <Icon name="history" size={20} color={colors.ink3} />
+                    <Text className="ml-3 font-sans text-body text-ink">{r}</Text>
+                  </PressableScale>
+                </Reveal>
               ))}
             </View>
           ) : (
-            <View>
+            <Reveal index={0}>
               <Text className="font-sans-semibold text-label text-ink-2">Recent</Text>
               <Text className="mt-2 font-sans text-meta text-ink-3">Your recent searches show up here.</Text>
-            </View>
+            </Reveal>
           )}
-          <TryChips onPick={pick} />
+          <TryChips onPick={pick} start={Math.min(recent.length + 1, 6)} />
         </View>
-      ) : results.isLoading || debounced !== query.trim() ? (
-        <ActivityIndicator className="mt-12" color={colors.accent} />
+      ) : searching ? (
+        <SkeletonGroup style={{ paddingHorizontal: 16, paddingTop: 36, maxWidth: 640, width: "100%", alignSelf: "center" }}>
+          <SkeletonRow />
+          <SkeletonRow />
+          <SkeletonRow />
+        </SkeletonGroup>
       ) : hits.length === 0 ? (
         <View className="w-full max-w-[640px] self-center px-4 pt-10">
-          <Text className="font-display text-display-md text-ink">{`Nothing for “${query.trim()}” yet`}</Text>
-          <Text className="mt-2 font-sans text-body text-ink-2">
-            {"Try a word from your note, a place, or the creator's name."}
-          </Text>
-          <TryChips onPick={pick} />
+          <Reveal index={0}>
+            <Text className="font-display text-display-md text-ink">{`Nothing for “${query.trim()}” yet`}</Text>
+            <Text className="mt-2 font-sans text-body text-ink-2">
+              {"Try a word from your note, a place, or the creator's name."}
+            </Text>
+          </Reveal>
+          <TryChips onPick={pick} start={1} />
         </View>
       ) : (
         <FlatList
           data={hits}
-          keyExtractor={(h) => h.save.id}
+          keyExtractor={(h) => `${debounced}:${h.save.id}`}
           contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24, maxWidth: 640, width: "100%", alignSelf: "center" }}
+          keyboardDismissMode="on-drag"
+          keyboardShouldPersistTaps="handled"
           ListHeaderComponent={
             <Text className="pt-4 font-sans text-meta text-ink-2">{hits.length === 1 ? "1 reel" : `${hits.length} reels`}</Text>
           }
-          ItemSeparatorComponent={() => <View className="h-px bg-hairline" />}
-          renderItem={({ item }) => (
-            <ResultRow
-              hit={item}
-              now={now}
-              onPress={() => {
-                remember(query);
-                router.push(`/reel/${item.save.id}`);
-              }}
-            />
-          )}
+          ItemSeparatorComponent={Separator}
+          renderItem={renderItem}
         />
       )}
     </View>
   );
+}
+
+function Separator() {
+  return <View className="h-px bg-hairline" />;
 }

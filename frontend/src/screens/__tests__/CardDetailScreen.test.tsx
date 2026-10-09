@@ -10,6 +10,8 @@ let mockParams: Record<string, string> = {};
 jest.mock("expo-router", () => ({
   useRouter: () => mockRouter,
   useLocalSearchParams: () => mockParams,
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  Link: require("../../test/expoRouterMock").mockLink(() => mockRouter),
 }));
 jest.mock("../../lib/share", () => ({ shareOrCopy: jest.fn(async () => "copied") }));
 
@@ -110,4 +112,27 @@ test("the bookmark opens the stack picker", async () => {
   await screen.findByText(MOMO);
   await fireEvent.press(screen.getByLabelText("Add to stack"));
   expect(await screen.findByText("Cafes to try")).toBeTruthy();
+});
+
+test("a failed note edit says so", async () => {
+  const api = { ...demoApi(), setNote: jest.fn(async () => Promise.reject(new Error("down"))) };
+  await open("s-momo", api);
+  await screen.findByText(MOMO);
+  await fireEvent.press(screen.getByLabelText("Edit note"));
+  await fireEvent.changeText(screen.getByDisplayValue("cafe to try"), "for a date");
+  await fireEvent.press(screen.getByText("Save"));
+  expect(await screen.findByText("Couldn't save your note. Try again.")).toBeTruthy();
+  expect(screen.getByDisplayValue("for a date")).toBeTruthy();
+});
+
+test("deleting refreshes curated and stack views too", async () => {
+  const { client } = await open("s-momo");
+  await screen.findByText(MOMO);
+  client.setQueryData(["curated"], { cached: true });
+  client.setQueryData(["stack", "st-cafes"], { cached: true });
+  await fireEvent.press(screen.getByLabelText("More"));
+  await fireEvent.press(screen.getByText("Delete"));
+  await fireEvent.press(screen.getByRole("button", { name: "Delete" }));
+  await waitFor(() => expect(client.getQueryState(["curated"])?.isInvalidated).toBe(true));
+  expect(client.getQueryState(["stack", "st-cafes"])?.isInvalidated).toBe(true);
 });

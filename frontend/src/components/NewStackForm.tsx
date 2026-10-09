@@ -1,11 +1,11 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
-import { Text, TextInput } from "react-native";
+import { Text } from "react-native";
 
 import type { Stack } from "../api/contract";
 import { useApi } from "../api/index";
-import { colors } from "../theme/tokens";
 import { Button } from "./Button";
+import { TextField } from "./TextField";
 import { useToast } from "./Toast";
 
 /** Name field + Create; refreshes the stacks list and hands back the new stack. */
@@ -33,15 +33,14 @@ export function NewStackForm({ onCreated }: { onCreated: (stack: Stack) => void 
   return (
     <>
       <Text className="font-display text-display-md text-ink">New stack</Text>
-      <TextInput
+      <TextField
         value={name}
         onChangeText={setName}
         placeholder="e.g. Cafes to try"
-        placeholderTextColor={colors.ink3}
         maxLength={60}
         autoFocus
         onSubmitEditing={() => name.trim() && create()}
-        className="mt-4 h-12 rounded-ctl border border-hairline bg-canvas px-4 font-sans text-body text-ink"
+        className="mt-4"
       />
       <Button title="Create" onPress={create} disabled={!name.trim()} loading={busy} className="mt-4" />
     </>

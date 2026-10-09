@@ -2,29 +2,45 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, Text, TextInput, View } from "react-native";
+import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import Animated, {
+  cancelAnimation,
+  Easing,
+  FadeIn,
+  useAnimatedStyle,
+  useSharedValue,
+  withTiming,
+} from "react-native-reanimated";
 
 import { useApi } from "../api/index";
 import { Button } from "../components/Button";
 import { Chip } from "../components/Chip";
 import { LOGO } from "../components/Header";
 import { Icon, type IconName } from "../components/Icon";
-import { BACKDROP, SheetPanel } from "../components/Sheet";
+import { PopIn, Reveal } from "../components/motion/Reveal";
+import { usePresence } from "../components/motion/usePresence";
+import { BACKDROP, SHEET_RESIZE, SheetPanel, useSheetMotion } from "../components/Sheet";
+import { TextField } from "../components/TextField";
 import { useNow } from "../hooks/useNow";
 import { savedAgo, shortDate } from "../lib/dates";
+import { haptic } from "../lib/haptics";
 import { displayLink, extractReelUrl } from "../lib/instagram";
 import { outcomeFromError, outcomeFromResult, type SaveOutcome } from "../lib/saveOutcome";
+import { DURATION, EASE_OUT } from "../theme/motion";
 import { colors } from "../theme/tokens";
 
 const SHARE_BACKDROP = require("../../assets/stitch/save-bg.jpg");
 const QUICK = ["To try", "To buy", "To visit", "To learn", "Watch later"];
 const AUTO_CLOSE_S = 5;
 
+// Each state of the sheet dissolves in; the sheet's height eases to fit it.
+const STATE_IN = FadeIn.duration(DURATION.state);
+
 function StatusIcon({ name, color, bg }: { name: IconName; color: string; bg: string }) {
   return (
-    <View className="h-14 w-14 items-center justify-center rounded-2xl" style={{ backgroundColor: bg }}>
+    <PopIn style={[styles.statusIcon, { backgroundColor: bg }]}>
       <Icon name={name} size={28} color={color} />
-    </View>
+    </PopIn>
   );
 }
 
@@ -43,6 +59,38 @@ function Message({ icon, title, body, children }: { icon: ReactNode; title: stri
   );
 }
 
+/** The success mark: the logo settles while the green tick springs onto its corner. */
+function SavedMark() {
+  return (
+    <View>
+      <Image source={LOGO} style={{ width: 56, height: 56, borderRadius: 14 }} />
+      <PopIn style={styles.badge}>
+        <Icon name="check" size={14} color="#FFFFFF" />
+      </PopIn>
+    </View>
+  );
+}
+
+/** A hairline that drains over the auto-close countdown; it fades away if the user starts a note. */
+function CountdownLine({ running }: { running: boolean }) {
+  const left = useSharedValue(1);
+  const shown = useSharedValue(1);
+  useEffect(() => {
+    if (running) {
+      left.set(withTiming(0, { duration: AUTO_CLOSE_S * 1000, easing: Easing.linear }));
+    } else {
+      cancelAnimation(left);
+      shown.set(withTiming(0, { duration: DURATION.exit, easing: EASE_OUT }));
+    }
+  }, [running, left, shown]);
+  const style = useAnimatedStyle(() => ({ opacity: shown.get(), transform: [{ scaleX: left.get() }] }));
+  return (
+    <View style={styles.track}>
+      <Animated.View style={[styles.fill, style]} />
+    </View>
+  );
+}
+
 export function SaveSheetScreen() {
   const { text } = useLocalSearchParams<{ text?: string }>();
   const router = useRouter();
@@ -50,6 +98,8 @@ export function SaveSheetScreen() {
   const queryClient = useQueryClient();
   const shared = !!text;
   const now = useNow();
+  const { motion, backdropStyle } = useSheetMotion();
+  usePresence(true, motion.progress);
 
   const [input, setInput] = useState("");
   const [busy, setBusy] = useState(shared);
@@ -76,11 +126,16 @@ export function SaveSheetScreen() {
       setSavedText(t);
       try {
         const result = await api.createSave(t);
-        setOutcome(outcomeFromResult(result));
+        const next = outcomeFromResult(result);
+        // The confirmation lands with its haptic, in the same frame the success mark appears.
+        if (next.kind === "saved") haptic.success();
+        setOutcome(next);
         queryClient.invalidateQueries({ queryKey: ["saves"] });
         queryClient.invalidateQueries({ queryKey: ["me"] });
       } catch (e) {
-        setOutcome(outcomeFromError(e));
+        const next = outcomeFromError(e);
+        if (next.kind !== "deduped") haptic.error();
+        setOutcome(next);
       } finally {
         inFlight.current = false;
         setBusy(false);
@@ -129,9 +184,10 @@ export function SaveSheetScreen() {
   }
 
   const link = displayLink(extractReelUrl(savedText)?.url ?? savedText);
+  const phase = busy || (shared && !outcome) ? "busy" : outcome ? outcome.kind : "paste";
 
   let content: ReactNode;
-  if (busy || (shared && !outcome)) {
+  if (phase === "busy") {
     content = (
       <View className="items-center py-10">
         <ActivityIndicator color={colors.accent} />
@@ -142,16 +198,15 @@ export function SaveSheetScreen() {
     content = (
       <View>
         <Text className="font-display text-display-md text-ink">Paste a reel link</Text>
-        <TextInput
+        <TextField
           value={input}
           onChangeText={setInput}
           placeholder="instagram.com/reel/…"
-          placeholderTextColor={colors.ink3}
           autoCapitalize="none"
           autoCorrect={false}
           autoFocus
           onSubmitEditing={() => input.trim() && save(input.trim())}
-          className="mt-4 h-12 rounded-ctl border border-hairline bg-canvas px-4 font-sans text-body text-ink"
+          className="mt-4"
         />
         <Button title="Save" onPress={() => save(input.trim())} disabled={!input.trim()} className="mt-4" />
         <Button title="Cancel" variant="ghost" onPress={close} className="mt-1" />
@@ -161,53 +216,56 @@ export function SaveSheetScreen() {
     content = (
       <View>
         <View className="flex-row items-center">
-          <View>
-            <Image source={LOGO} style={{ width: 56, height: 56, borderRadius: 14 }} />
-            <View className="absolute -bottom-1 -right-1 h-6 w-6 items-center justify-center rounded-full border-2 border-card bg-success">
-              <Icon name="check" size={14} color="#FFFFFF" />
-            </View>
-          </View>
-          <View className="ml-3 flex-1">
+          <SavedMark />
+          <Reveal index={1} style={{ marginLeft: 12, flex: 1 }}>
             <Text className="font-display text-display-lg text-ink">Saved to Lately</Text>
             <Text className="font-sans text-body text-ink-2">Your card will be ready in a few seconds.</Text>
+          </Reveal>
+        </View>
+        <Reveal index={2}>
+          <View className="mt-4 h-9 flex-row items-center self-start rounded-full border border-hairline bg-raised px-3" style={{ maxWidth: "100%" }}>
+            <Icon name="link" size={18} color={colors.accent} />
+            <Text numberOfLines={1} className="ml-2 shrink font-sans text-meta text-ink-2">
+              {link}
+            </Text>
           </View>
-        </View>
-        <View className="mt-4 h-9 flex-row items-center self-start rounded-full border border-hairline bg-raised px-3" style={{ maxWidth: "100%" }}>
-          <Icon name="link" size={18} color={colors.accent} />
-          <Text numberOfLines={1} className="ml-2 shrink font-sans text-meta text-ink-2">
-            {link}
+        </Reveal>
+        <Reveal index={3}>
+          <Text className="mt-5 font-sans-medium text-body text-ink-2">
+            Why are you saving this? <Text className="font-sans text-meta text-ink-3">(optional)</Text>
           </Text>
-        </View>
-        <Text className="mt-5 font-sans-medium text-body text-ink-2">
-          Why are you saving this? <Text className="font-sans text-meta text-ink-3">(optional)</Text>
-        </Text>
-        <TextInput
-          value={note}
-          onChangeText={setNote}
-          onFocus={() => setNoteTouched(true)}
-          placeholder="e.g. cafe to try in June"
-          placeholderTextColor={colors.ink3}
-          maxLength={500}
-          className="mt-2 h-14 rounded-xl border border-hairline bg-canvas px-4 font-sans text-body text-ink"
-        />
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3" contentContainerStyle={{ gap: 8 }}>
-          {QUICK.map((q) => (
-            <Chip
-              key={q}
-              label={q}
-              active={note === q}
-              onPress={() => {
-                setNoteTouched(true);
-                setNote(q);
-              }}
-            />
-          ))}
-        </ScrollView>
-        <Button title="Save note" onPress={saveNote} disabled={!note.trim()} loading={savingNote} className="mt-5 h-14" />
-        <Button title="Skip" variant="ghost" onPress={close} className="mt-1" />
-        {counting ? (
-          <Text className="mt-1 text-center font-sans text-meta text-ink-3">{`Closes in ${Math.max(secondsLeft, 0)} s`}</Text>
-        ) : null}
+          <TextField
+            value={note}
+            onChangeText={setNote}
+            onFocus={() => setNoteTouched(true)}
+            placeholder="e.g. cafe to try in June"
+            maxLength={500}
+            size="lg"
+            className="mt-2"
+          />
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3" contentContainerStyle={{ gap: 8 }}>
+            {QUICK.map((q) => (
+              <Chip
+                key={q}
+                label={q}
+                active={note === q}
+                haptic="selection"
+                onPress={() => {
+                  setNoteTouched(true);
+                  setNote(q);
+                }}
+              />
+            ))}
+          </ScrollView>
+        </Reveal>
+        <Reveal index={4}>
+          <Button title="Save note" onPress={saveNote} disabled={!note.trim()} loading={savingNote} size="lg" className="mt-5" />
+          <Button title="Skip" variant="ghost" onPress={close} className="mt-1" />
+          {counting ? (
+            <Text className="mt-1 text-center font-sans text-meta text-ink-3">{`Closes in ${Math.max(secondsLeft, 0)} s`}</Text>
+          ) : null}
+          <CountdownLine running={counting} />
+        </Reveal>
       </View>
     );
   } else if (outcome.kind === "deduped") {
@@ -219,7 +277,9 @@ export function SaveSheetScreen() {
         body={card ? `${savedAgo(card.created_at, now)}.` : " "}
       >
         {card?.note ? (
-          <Text className="mt-4 rounded-xl bg-raised px-4 py-3 font-sans-italic text-body text-ink-2">{`“${card.note}”`}</Text>
+          <Animated.View entering={STATE_IN}>
+            <Text className="mt-4 rounded-xl bg-raised px-4 py-3 font-sans-italic text-body text-ink-2">{`“${card.note}”`}</Text>
+          </Animated.View>
         ) : null}
         <Button title="Open card" onPress={() => router.replace(`/reel/${outcome.reelId}`)} className="mt-5" />
         <Button title="Close" variant="ghost" onPress={close} className="mt-1" />
@@ -275,14 +335,37 @@ export function SaveSheetScreen() {
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} className="flex-1 justify-end">
       {shared ? (
-        <Image source={SHARE_BACKDROP} contentFit="cover" blurRadius={8} style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
+        <Image source={SHARE_BACKDROP} contentFit="cover" blurRadius={8} style={StyleSheet.absoluteFill} />
       ) : null}
-      <Pressable
-        accessibilityLabel="Close"
-        onPress={close}
-        style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0, backgroundColor: shared ? "rgba(28,26,23,0.55)" : BACKDROP }}
-      />
-      <SheetPanel>{content}</SheetPanel>
+      <Animated.View
+        style={[StyleSheet.absoluteFill, { backgroundColor: shared ? "rgba(28,26,23,0.55)" : BACKDROP }, backdropStyle]}
+      >
+        <Pressable accessibilityLabel="Close" onPress={close} style={StyleSheet.absoluteFill} />
+      </Animated.View>
+      <SheetPanel motion={motion} onDismiss={close} layout={SHEET_RESIZE}>
+        <Animated.View key={phase} entering={phase === "busy" ? undefined : STATE_IN}>
+          {content}
+        </Animated.View>
+      </SheetPanel>
     </KeyboardAvoidingView>
   );
 }
+
+const styles = StyleSheet.create({
+  statusIcon: { width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  badge: {
+    position: "absolute",
+    right: -4,
+    bottom: -4,
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.card,
+    backgroundColor: colors.success,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  track: { marginTop: 8, height: 2, width: 64, alignSelf: "center", borderRadius: 1, backgroundColor: colors.raised, overflow: "hidden" },
+  fill: { flex: 1, backgroundColor: colors.ink3, transformOrigin: "left" },
+});
