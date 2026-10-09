@@ -4,7 +4,6 @@ import {
   ApiError,
   CATEGORIES,
   type ApiErrorCode,
-  type Category,
   type Channel,
   type LatelyApi,
   type Save,

@@ -1,5 +1,5 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Text } from "react-native";
 
 import type { Stack } from "../api/contract";
@@ -15,8 +15,12 @@ export function NewStackForm({ onCreated }: { onCreated: (stack: Stack) => void 
   const toast = useToast();
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  const inFlight = useRef(false);
 
   async function create() {
+    // Enter twice / a double tap: the second press lands while the first is still out.
+    if (inFlight.current || !name.trim()) return;
+    inFlight.current = true;
     setBusy(true);
     try {
       const stack = await api.createStack(name.trim());
@@ -26,6 +30,7 @@ export function NewStackForm({ onCreated }: { onCreated: (stack: Stack) => void 
     } catch {
       toast.show("Couldn't create the stack. Try again.");
     } finally {
+      inFlight.current = false;
       setBusy(false);
     }
   }
@@ -39,7 +44,7 @@ export function NewStackForm({ onCreated }: { onCreated: (stack: Stack) => void 
         placeholder="e.g. Cafes to try"
         maxLength={60}
         autoFocus
-        onSubmitEditing={() => name.trim() && create()}
+        onSubmitEditing={create}
         className="mt-4"
       />
       <Button title="Create" onPress={create} disabled={!name.trim()} loading={busy} className="mt-4" />

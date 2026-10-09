@@ -16,6 +16,7 @@ import { useNow } from "../hooks/useNow";
 import { haptic } from "../lib/haptics";
 import { colors } from "../theme/tokens";
 import { reelsCount } from "./StacksScreen";
+import { goBack } from "../lib/navigation";
 
 const MAX_WIDTH = 1280;
 const GAP = 12;
@@ -51,7 +52,7 @@ export function StackDetailScreen() {
           size={24}
           color={colors.ink}
           label="Back"
-          onPress={() => (router.canGoBack() ? router.back() : router.replace("/stacks"))}
+          onPress={() => goBack(router, "/stacks")}
         />
         <Text className="font-sans-semibold text-body text-ink">Stacks</Text>
         <ScrollHairline scrollY={scrollY} />

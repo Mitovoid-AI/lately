@@ -70,6 +70,9 @@
       "/node_modules/",
       "/dist/"
     ],
-    "testTimeout": 15000
+    "testTimeout": 15000,
+    "moduleNameMapper": {
+      "\\.css$":"<rootDir>/src/test/styleStub.js"
+    }
   }
 }

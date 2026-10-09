@@ -199,7 +199,10 @@ export function AuthProvider({
       const here = typeof window !== "undefined" ? window.location.href : "";
       const p = authParamsFromUrl(here);
       if (p.error || p.error_description) {
-        setLinkError(p.error_code === "otp_expired" ? "invalid_code" : failureFrom(new Error(`${p.error_code} ${p.error_description}`)));
+        const reason = p.error_code === "otp_expired" ? "invalid_code" : failureFrom(new Error(`${p.error_code} ${p.error_description}`));
+        Promise.resolve().then(() => {
+          if (active) setLinkError(reason);
+        });
       }
     } else {
       const onUrl = (url: string | null) => {

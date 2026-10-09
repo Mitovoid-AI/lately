@@ -22,6 +22,7 @@ import { loadRecent, pushRecent } from "../lib/recent";
 import { deviceStore } from "../lib/storage";
 import { DURATION } from "../theme/motion";
 import { colors } from "../theme/tokens";
+import { goBack } from "../lib/navigation";
 
 const TRY = ["that cafe reel", "workout for back pain", "repo for job search"];
 
@@ -133,7 +134,7 @@ export function SearchScreen() {
           size={24}
           color={colors.ink}
           label="Back"
-          onPress={() => router.back()}
+          onPress={() => goBack(router)}
         />
         <View style={{ flex: 1, marginRight: 8 }}>
           <TextField

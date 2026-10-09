@@ -1,5 +1,5 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ScrollView, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 
@@ -38,7 +38,16 @@ export function StackPicker({
   const [creating, setCreating] = useState(false);
   const stacks = useQuery({ queryKey: ["stacks"], queryFn: () => api.listStacks(), enabled: visible });
 
+  // One add per opening: a second tap (even after the first landed, while the sheet is
+  // closing) does nothing. Reopening the sheet re-arms it; a failure lets the user retry.
+  const adding = useRef(false);
+  useEffect(() => {
+    if (visible) adding.current = false;
+  }, [visible]);
+
   async function add(stack: Stack) {
+    if (adding.current) return;
+    adding.current = true;
     try {
       await api.addToStack(stack.id, saveId);
       haptic.success();
@@ -51,6 +60,7 @@ export function StackPicker({
     } catch {
       haptic.error();
       toast.show("Couldn't add it. Try again.");
+      adding.current = false;
     }
   }
 

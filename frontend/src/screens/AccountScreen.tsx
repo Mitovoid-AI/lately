@@ -26,6 +26,7 @@ import { monthYear } from "../lib/dates";
 import { haptic } from "../lib/haptics";
 import { DURATION } from "../theme/motion";
 import { colors } from "../theme/tokens";
+import { goBack } from "../lib/navigation";
 
 const SIZES: { size: Preferences["text_size"]; name: string }[] = [
   { size: 14, name: "Small" },
@@ -89,7 +90,7 @@ export function AccountScreen() {
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
       <View className="h-16 flex-row items-center px-2">
-        <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={() => router.back()} />
+        <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={() => goBack(router)} />
         <Image source={LOGO} style={{ width: 36, height: 36, borderRadius: 10 }} />
         <View className="ml-2 flex-1">
           <Text className="font-sans-semibold text-caption text-ink-2">LATELY</Text>

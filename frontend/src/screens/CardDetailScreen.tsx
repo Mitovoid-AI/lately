@@ -46,6 +46,8 @@ import { displayLink } from "../lib/instagram";
 import { shareOrCopy } from "../lib/share";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "../theme/motion";
 import { colors } from "../theme/tokens";
+import { goBack } from "../lib/navigation";
+import { refreshSaveViews } from "../lib/queryClient";
 
 const CHANNEL = { app_share: "Share", web: "Web", meta_dm: "DM" } as const;
 
@@ -149,7 +151,11 @@ function Hero({ card, mediaStyle }: { card: Save; mediaStyle?: ReturnType<typeof
 function useCachedSave(id: string): Save | undefined {
   const queryClient = useQueryClient();
   return useMemo(
-    () => queryClient.getQueryData<InfiniteData<Save[]>>(["saves"])?.pages.flat().find((s) => s.id === id),
+    () =>
+      queryClient
+        .getQueriesData<InfiniteData<Save[]>>({ queryKey: ["saves"] })
+        .flatMap(([, data]) => data?.pages.flat() ?? [])
+        .find((s) => s.id === id),
     [queryClient, id],
   );
 }
@@ -205,7 +211,7 @@ export function CardDetailScreen() {
   });
   const card = query.data;
   const preview = useCachedSave(id);
-  const back = () => (router.canGoBack() ? router.back() : router.replace("/"));
+  const back = () => goBack(router);
 
   async function share() {
     if (!card) return;
@@ -217,6 +223,9 @@ export function CardDetailScreen() {
     const updated = await api.setNote(id, note);
     queryClient.setQueryData<SaveDetail>(["save", id], (old) => (old ? { ...old, note: updated.note } : old));
     queryClient.invalidateQueries({ queryKey: ["saves"] });
+    queryClient.invalidateQueries({ queryKey: ["search"] });
+    queryClient.invalidateQueries({ queryKey: ["stack"] });
+    queryClient.invalidateQueries({ queryKey: ["curated"] });
   }
 
   async function remove() {
@@ -224,10 +233,8 @@ export function CardDetailScreen() {
     try {
       await api.deleteSave(id);
       haptic.medium();
-      queryClient.removeQueries({ queryKey: ["save", id] });
-      queryClient.invalidateQueries({ queryKey: ["saves"] });
-      queryClient.invalidateQueries({ queryKey: ["me"] });
-      queryClient.invalidateQueries({ queryKey: ["stacks"] });
+      queryClient.removeQueries({ queryKey: ["save", id], exact: true });
+      refreshSaveViews(queryClient);
       setConfirmOpen(false);
       toast.show("Deleted");
       back();

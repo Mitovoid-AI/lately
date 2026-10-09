@@ -28,6 +28,8 @@ import { displayLink, extractReelUrl } from "../lib/instagram";
 import { outcomeFromError, outcomeFromResult, type SaveOutcome } from "../lib/saveOutcome";
 import { DURATION, EASE_OUT } from "../theme/motion";
 import { colors } from "../theme/tokens";
+import { useToast } from "../components/Toast";
+import { refreshSaveViews } from "../lib/queryClient";
 
 const SHARE_BACKDROP = require("../../assets/stitch/save-bg.jpg");
 const QUICK = ["To try", "To buy", "To visit", "To learn", "Watch later"];
@@ -96,6 +98,7 @@ export function SaveSheetScreen() {
   const router = useRouter();
   const api = useApi();
   const queryClient = useQueryClient();
+  const toast = useToast();
   const shared = !!text;
   const now = useNow();
   const { motion, backdropStyle } = useSheetMotion();
@@ -130,8 +133,7 @@ export function SaveSheetScreen() {
         // The confirmation lands with its haptic, in the same frame the success mark appears.
         if (next.kind === "saved") haptic.success();
         setOutcome(next);
-        queryClient.invalidateQueries({ queryKey: ["saves"] });
-        queryClient.invalidateQueries({ queryKey: ["me"] });
+        refreshSaveViews(queryClient);
       } catch (e) {
         const next = outcomeFromError(e);
         if (next.kind !== "deduped") haptic.error();
@@ -171,13 +173,20 @@ export function SaveSheetScreen() {
   });
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.getMe(), enabled: outcome?.kind === "quota" });
 
+  const noteInFlight = useRef(false);
   async function saveNote() {
-    if (!reelId || !note.trim()) return;
+    if (!reelId || !note.trim() || noteInFlight.current) return;
+    noteInFlight.current = true;
     setSavingNote(true);
     try {
       await api.setNote(reelId, note.trim());
-      queryClient.invalidateQueries({ queryKey: ["saves"] });
+      refreshSaveViews(queryClient);
+      // Stays latched: the sheet is closing, a second tap must not send the note again.
       close();
+    } catch {
+      noteInFlight.current = false;
+      haptic.error();
+      toast.show("Couldn't save your note. Try again.");
     } finally {
       setSavingNote(false);
     }

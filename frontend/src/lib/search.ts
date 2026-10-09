@@ -7,14 +7,29 @@ function has(text: string | null | undefined, term: string): boolean {
   return !!text && text.toLowerCase().includes(term);
 }
 
+// Words that carry no meaning in a "what do I remember" query ("that cafe reel").
+const STOP_WORDS = new Set([
+  "a", "an", "and", "about", "at", "by", "for", "from", "i", "in", "is", "it", "me", "my", "of", "on", "or",
+  "saved", "some", "that", "the", "this", "those", "to", "was", "with", "reel", "reels", "video", "one",
+]);
+
+/** Query → search terms: lower-cased words minus stop words (all of them if nothing else is left). */
+export function queryTerms(query: string): string[] {
+  const words = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const meaningful = words.filter((w) => !STOP_WORDS.has(w));
+  return meaningful.length ? meaningful : words;
+}
+
 /**
- * Local search: every term must appear in some field (plain substring match,
- * no RegExp built from input). Returns hits ranked by field weight, newest first
- * on ties, each with human-readable "why it matched" chips.
+ * Local search: a card matches when any term appears in some field (plain substring match,
+ * no RegExp built from input). Cards matching more of the query rank first (the whole query
+ * as a phrase beats every term separately), then by field weight, newest first on ties. Each
+ * hit carries human-readable "why it matched" chips.
  */
 export function matchSaves(saves: SaveDetail[], query: string): SearchHit[] {
-  const terms = query.toLowerCase().trim().split(/\s+/).filter(Boolean);
+  const terms = queryTerms(query);
   if (terms.length === 0) return [];
+  const phrase = query.toLowerCase().trim().replace(/\s+/g, " ");
 
   const scored: { hit: SearchHit; score: number; at: number }[] = [];
   for (const s of saves) {
@@ -27,10 +42,12 @@ export function matchSaves(saves: SaveDetail[], query: string): SearchHit[] {
       has(s.caption, t) ||
       has(s.creator, t) ||
       has(s.source_url, t);
-    if (!terms.every(hitsTerm)) continue;
+    const matched = terms.filter(hitsTerm).length;
+    if (matched === 0) continue;
+    const asPhrase = [s.note, s.title, s.caption].some((f) => has(f, phrase));
 
     const why: string[] = [];
-    let score = 0;
+    let score = (matched + (asPhrase ? terms.length : 0)) * 100;
     if (terms.some((t) => has(s.note, t))) {
       score += WEIGHT.note;
       why.push(`your note: “${s.note}”`);
