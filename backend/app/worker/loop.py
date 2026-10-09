@@ -39,7 +39,7 @@ async def run_job(db: asyncpg.Pool, job: Mapping[str, Any], worker_id: str) -> N
         "payload": json.loads(payload) if isinstance(payload, str) else dict(payload or {}),
         "stage": job["stage"],
         "attempts": job["attempts"],
-        "max_attempts": job["max_attempts"] if "max_attempts" in job.keys() else 3,
+        "max_attempts": job.get("max_attempts") or 3,
     }
     heartbeat = asyncio.create_task(_heartbeat(db, j["id"], worker_id))
     try:

@@ -58,7 +58,7 @@ NEXT: dict[str, str | None] = {
 }
 
 
-class Reschedule(Exception):  # noqa: N818 — a control-flow signal, not an error
+class Reschedule(Exception):
     """Put the job back to run in `delay_s` seconds without consuming an attempt."""
 
     def __init__(self, delay_s: int, reason: str) -> None:
@@ -398,7 +398,6 @@ async def finalize(db: asyncpg.Pool, job: dict[str, Any]) -> None:
     await enqueue_embed_jobs(db, [r["id"] for r in rows])
     await _metric(db, "worker", "finalize", started, "ok",
                   {"media_status": current, "saves": len(rows), "cache_hit": card is None})
-    return None
 
 
 # ------------------------------------------------------------------ embed --
@@ -417,18 +416,18 @@ async def embed(db: asyncpg.Pool, job: dict[str, Any]) -> None:
            where r.id = $1::uuid""", str(reel_id))
     if row is None:
         await _metric(db, "worker", "embed", started, "skipped", {"reason": "reel_gone"})
-        return None
+        return
     if rt.embedder is None:
         await _metric(db, "worker", "embed", started, "skipped", {"reason": "no_embedder"})
-        return None
+        return
     text = card_embedding_text(dict(row), row["note"])
     if not text.strip():
         await _metric(db, "worker", "embed", started, "skipped", {"reason": "empty"})
-        return None
+        return
     if wait := await take_token(db, "embeddings"):
         raise Reschedule(wait, f"budget exhausted for embeddings; retry in {wait}s")
     (vec,) = await rt.embedder.embed([text], "document")
     await db.execute("update public.reels set embedding = $2::vector where id = $1::uuid",
                      str(reel_id), to_pgvector(vec))
     await _metric(db, "worker", "embed", started, "ok", {"chars": len(text)})
-    return None
+    return

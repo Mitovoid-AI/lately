@@ -10,7 +10,7 @@ import pytest
 
 from app.enrich.fetch import FetchResult
 from app.enrich.structure import ChatLLM
-from app.enrich.transcribe import Transcript, TranscribeError
+from app.enrich.transcribe import TranscribeError, Transcript
 from app.worker import stages
 from app.worker.loop import run_job
 
