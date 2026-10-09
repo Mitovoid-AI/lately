@@ -18,10 +18,10 @@ from pathlib import Path
 # Make `app` importable when running as a plain script (scripts/ is sys.path[0]).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-import asyncpg  # noqa: E402
+import asyncpg
 
-from app.config import settings  # noqa: E402
-from app.enrich.backfill import enqueue_reembed  # noqa: E402
+from app.config import settings
+from app.enrich.backfill import enqueue_reembed
 
 
 async def main() -> None:

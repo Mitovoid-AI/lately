@@ -26,9 +26,9 @@ from pathlib import Path
 # Make `app` importable when running as a plain script (scripts/ is sys.path[0]).
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from app.config import settings  # noqa: E402
-from app.enrich.oneshot import enrich_url  # noqa: E402
-from app.enrich.runtime import build_runtime  # noqa: E402
+from app.config import settings
+from app.enrich.oneshot import enrich_url
+from app.enrich.runtime import build_runtime
 
 
 async def _write(rt, out: dict) -> None:
