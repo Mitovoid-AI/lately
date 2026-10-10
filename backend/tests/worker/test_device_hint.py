@@ -27,8 +27,6 @@ def cdn_http(image=JPEG):
     def handler(request):
         if request.url.host.endswith("cdninstagram.com"):
             return httpx.Response(200, content=image)
-        if request.url.host == "cdn.test":  # the server chain's (MEDIA) thumbnail
-            return httpx.Response(200, content=JPEG)
         raise AssertionError(f"unexpected {request.url}")
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
@@ -151,7 +149,7 @@ async def test_server_fetch_overwrites_a_device_card(db, make_user, rt):
     await run_all(db)
     rc = await content(db)
     assert rc["fetch_source"] == "embed_page" and rc["device_user_id"] is None
-    assert rc["thumbnail_path"] == "https://cdn.test/t.jpg"
+    assert rc["thumbnail_path"] == "https://scontent.cdninstagram.com/t.jpg"
     # Server-fetched content is trusted for everyone.
     assert await status(db, a_rid) == "enriched" and await status(db, b_rid) == "enriched"
 
