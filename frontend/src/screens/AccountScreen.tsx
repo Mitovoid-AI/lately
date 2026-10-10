@@ -55,6 +55,20 @@ function InfoChip({ icon, text, tone = "plain" }: { icon: IconName; text: string
   );
 }
 
+/** A setting that isn't built yet: a "Coming soon" pill beside a switched-off, disabled box. */
+function ComingSoon({ label }: { label: string }) {
+  return (
+    <View className="flex-row items-center">
+      <View className="mr-2 rounded-full bg-raised px-2 py-0.5">
+        <Text className="font-sans-medium text-caption text-ink-2">Coming soon</Text>
+      </View>
+      <View style={{ opacity: 0.4 }}>
+        <Checkbox checked={false} disabled label={label} />
+      </View>
+    </View>
+  );
+}
+
 export function AccountScreen() {
   const router = useRouter();
   const api = useApi();
@@ -105,11 +119,6 @@ export function AccountScreen() {
       setDeletingAccount(false);
     }
   }
-
-  const toggle = (key: "push_digests" | "offline_reading") => {
-    haptic.selection();
-    update({ [key]: !prefs[key] });
-  };
 
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
@@ -249,19 +258,7 @@ export function AccountScreen() {
 
           <Reveal index={2}>
             <SettingsSection icon="shield" title="Account & Security">
-              <SettingsRow
-                icon="lock-outline"
-                title="Password & Security"
-                subtitle="Last changed 3 months ago"
-                onPress={() => toast.show("Password reset is coming soon")}
-                right={
-                  <View className="flex-row items-center">
-                    <Text className="font-sans-semibold text-meta text-accent">Reset</Text>
-                    <Icon name="chevron-right" size={20} color={colors.ink2} />
-                  </View>
-                }
-              />
-              <SettingsRow icon="link" title="Connected Accounts" subtitle="Sync services & authenticators" divider>
+              <SettingsRow icon="link" title="Connected Accounts" subtitle="How you sign in to Lately">
                 <View className="ml-14 mt-3 gap-2">
                   {(me?.connected_accounts ?? []).map((a) => (
                     <View key={a.provider} className="h-11 flex-row items-center rounded-xl bg-raised px-3">
@@ -303,19 +300,18 @@ export function AccountScreen() {
 
           <Reveal index={3}>
             <SettingsSection icon="tune" title="Reading Preferences">
+              {/* Not built yet: shown as coming soon, switched off and not pressable. */}
               <SettingsRow
                 icon="notifications-none"
                 title="Push Digests"
                 subtitle="Weekly summaries of your curated reels"
-                onPress={() => toggle("push_digests")}
-                right={<Checkbox checked={prefs.push_digests} />}
+                right={<ComingSoon label="Push Digests" />}
               />
               <SettingsRow
                 icon="offline-pin"
                 title="Offline Reading Storage"
                 subtitle="Keep recent transcripts ready offline"
-                onPress={() => toggle("offline_reading")}
-                right={<Checkbox checked={prefs.offline_reading} />}
+                right={<ComingSoon label="Offline Reading Storage" />}
                 divider
               />
             </SettingsSection>

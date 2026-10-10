@@ -86,11 +86,22 @@ test("the delete dialog offers the export first", async () => {
   expect(screen.queryByText("Delete your account?")).toBeNull();
 });
 
-test("digests can be turned off", async () => {
-  const { updatePreferences, client } = await open();
+test("no placeholder password row (Lately has no passwords)", async () => {
+  await open();
+  expect(screen.queryByText("Password & Security")).toBeNull();
+  expect(screen.queryByText("Last changed 3 months ago")).toBeNull();
+  expect(screen.queryByText("Reset")).toBeNull();
+});
+
+test("digests and offline reading are marked coming soon and can't be toggled", async () => {
+  const { updatePreferences } = await open();
+  expect(screen.getAllByText("Coming soon")).toHaveLength(2);
   await fireEvent.press(screen.getByText("Push Digests"));
-  expect(updatePreferences).toHaveBeenCalledWith({ push_digests: false });
-  await settled(client);
+  await fireEvent.press(screen.getByText("Offline Reading Storage"));
+  expect(updatePreferences).not.toHaveBeenCalled();
+  const digests = screen.getByRole("switch", { name: "Push Digests" });
+  expect(digests.props.accessibilityState).toEqual({ checked: false, disabled: true });
+  expect(screen.getByRole("switch", { name: "Offline Reading Storage" })).toBeTruthy();
 });
 
 test("log out and back", async () => {

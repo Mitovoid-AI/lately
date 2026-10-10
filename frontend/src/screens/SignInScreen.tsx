@@ -41,7 +41,7 @@ const IMG = {
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-type Provider = "google" | "instagram" | "facebook" | "email";
+type Provider = "google" | "email";
 
 function Pill({ icon, label, iconColor = colors.ink2 }: { icon: IconName; label: string; iconColor?: string }) {
   return (
@@ -72,10 +72,6 @@ function ProviderButton({
       <View className="h-7 w-7 items-center justify-center rounded-full bg-card">
         <FontAwesome name="google" size={16} color="#4285F4" />
       </View>
-    ) : brand === "instagram" ? (
-      <FontAwesome name="instagram" size={22} color={tone === "accent" ? colors.onAccent : "#C13584"} />
-    ) : brand === "facebook" ? (
-      <FontAwesome name="facebook-official" size={22} color="#1877F2" />
     ) : (
       <Icon name="mail-outline" size={22} color={colors.ink2} />
     );
@@ -322,8 +318,6 @@ export function SignInScreen() {
       await auth.signInDemo();
       return;
     }
-    if (provider === "instagram") return toast.show("Instagram sign-in is coming soon");
-    if (provider === "facebook") return toast.show("Facebook sign-in is coming soon");
     if (provider === "email") return setEmailOpen(true);
     try {
       await auth.signInWithGoogle();
@@ -413,22 +407,12 @@ export function SignInScreen() {
               label={signUp ? "Sign up with Google" : "Continue with Google"}
               onPress={() => choose("google")}
             />
+            {/* Google and email are the only sign-ins Lately has; no placeholder providers. */}
             <ProviderButton
-              brand="instagram"
-              label={signUp ? "Sign up with Instagram" : "Continue with Instagram"}
-              onPress={() => choose("instagram")}
+              brand="email"
+              label={signUp ? "Sign up with email" : "Continue with email"}
+              onPress={() => choose("email")}
             />
-            {signUp ? (
-              <View className="flex-row gap-3">
-                <ProviderButton tone="soft" brand="facebook" label="Facebook" onPress={() => choose("facebook")} className="flex-1" />
-                <ProviderButton tone="soft" brand="email" label="With Email" onPress={() => choose("email")} className="flex-1" />
-              </View>
-            ) : (
-              <>
-                <ProviderButton brand="facebook" label="Continue with Facebook" onPress={() => choose("facebook")} />
-                <ProviderButton brand="email" label="Continue with email" onPress={() => choose("email")} />
-              </>
-            )}
           </View>
           </Reveal>
 
