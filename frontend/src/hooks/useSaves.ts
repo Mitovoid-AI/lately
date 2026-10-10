@@ -1,4 +1,4 @@
-import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { useMemo } from "react";
 
 import type { Category, Save } from "../api/contract";
@@ -56,7 +56,16 @@ export function pollWhilePending(saves: readonly PendingInfo[] | undefined, now 
  */
 export function useSaves(category?: Category) {
   const api = useApi();
+  const queryClient = useQueryClient();
   const q = useInfiniteQuery({
+    // Switching to a category shows the matching cards already loaded under "all" straight
+    // away (no skeleton flash) while its own request runs.
+    placeholderData: () => {
+      if (!category) return undefined;
+      const all = queryClient.getQueryData<InfiniteData<Save[], string | undefined>>(["saves", "all"]);
+      if (!all) return undefined;
+      return { pages: [all.pages.flat().filter((s) => s.category === category)], pageParams: [undefined] };
+    },
     queryKey: ["saves", category ?? "all"],
     initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam }) => api.listSaves({ before: pageParam, limit: PAGE, ...(category ? { category } : {}) }),

@@ -32,10 +32,22 @@ test("category chips filter the grid", async () => {
   expect(screen.getByRole("button", { name: "All" })).toBeSelected();
   expect(screen.getByText("Watch Later")).toBeTruthy();
   await fireEvent.press(screen.getByText("Food & Places"));
-  expect(screen.queryByText(GITHUB)).toBeNull();
-  expect(screen.getByText(MOMO)).toBeTruthy();
+  expect(await screen.findByText(MOMO)).toBeTruthy();
+  await waitFor(() => expect(screen.queryByText(GITHUB)).toBeNull());
   await fireEvent.press(screen.getByText("All"));
-  expect(screen.getByText(GITHUB)).toBeTruthy();
+  expect(await screen.findByText(GITHUB)).toBeTruthy();
+});
+
+test("switching category shows the matching cached cards at once, not a skeleton", async () => {
+  const api = demoApi();
+  const listSaves = jest.spyOn(api, "listSaves");
+  await renderWithProviders(<LibraryScreen />, { api });
+  await screen.findByText(MOMO);
+  // The category request never answers: whatever shows comes from the "all" cache.
+  listSaves.mockImplementation(() => new Promise(() => {}));
+  await fireEvent.press(screen.getByText("Food & Places"));
+  expect(screen.getByText(MOMO)).toBeTruthy();
+  expect(screen.queryByText(GITHUB)).toBeNull();
 });
 
 test("only categories present in the saves get a chip", async () => {
