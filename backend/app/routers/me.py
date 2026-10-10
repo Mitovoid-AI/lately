@@ -13,6 +13,7 @@ import uuid
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Response
+from fastapi.responses import JSONResponse
 
 from ..deps import CurrentUser, pool
 from ..models import ConnectedAccount, MeOut, PreferencesOut, PreferencesPatch, api_error
@@ -159,3 +160,23 @@ async def delete_me(user: CurrentUser) -> Response:
                 uid)
         await con.execute("delete from auth.users where id = $1", uid)
     return Response(status_code=204)
+
+
+@router.get("/export", response_model=None)
+async def download_export(user: CurrentUser) -> Response | JSONResponse:
+    """The newest finished export as a JSON download. 202 while one is still
+    being built, 404 when none was ever requested."""
+    uid = uuid.UUID(user.id)
+    queued = await pool().fetchval(
+        "select exists (select 1 from public.jobs where kind = 'export' "
+        "and payload->>'user_id' = $1)", str(uid))
+    if queued:
+        return JSONResponse(status_code=202, content={"status": "queued"})
+    row = await pool().fetchrow(
+        "select data::text as data, created_at from public.exports "
+        "where user_id = $1 order by created_at desc limit 1", uid)
+    if row is None:
+        raise api_error(404, "NOT_FOUND", "No export yet. Request one first.")
+    name = f"lately-export-{row['created_at']:%Y%m%d}.json"
+    return Response(content=row["data"], media_type="application/json",
+                    headers={"Content-Disposition": f'attachment; filename="{name}"'})

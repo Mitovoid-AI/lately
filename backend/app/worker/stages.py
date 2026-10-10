@@ -41,6 +41,7 @@ from ..enrich.structure import (
 from ..enrich.transcribe import TranscribeError, should_transcribe
 from ..search.embed import card_embedding_text, to_pgvector
 from ..search.seed import reel_url
+from ..services.saves_view import SAVE_COLUMNS, SAVE_FROM, to_save_detail
 from ..urls import is_share_link, parse_shortcode
 
 log = logging.getLogger("lately.worker")
@@ -398,6 +399,20 @@ async def finalize(db: asyncpg.Pool, job: dict[str, Any]) -> None:
     await enqueue_embed_jobs(db, [r["id"] for r in rows])
     await _metric(db, "worker", "finalize", started, "ok",
                   {"media_status": current, "saves": len(rows), "cache_hit": card is None})
+    await _total_metric(db, payload["reel_id"], current or "partial")
+
+
+async def _total_metric(db: asyncpg.Pool, reel_id: Any, outcome: str) -> None:
+    """Share → card time for this save (GET /admin/health `enrich_p95_ms`). Never raises."""
+    try:
+        await db.execute(
+            """insert into public.metrics (door, stage, duration_ms, outcome)
+               select 'worker', 'enrich',
+                      greatest(0, (extract(epoch from now() - r.created_at) * 1000)::int), $2
+               from public.reels r where r.id = $1::uuid""",
+            str(reel_id), outcome)
+    except Exception:
+        log.exception("total metric write failed")
 
 
 # ------------------------------------------------------------------ embed --
@@ -431,3 +446,59 @@ async def embed(db: asyncpg.Pool, job: dict[str, Any]) -> None:
                      str(reel_id), to_pgvector(vec))
     await _metric(db, "worker", "embed", started, "ok", {"chars": len(text)})
     return
+
+
+# ----------------------------------------------------------------- export --
+
+_EXPORT_SAVES = f"""
+select {SAVE_COLUMNS}, rc.likely_queries, rc.transcript
+{SAVE_FROM}
+where r.auth_user_id = $1::uuid
+order by r.created_at desc
+"""
+
+
+@stage("export")
+async def export(db: asyncpg.Pool, job: dict[str, Any]) -> None:
+    """Everything the user owns as one JSON document (POST /me/export →
+    GET /me/export). Keeps only the newest export per user."""
+    started = time.monotonic()
+    user_id = str(job["payload"]["user_id"])
+    account = await db.fetchrow(
+        """select p.id, p.email, p.full_name, p.handle, p.plan, p.created_at
+           from public.profiles p where p.id = $1::uuid""", user_id)
+    if account is None:
+        await _metric(db, "worker", "export", started, "skipped", {"reason": "user_gone"})
+        return
+    saves = []
+    for row in await db.fetch(_EXPORT_SAVES, user_id):
+        detail = to_save_detail(row).model_dump(mode="json")
+        detail["likely_queries"] = list(row["likely_queries"] or [])
+        detail["transcript"] = row["transcript"]
+        saves.append(detail)
+    stacks = [
+        {"id": str(r["id"]), "name": r["name"], "created_at": r["created_at"].isoformat(),
+         "save_ids": [str(x) for x in (r["save_ids"] or [])]}
+        for r in await db.fetch(
+            """select s.id, s.name, s.created_at,
+                      array_remove(array_agg(ss.reel_id order by ss.added_at), null) as save_ids
+               from public.stacks s
+               left join public.stack_saves ss on ss.stack_id = s.id
+               where s.auth_user_id = $1::uuid
+               group by s.id order by s.created_at""", user_id)
+    ]
+    prefs = await db.fetchrow("select * from public.preferences where auth_user_id = $1::uuid", user_id)
+    data = {
+        "format": "lately-export/1",
+        "account": {"id": str(account["id"]), "email": account["email"],
+                    "name": account["full_name"], "handle": account["handle"],
+                    "plan": account["plan"], "created_at": account["created_at"].isoformat()},
+        "preferences": {k: v for k, v in dict(prefs).items() if k not in ("auth_user_id", "updated_at")} if prefs else None,
+        "saves": saves,
+        "stacks": stacks,
+    }
+    async with db.acquire() as con, con.transaction():
+        await con.execute("delete from public.exports where user_id = $1::uuid", user_id)
+        await con.execute("insert into public.exports (user_id, data) values ($1::uuid, $2::jsonb)",
+                          user_id, json.dumps(data, default=str))
+    await _metric(db, "worker", "export", started, "ok", {"saves": len(saves)})

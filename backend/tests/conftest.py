@@ -54,6 +54,7 @@ _TRUNCATE = (
     "public.reel_content, public.profiles restart identity cascade"
 )
 _TRUNCATE += "; truncate public.provider_budget"  # 0007 (enrichment)
+_TRUNCATE += "; truncate public.exports"  # 0008
 
 
 @pytest.fixture
