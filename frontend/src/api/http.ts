@@ -172,7 +172,10 @@ export function createHttpApi(o: {
   async function exchange(method: string, path: string, body?: unknown): Promise<{ res: Response; text: string; data: unknown }> {
     let { res, text } = await send(method, path, await o.getToken(), body);
     if (res.status === 401) {
-      const fresh = await o.refreshToken();
+      // A refresh that can't reach Supabase is NETWORK (retry later), never UNAUTHORIZED.
+      const fresh = await o.refreshToken().catch((e: unknown) => {
+        throw e instanceof ApiError ? e : new ApiError("NETWORK", 0, e instanceof Error ? e.message : "Couldn't refresh the session.");
+      });
       if (fresh) ({ res, text } = await send(method, path, fresh, body));
     }
     let data: unknown = undefined;

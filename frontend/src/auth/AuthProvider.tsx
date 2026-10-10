@@ -4,6 +4,7 @@ import * as WebBrowser from "expo-web-browser";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { AppState, Platform } from "react-native";
 
+import { ApiError } from "../api/contract";
 import { DEMO_USER } from "../api/demo";
 import { config } from "../config";
 import { deviceStore, type KeyValueStore } from "../lib/storage";
@@ -88,6 +89,13 @@ export function failureFrom(error: AuthError | Error | null | undefined): AuthFa
   if (text.includes("otp_expired") || text.includes("expired") || text.includes("invalid")) return "invalid_code";
   if (e.name === "AuthRetryableFetchError" || text.includes("network") || text.includes("fetch")) return "network";
   return "failed";
+}
+
+/** A Supabase call that failed because it could not reach the server (worth retrying later). */
+export function isRetryableAuthError(error: AuthError | Error | null | undefined): boolean {
+  if (!error) return false;
+  const e = error as AuthError & { status?: number };
+  return e.name === "AuthRetryableFetchError" || failureFrom(error) === "network";
 }
 
 /** Is this OAuth provider switched on in the Supabase project? (null = couldn't tell) */
@@ -281,7 +289,9 @@ export function AuthProvider({
     if (mode === "demo") {
       await storage.setItem(DEMO_KEY, "0").catch(() => {});
     } else {
-      await getSupabase().auth.signOut();
+      // Local scope: ends the session on this device without a network call, so it works offline.
+      const { error } = await getSupabase().auth.signOut({ scope: "local" });
+      if (error) console.warn("Supabase sign-out did not finish cleanly:", error.message);
     }
     session.current = null;
     setUser(null);
@@ -290,9 +300,24 @@ export function AuthProvider({
 
   const getAccessToken = useCallback(async () => session.current?.access_token ?? null, []);
 
+  /**
+   * A fresh access token, or null when the server refused the refresh (the session is over).
+   * A refresh that could not reach Supabase throws NETWORK and keeps the session: being
+   * offline must not sign anyone out.
+   */
   const refreshAccessToken = useCallback(async () => {
     if (mode === "demo") return null;
-    const { data } = await getSupabase().auth.refreshSession();
+    let result: Awaited<ReturnType<SupabaseClient["auth"]["refreshSession"]>>;
+    try {
+      result = await getSupabase().auth.refreshSession();
+    } catch (e) {
+      throw new ApiError("NETWORK", 0, e instanceof Error ? e.message : "Couldn't refresh the session.");
+    }
+    const { data, error } = result;
+    if (error) {
+      if (isRetryableAuthError(error)) throw new ApiError("NETWORK", 0, error.message);
+      return null;
+    }
     session.current = data.session;
     return data.session?.access_token ?? null;
   }, [mode]);

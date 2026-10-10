@@ -78,6 +78,33 @@ test("a 401 refreshes the token once and retries", async () => {
   expect(headersOf(f, 1).Authorization).toBe("Bearer tok-2");
 });
 
+test("a refresh that fails on the network is NETWORK, not UNAUTHORIZED", async () => {
+  const f = fakeFetch({ status: 401 }, { status: 200, body: [] });
+  const api = createHttpApi({
+    baseUrl: "http://api.test",
+    getToken: async () => "tok-1",
+    refreshToken: async () => {
+      throw new ApiError("NETWORK", 0);
+    },
+    fetchImpl: f as unknown as typeof fetch,
+  });
+  const e = await rejection(api.listSaves());
+  expect(e.code).toBe("NETWORK");
+});
+
+test("a refresh that throws something unexpected is NETWORK too", async () => {
+  const f = fakeFetch({ status: 401 });
+  const api = createHttpApi({
+    baseUrl: "http://api.test",
+    getToken: async () => "tok-1",
+    refreshToken: async () => {
+      throw new TypeError("fetch failed");
+    },
+    fetchImpl: f as unknown as typeof fetch,
+  });
+  expect((await rejection(api.listSaves())).code).toBe("NETWORK");
+});
+
 test("a second 401 is UNAUTHORIZED", async () => {
   const f = fakeFetch({ status: 401 }, { status: 401 });
   const e = await rejection(setup(f).api.listSaves());

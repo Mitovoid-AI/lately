@@ -78,6 +78,49 @@ test("token auto-refresh runs only while the app is in the foreground", async ()
   expect(mockSupabase.auth.startAutoRefresh).toHaveBeenCalled();
 });
 
+const RETRYABLE = { name: "AuthRetryableFetchError", message: "Network request failed", status: 0 };
+
+async function signedIn() {
+  mockSupabase.auth.getSession.mockResolvedValueOnce({ data: { session: SESSION }, error: null });
+  const hook = await renderHook(() => useAuth(), { wrapper: Wrapper });
+  await waitFor(() => expect(hook.result.current.status).toBe("signed-in"));
+  return hook;
+}
+
+test("a token refresh that fails on the network is NETWORK and keeps the session", async () => {
+  const { result } = await signedIn();
+  mockSupabase.auth.refreshSession.mockResolvedValueOnce({ data: { session: null }, error: RETRYABLE });
+  await expect(result.current.refreshAccessToken()).rejects.toMatchObject({ code: "NETWORK" });
+  expect(await result.current.getAccessToken()).toBe("access-1");
+  expect(result.current.status).toBe("signed-in");
+});
+
+test("a refresh the server refuses gives no token (the caller then signs out)", async () => {
+  const { result } = await signedIn();
+  mockSupabase.auth.refreshSession.mockResolvedValueOnce({
+    data: { session: null },
+    error: { name: "AuthApiError", message: "Invalid Refresh Token: Refresh Token Not Found", status: 400 },
+  });
+  await expect(result.current.refreshAccessToken()).resolves.toBeNull();
+});
+
+test("a successful refresh replaces the token", async () => {
+  const { result } = await signedIn();
+  mockSupabase.auth.refreshSession.mockResolvedValueOnce({
+    data: { session: { ...SESSION, access_token: "access-2" } },
+    error: null,
+  });
+  await expect(result.current.refreshAccessToken()).resolves.toBe("access-2");
+  expect(await result.current.getAccessToken()).toBe("access-2");
+});
+
+test("sign-out is local to this device and checks the result", async () => {
+  const { result } = await signedIn();
+  await act(() => result.current.signOut());
+  expect(mockSupabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
+  expect(result.current.status).toBe("signed-out");
+});
+
 test("a stored session signs in on start", async () => {
   mockSupabase.auth.getSession.mockResolvedValueOnce({ data: { session: SESSION }, error: null });
   const { result } = await renderHook(() => useAuth(), { wrapper: Wrapper });
