@@ -103,10 +103,13 @@ async function providerEnabled(provider: string): Promise<boolean | null> {
 }
 
 /**
- * Turns a sign-in redirect into a session: implicit-flow tokens, a PKCE code, or an email
- * token hash. Throws AuthFlowError when the redirect carries an error or a dead token.
+ * Turns a sign-in redirect into a session: a PKCE `?code=` (Google and email links; the code
+ * is useless without the verifier this app kept) or an email `?token_hash=`. Raw tokens in a
+ * redirect are ignored: with the PKCE flow Supabase never sends them, so any that arrive over
+ * the custom scheme did not come from our own sign-in. Throws AuthFlowError when the redirect
+ * carries an error or a dead code.
  */
-async function sessionFromRedirect(sb: SupabaseClient, url: string): Promise<void> {
+export async function sessionFromRedirect(sb: SupabaseClient, url: string): Promise<void> {
   const p = authParamsFromUrl(url);
   if (p.error || p.error_description) {
     throw new AuthFlowError(
@@ -115,9 +118,7 @@ async function sessionFromRedirect(sb: SupabaseClient, url: string): Promise<voi
     );
   }
   let error: AuthError | null = null;
-  if (p.access_token && p.refresh_token) {
-    ({ error } = await sb.auth.setSession({ access_token: p.access_token, refresh_token: p.refresh_token }));
-  } else if (p.code) {
+  if (p.code) {
     ({ error } = await sb.auth.exchangeCodeForSession(p.code));
   } else if (p.token_hash) {
     const type = p.type === "signup" || p.type === "invite" || p.type === "recovery" ? p.type : "magiclink";
