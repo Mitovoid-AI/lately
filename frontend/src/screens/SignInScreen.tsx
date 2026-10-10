@@ -310,6 +310,7 @@ export function SignInScreen() {
   const [emailOpen, setEmailOpen] = useState(false);
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
+  const googleInFlight = useRef(false);
   const signUp = tab === "sign-up";
   const pendingShare = usePendingShare();
 
@@ -319,11 +320,16 @@ export function SignInScreen() {
       return;
     }
     if (provider === "email") return setEmailOpen(true);
+    // One Google window at a time: a second tap while it opens is ignored.
+    if (googleInFlight.current) return;
+    googleInFlight.current = true;
     try {
       await auth.signInWithGoogle();
     } catch (e) {
       const message = authErrorMessage(e, "google");
       if (message) toast.show(message);
+    } finally {
+      googleInFlight.current = false;
     }
   }
 

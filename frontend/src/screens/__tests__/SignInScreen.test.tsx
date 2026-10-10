@@ -34,6 +34,22 @@ test("demo mode: any provider signs in as the demo user", async () => {
   expect(auth.signInDemo).toHaveBeenCalledTimes(1);
 });
 
+test("live mode: a double tap on Google opens one sign-in", async () => {
+  const signInWithGoogle = jest.fn(() => new Promise<void>(() => {}));
+  await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out", mode: "live", signInWithGoogle } });
+  await fireEvent.press(screen.getByText("Continue with Google"));
+  await fireEvent.press(screen.getByText("Continue with Google"));
+  expect(signInWithGoogle).toHaveBeenCalledTimes(1);
+});
+
+test("live mode: Google can be tried again after it fails", async () => {
+  const signInWithGoogle = jest.fn(async () => Promise.reject(new Error("cancelled")));
+  await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out", mode: "live", signInWithGoogle } });
+  await fireEvent.press(screen.getByText("Continue with Google"));
+  await fireEvent.press(screen.getByText("Continue with Google"));
+  expect(signInWithGoogle).toHaveBeenCalledTimes(2);
+});
+
 test("only the sign-in methods that work are offered (no Instagram or Facebook)", async () => {
   await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out", mode: "live" } });
   expect(screen.queryByText(/with Instagram/)).toBeNull();
