@@ -50,6 +50,22 @@ class NoteRequest(BaseModel):
         return v.strip()
 
 
+class DeviceHintRequest(BaseModel):
+    """POST /saves/{id}/hint — what the phone read from Instagram's public embed
+    page (PIPELINE.md §5 FETCH, §8 trust rule). Bad values are a 422; media URLs
+    that are not https on an Instagram/Facebook CDN host are dropped instead
+    (app/enrich/device.py)."""
+
+    model_config = ConfigDict(extra="ignore")
+
+    caption: str | None = Field(default=None, max_length=5000)
+    creator_handle: str | None = Field(default=None, pattern=r"^[A-Za-z0-9._]{1,30}$")
+    thumbnail_url: str | None = Field(default=None, max_length=4096)
+    video_url: str | None = Field(default=None, max_length=4096)
+    duration_s: float | None = Field(default=None, ge=0, le=3600)
+    shortcode: str | None = Field(default=None, pattern=r"^[A-Za-z0-9_-]{1,64}$")
+
+
 class ConnectedAccount(BaseModel):
     """A sign-in method linked to the account (Supabase Auth identity)."""
 
