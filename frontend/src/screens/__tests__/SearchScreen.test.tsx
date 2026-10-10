@@ -93,6 +93,11 @@ test("back with no history goes to the Library", async () => {
   expect(mockRouter.replace).toHaveBeenCalledWith("/");
 });
 
+test("the search box takes at most 200 characters", async () => {
+  await renderWithProviders(<SearchScreen />);
+  expect(screen.getByPlaceholderText("Search what you remember…").props.maxLength).toBe(200);
+});
+
 test("a failed search says so with a retry", async () => {
   mockParams = { q: "cafe" };
   const api = { ...demoApi(), search: jest.fn(async () => Promise.reject(new Error("down"))) };
