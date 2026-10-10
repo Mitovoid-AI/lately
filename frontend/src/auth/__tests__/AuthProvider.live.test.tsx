@@ -26,7 +26,7 @@ function Wrapper({ children }: { children: ReactNode }) {
 
 beforeEach(() => {
   resetMockSupabase();
-  global.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ external: { google: true } }) })) as unknown as typeof fetch;
+  globalThis.fetch = jest.fn(async () => ({ ok: true, json: async () => ({ external: { google: true } }) })) as unknown as typeof fetch;
 });
 
 test("a ?code= redirect is exchanged for a session (PKCE)", async () => {
