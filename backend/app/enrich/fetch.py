@@ -310,8 +310,17 @@ class ScraperApiProvider:
 # -------------------------------------------------------------- thumbnail --
 
 async def download_limited(client: httpx.AsyncClient, url: str, max_bytes: int,
-                           timeout: float = 15.0, follow_redirects: bool = True) -> bytes | None:
-    """GET `url` into memory, or None if it fails or exceeds `max_bytes`."""
+                           timeout: float = 15.0, follow_redirects: bool = False) -> bytes | None:
+    """GET `url` into memory, or None if it fails or exceeds `max_bytes`.
+
+    Media URLs come from Instagram pages, yt-dlp, a scraper or a device, so the
+    worker only downloads from Instagram/Facebook CDN hosts over https and never
+    follows redirects: no SSRF into the private network (backend review M4)."""
+    from .device import is_instagram_cdn_url
+
+    if not is_instagram_cdn_url(url):
+        log.info("download refused, not an Instagram CDN URL: %s", url[:80])
+        return None
     try:
         async with client.stream("GET", url, timeout=timeout, follow_redirects=follow_redirects,
                                  headers={"User-Agent": BROWSER_UA}) as resp:
@@ -349,9 +358,15 @@ class ThumbnailStore:
             return None
         if not self._key:
             return image_url
+        from .device import is_instagram_cdn_url, looks_like_image
+
+        if not is_instagram_cdn_url(image_url):
+            return None  # never store or show a thumbnail from an unknown host
         data = await download_limited(self._client, image_url, self._max)
         if data is None:
             return image_url
+        if not looks_like_image(data):
+            return None
         return await self._upload(shortcode, data) or image_url
 
     async def store_verified(self, shortcode: str, image_url: str | None) -> str | None:

@@ -13,6 +13,7 @@ from app.enrich.fetch import (
     ScraperApiProvider,
     ThumbnailStore,
     YtDlpProvider,
+    download_limited,
     info_to_result,
     parse_embed_page,
     run_chain,
@@ -73,12 +74,12 @@ async def test_embed_provider_http_error_is_none():
 YT_INFO = {
     "description": "3 VS Code shortcuts you need #vscode",
     "uploader_id": "dev.tips", "uploader": "Dev Tips", "channel": "dev.tips",
-    "thumbnail": "https://cdn.example/thumb.jpg", "duration": 31.5,
+    "thumbnail": "https://scontent.cdninstagram.com/thumb.jpg", "duration": 31.5,
     "formats": [
-        {"format_id": "v1", "url": "https://cdn.example/v.mp4", "vcodec": "avc1", "acodec": "none"},
-        {"format_id": "a1", "url": "https://cdn.example/a.m4a", "vcodec": "none",
+        {"format_id": "v1", "url": "https://scontent.cdninstagram.com/v.mp4", "vcodec": "avc1", "acodec": "none"},
+        {"format_id": "a1", "url": "https://scontent.cdninstagram.com/a.m4a", "vcodec": "none",
          "acodec": "mp4a", "filesize": 400_000},
-        {"format_id": "va", "url": "https://cdn.example/va.mp4", "vcodec": "avc1",
+        {"format_id": "va", "url": "https://scontent.cdninstagram.com/va.mp4", "vcodec": "avc1",
          "acodec": "mp4a", "filesize": 3_000_000},
     ],
 }
@@ -88,9 +89,9 @@ def test_info_to_result_prefers_audio_only_format():
     r = info_to_result(YT_INFO)
     assert r.source == "ytdlp" and r.caption.startswith("3 VS Code")
     assert r.creator_handle == "dev.tips" and r.duration_s == 31.5
-    assert r.audio_url == "https://cdn.example/a.m4a"
-    assert r.video_url == "https://cdn.example/va.mp4"
-    assert r.thumbnail_url == "https://cdn.example/thumb.jpg"
+    assert r.audio_url == "https://scontent.cdninstagram.com/a.m4a"
+    assert r.video_url == "https://scontent.cdninstagram.com/va.mp4"
+    assert r.thumbnail_url == "https://scontent.cdninstagram.com/thumb.jpg"
 
 
 async def test_ytdlp_provider_uses_injected_extractor_without_download():
@@ -119,13 +120,13 @@ async def test_scraper_provider_maps_json_and_sends_key():
         assert request.url.params["url"] == URL
         return httpx.Response(200, json={
             "caption": "Gym split", "owner": {"username": "fit.guy"},
-            "display_url": "https://cdn.example/t.jpg", "video_url": "https://cdn.example/v.mp4",
+            "display_url": "https://scontent.cdninstagram.com/t.jpg", "video_url": "https://scontent.cdninstagram.com/v.mp4",
             "video_duration": 20})
 
     p = ScraperApiProvider(client_for(handler), "https://scraper.example/v1/reel", "sk-scrape")
     r = await p.fetch("C8xYz12", URL)
     assert (r.source, r.caption, r.creator_handle) == ("scraper", "Gym split", "fit.guy")
-    assert r.thumbnail_url == "https://cdn.example/t.jpg" and r.duration_s == 20
+    assert r.thumbnail_url == "https://scontent.cdninstagram.com/t.jpg" and r.duration_s == 20
 
 
 # ------------------------------------------------------------------ chain --
@@ -177,44 +178,44 @@ async def test_thumbnail_uploaded_to_storage_with_service_key():
     uploads = []
 
     def handler(request):
-        if request.url.host == "cdn.example":
-            return httpx.Response(200, content=b"\xff\xd8jpeg", headers={"content-type": "image/jpeg"})
+        if request.url.host == "scontent.cdninstagram.com":
+            return httpx.Response(200, content=b"\xff\xd8\xffjpeg", headers={"content-type": "image/jpeg"})
         uploads.append(request)
         return httpx.Response(200, json={"Key": "thumbnails/SC1.jpg"})
 
     store = ThumbnailStore(client_for(handler), "https://proj.supabase.co", "service-key")
-    path = await store.store("SC1", "https://cdn.example/t.jpg")
+    path = await store.store("SC1", "https://scontent.cdninstagram.com/t.jpg")
     assert path == "SC1.jpg"
     (up,) = uploads
     assert str(up.url) == "https://proj.supabase.co/storage/v1/object/thumbnails/SC1.jpg"
     assert up.method == "POST" and up.headers["x-upsert"] == "true"
     assert up.headers["authorization"] == "Bearer service-key"
-    assert up.content == b"\xff\xd8jpeg"
+    assert up.content == b"\xff\xd8\xffjpeg"
 
 
 async def test_thumbnail_without_key_keeps_remote_url():
     store = ThumbnailStore(client_for(lambda r: httpx.Response(500)), "https://p.supabase.co", "")
-    assert await store.store("SC1", "https://cdn.example/t.jpg") == "https://cdn.example/t.jpg"
+    assert await store.store("SC1", "https://scontent.cdninstagram.com/t.jpg") == "https://scontent.cdninstagram.com/t.jpg"
 
 
 async def test_thumbnail_too_large_keeps_remote_url():
     def handler(request):
-        if request.url.host == "cdn.example":
+        if request.url.host == "scontent.cdninstagram.com":
             return httpx.Response(200, content=b"x" * 5000)
         raise AssertionError("must not upload")
 
     store = ThumbnailStore(client_for(handler), "https://p.supabase.co", "k", max_bytes=1000)
-    assert await store.store("SC1", "https://cdn.example/t.jpg") == "https://cdn.example/t.jpg"
+    assert await store.store("SC1", "https://scontent.cdninstagram.com/t.jpg") == "https://scontent.cdninstagram.com/t.jpg"
 
 
 async def test_thumbnail_upload_failure_keeps_remote_url():
     def handler(request):
-        if request.url.host == "cdn.example":
-            return httpx.Response(200, content=b"jpg")
+        if request.url.host == "scontent.cdninstagram.com":
+            return httpx.Response(200, content=b"\xff\xd8\xffjpg")
         return httpx.Response(403, json={"error": "Unauthorized"})
 
     store = ThumbnailStore(client_for(handler), "https://p.supabase.co", "k")
-    assert await store.store("SC1", "https://cdn.example/t.jpg") == "https://cdn.example/t.jpg"
+    assert await store.store("SC1", "https://scontent.cdninstagram.com/t.jpg") == "https://scontent.cdninstagram.com/t.jpg"
 
 
 async def test_download_limited_rejects_by_content_length():
@@ -222,3 +223,41 @@ async def test_download_limited_rejects_by_content_length():
         return httpx.Response(200, content=b"x" * 10, headers={"content-length": "999999"})
 
     assert await fetch.download_limited(client_for(handler), "https://x/y", 100) is None
+
+
+# ------------------------------------------- download host allowlist (SSRF) --
+
+@pytest.mark.parametrize("url", [
+    "https://169.254.169.254/latest/meta-data/",
+    "http://scontent.cdninstagram.com/t.jpg",
+    "https://lately-api.internal:8080/admin/health",
+    "https://evil.example/cdninstagram.com/t.jpg",
+])
+async def test_download_refuses_non_instagram_cdn_hosts(url):
+    def handler(request):
+        raise AssertionError(f"must not fetch {request.url}")
+
+    assert await download_limited(client_for(handler), url, 1000) is None
+
+
+async def test_download_does_not_follow_redirects_off_the_cdn():
+    def handler(request):
+        return httpx.Response(302, headers={"location": "https://169.254.169.254/"})
+
+    assert await download_limited(client_for(handler),
+                                  "https://scontent.cdninstagram.com/t.jpg", 1000) is None
+
+
+async def test_thumbnail_from_untrusted_host_is_dropped():
+    store = ThumbnailStore(client_for(lambda r: httpx.Response(500)), "https://p.supabase.co", "k")
+    assert await store.store("SC1", "https://evil.example/t.jpg") is None
+
+
+async def test_thumbnail_that_is_not_an_image_is_not_uploaded():
+    def handler(request):
+        if request.url.host == "scontent.cdninstagram.com":
+            return httpx.Response(200, content=b"<html>login</html>")
+        raise AssertionError("must not upload")
+
+    store = ThumbnailStore(client_for(handler), "https://p.supabase.co", "k")
+    assert await store.store("SC1", "https://scontent.cdninstagram.com/t.jpg") is None

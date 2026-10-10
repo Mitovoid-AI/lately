@@ -76,15 +76,15 @@ def fake_llm(content=None, status=200):
 
 def thumb_http():
     def handler(request):
-        if request.url.host == "cdn.test":
+        if request.url.host == "scontent.cdninstagram.com":
             return httpx.Response(200, content=b"\xff\xd8jpeg")
         raise AssertionError(f"unexpected {request.url}")
     return httpx.AsyncClient(transport=httpx.MockTransport(handler))
 
 
 MEDIA = FetchResult(source="embed_page", caption="Best momos in Majnu ka Tilla #momos",
-                    creator_handle="delhi.foodtrails", thumbnail_url="https://cdn.test/t.jpg",
-                    video_url="https://cdn.test/v.mp4", duration_s=47.0)
+                    creator_handle="delhi.foodtrails", thumbnail_url="https://scontent.cdninstagram.com/t.jpg",
+                    video_url="https://scontent.cdninstagram.com/v.mp4", duration_s=47.0)
 
 
 @pytest.fixture
@@ -136,16 +136,16 @@ async def test_save_to_card_end_to_end(client, make_user, jwt_for, db, full_runt
     assert rc["entity_names"] == ["Majnu ka Tilla", "Delhi"]
     assert rc["likely_queries"] == CARD["likely_queries"]
     assert rc["parser_version"] == 1 and rc["search_text"] == CARD["search_text"]
-    assert rc["thumbnail_path"] == "https://cdn.test/t.jpg"  # no service key → remote URL
+    assert rc["thumbnail_path"] == "https://scontent.cdninstagram.com/t.jpg"  # no service key → remote URL
     assert rc["duration_s"] == pytest.approx(47.0)
-    assert json.loads(rc["fetch_meta"])["video_url"] == "https://cdn.test/v.mp4"
+    assert json.loads(rc["fetch_meta"])["video_url"] == "https://scontent.cdninstagram.com/v.mp4"
     assert rc["tsv"] is not None and "majnu" in rc["match_text"].lower()
 
     assert await db.fetchval("select status from public.reels where id = $1", reel_id) == "enriched"
     embed = await db.fetchrow("select * from public.jobs")
     assert embed["kind"] == "embed" and embed["stage"] == "embed"
     assert json.loads(embed["payload"]) == {"reel_id": str(reel_id)}
-    assert full_runtime.transcriber.urls == ["https://cdn.test/v.mp4"]
+    assert full_runtime.transcriber.urls == ["https://scontent.cdninstagram.com/v.mp4"]
 
     # The LLM got the thumbnail as an image.
     (call,) = full_runtime.extra["llm_calls"]
@@ -304,7 +304,7 @@ async def test_transcribe_failure_is_skipped_not_fatal(db, make_user, full_runti
 
 
 async def test_transcribe_refetches_stale_media_urls(db, make_user, full_runtime):
-    fresh = FetchResult(**{**MEDIA.to_meta(), "video_url": "https://cdn.test/fresh.mp4"})
+    fresh = FetchResult(**{**MEDIA.to_meta(), "video_url": "https://scontent.cdninstagram.com/fresh.mp4"})
     reel_id = await save(db, await make_user())
     await db.execute("update public.reels set shortcode_key = $1 where id = $2", SC, reel_id)
     full_runtime.fetchers = [StubFetcher(fresh)]
@@ -313,8 +313,8 @@ async def test_transcribe_refetches_stale_media_urls(db, make_user, full_runtime
     await db.execute("insert into public.reel_content (shortcode, source_url, caption) "
                      "values ($1, $2, 'short')", SC, URL)
     assert await stages.transcribe(db, job) == "vision"
-    assert full_runtime.transcriber.urls == ["https://cdn.test/fresh.mp4"]
-    assert job["payload"]["fetch"]["video_url"] == "https://cdn.test/fresh.mp4"
+    assert full_runtime.transcriber.urls == ["https://scontent.cdninstagram.com/fresh.mp4"]
+    assert job["payload"]["fetch"]["video_url"] == "https://scontent.cdninstagram.com/fresh.mp4"
 
 
 async def test_strong_caption_skips_transcribe(db, make_user, full_runtime):
