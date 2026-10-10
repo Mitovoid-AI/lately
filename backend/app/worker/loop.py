@@ -47,7 +47,17 @@ async def run_job(db: asyncpg.Pool, job: Mapping[str, Any], worker_id: str) -> N
             stage_name = j["stage"]
             fn = stages.STAGES.get(stage_name)
             if fn is None:
-                await _release(db, j["id"], worker_id, f"unknown stage {stage_name}")
+                # A newer deploy's job kind/stage reached an older worker (rolling
+                # deploy): leave it for a worker that has it, without burning an attempt.
+                await db.execute(
+                    """update public.jobs
+                       set locked_at = null, locked_by = null, heartbeat_at = null,
+                           attempts = greatest(attempts - 1, 0),
+                           run_at = now() + interval '5 minutes',
+                           last_error = $3
+                       where id = $1 and locked_by = $2""",
+                    j["id"], worker_id, f"unknown stage {stage_name}")
+                log.warning("job %s: unknown stage %s; requeued", j["id"], stage_name)
                 return
             try:
                 result = await fn(db, j)

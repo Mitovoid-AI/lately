@@ -42,6 +42,7 @@ from ..enrich.transcribe import TranscribeError, should_transcribe
 from ..search.embed import card_embedding_text, to_pgvector
 from ..search.seed import reel_url
 from ..services.saves_view import SAVE_COLUMNS, SAVE_FROM, to_save_detail
+from ..services.text import clean, clean_text
 from ..urls import is_share_link, parse_shortcode
 
 log = logging.getLogger("lately.worker")
@@ -209,9 +210,10 @@ async def fetch(db: asyncpg.Pool, job: dict[str, Any]) -> str:
         await _metric(db, "worker", "fetch", started, "rescheduled")
         raise
     thumb = await rt.thumbnails.store(sc, result.thumbnail_url)
-    meta = {**result.to_meta(), "at": time.time()}
-    await db.execute(_UPSERT_FETCH, sc, reel_url(sc), result.caption, result.creator_handle,
-                     thumb, result.source, result.duration_s, json.dumps(meta))
+    meta = clean({**result.to_meta(), "at": time.time()})
+    await db.execute(_UPSERT_FETCH, sc, reel_url(sc), clean(result.caption),
+                     clean(result.creator_handle), thumb, result.source, result.duration_s,
+                     json.dumps(meta))
     job["payload"]["fetch"] = meta
     await _metric(db, "worker", "fetch", started, "ok" if result.source else "partial",
                   {"source": result.source, "thumbnail": bool(thumb)})
@@ -264,7 +266,7 @@ async def transcribe(db: asyncpg.Pool, job: dict[str, Any]) -> str:
     await db.execute(
         """update public.reel_content
            set transcript = nullif($2, ''), duration_s = coalesce(duration_s, $3)
-           where shortcode = $1""", sc, t.text, t.duration_s)
+           where shortcode = $1""", sc, clean_text(t.text), t.duration_s)
     seconds = max(t.duration_s or result.duration_s or 0.0, 10.0)  # Groq bills ≥ 10 s
     await _metric(db, "worker", "transcribe", started, "ok", {"chars": len(t.text)},
                   cost=seconds / 3600 * rt.groq_cost_per_hour_usd)
@@ -350,6 +352,8 @@ async def write_card(db: asyncpg.Pool | asyncpg.Connection, sc: str, card: Mappi
                      creator_handle: str | None, media_status: str) -> None:
     """Upsert the structured card into shared reel_content and rebuild its search
     columns. A partial result never overwrites a ready card."""
+    card = clean(dict(card))
+    creator_handle = clean(creator_handle)
     await db.execute(
         _WRITE_CARD, sc, reel_url(sc), creator_handle, card.get("title"), card.get("summary"),
         card.get("category"), card.get("tags") or [], json.dumps(card.get("steps") or []),

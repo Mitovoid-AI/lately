@@ -23,6 +23,7 @@ from ..search.embed import Embedder, LruCache
 from ..search.run import run_search
 from ..search.why import build_why
 from ..services.saves_view import SaveOut, fetch_saves
+from ..services.text import clean_text
 
 log = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ async def search(
     started = time.monotonic()
     uid = uuid.UUID(user.id)
     db = pool()
+    q = clean_text(q)
     run = await run_search(db, uid, q, embedder, category=category or None, limit=limit,
                            cache=QUERY_CACHE,
                            embed_timeout=settings().search_embed_timeout_seconds)

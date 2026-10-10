@@ -131,7 +131,7 @@ async def set_note(save_id: uuid.UUID, body: NoteRequest, user: CurrentUser) -> 
             save_id, uid, body.note or None)
         if status is None:
             raise _not_found()
-        if status == "enriched":
+        if status in ("enriched", "partial"):
             await con.execute(
                 """
                 insert into public.jobs (kind, payload, stage)
@@ -165,6 +165,7 @@ async def delete_save(save_id: uuid.UUID, user: CurrentUser) -> Response:
 # ------------------------------------------------------------------ retries --
 
 retries_router = APIRouter(prefix="/retries", tags=["saves"])
+RETRIES_PER_DAY = 3
 
 
 @retries_router.post("/{reel_id}", status_code=202)
@@ -185,6 +186,22 @@ async def retry_enrichment(reel_id: uuid.UUID, user: CurrentUser) -> dict[str, s
             "select exists (select 1 from public.jobs "
             "where kind = 'enrich' and payload->>'reel_id' = $1)", str(reel_id))
         if not queued:
+            # Each retry re-runs fetch + LLM calls from shared provider budgets.
+            allowed = await con.fetchval(
+                f"""
+                update public.reels set
+                  retry_count = case when retry_window_start > now() - interval '1 day'
+                                     then retry_count + 1 else 1 end,
+                  retry_window_start = case when retry_window_start > now() - interval '1 day'
+                                            then retry_window_start else now() end
+                where id = $1
+                  and not (retry_window_start > now() - interval '1 day'
+                           and retry_count >= {RETRIES_PER_DAY})
+                returning id
+                """, reel_id)
+            if allowed is None:
+                raise api_error(429, "RATE_LIMITED",
+                                "Too many retries for this save. Try again tomorrow.")
             stage = "fetch" if reel["shortcode_key"] else "resolve"
             await jobs_service.enqueue_enrich(con, str(reel_id), str(uid), stage)
             await con.execute(

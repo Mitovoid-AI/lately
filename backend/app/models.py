@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, field_validator, model_validator
 
 from .services.saves_view import SaveOut
+from .services.text import clean_text
 
 
 def api_error(status: int, code: str, message: str) -> HTTPException:
@@ -20,6 +21,11 @@ class SaveRequest(BaseModel):
 
     text: str = Field(min_length=1, max_length=4096)
     channel: str = Field(default="app_share", pattern="^(app_share|web|meta_dm)$")
+
+    @field_validator("text")
+    @classmethod
+    def _clean(cls, v: str) -> str:
+        return clean_text(v)
 
 
 class SaveResponse(BaseModel):
@@ -47,7 +53,7 @@ class NoteRequest(BaseModel):
     @field_validator("note")
     @classmethod
     def _strip(cls, v: str) -> str:
-        return v.strip()
+        return clean_text(v).strip()
 
 
 class ConnectedAccount(BaseModel):
@@ -116,7 +122,7 @@ class StackCreate(BaseModel):
     @field_validator("name")
     @classmethod
     def _name(cls, v: str) -> str:
-        v = v.strip()
+        v = clean_text(v).strip()
         if not v:
             raise ValueError("name is required")
         return v

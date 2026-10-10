@@ -17,8 +17,12 @@ async def test_rls_authenticated_role_sees_only_own_reels(db, make_user):
         await conn.execute("set local role authenticated")
         await conn.execute("select set_config('request.jwt.claims', $1, true)",
                            json.dumps({"sub": str(a), "role": "authenticated"}))
-        assert await conn.fetchval("select count(*) from public.reels") == 1
-        assert await conn.fetchval("select auth_user_id from public.reels") == a
+        # 0010: the app never reads PostgREST, so the client role has no table
+        # access at all (RLS stays on underneath as a second wall).
+        with pytest.raises(asyncpg.InsufficientPrivilegeError):
+            await conn.fetchval("select count(*) from public.reels")
+    async with db.acquire() as conn, conn.transaction():
+        await conn.execute("set local role authenticated")
         with pytest.raises(asyncpg.InsufficientPrivilegeError):
             await conn.execute(
                 "insert into public.reels (auth_user_id, source_url) "

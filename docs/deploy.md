@@ -12,6 +12,14 @@ supabase link --project-ref <prod-ref>
 supabase db push            # applies supabase/migrations/*.sql in order
 ```
 
+**Deploy gate:** the backend needs **every** migration (0001 → latest) applied
+before the API or worker starts: `/me` 500s without 0005, stacks/preferences
+need 0006, exports need 0008, quotas/retries need 0010. Deploy the worker
+together with (or before) the API so new job kinds always have a worker.
+0005 deletes `profiles` rows with no matching `auth.users` row (e.g. the old
+dev user `0000…0001`); that is intended. Keep `SUPABASE_JWT_AUDIENCE=authenticated`
+in the secrets: without it the audience check is skipped.
+
 Never run `backend/scripts/db_reset.py` or the test suite against prod: both
 wipe tables. Tests use the disposable project's `lately_test_*` databases
 (`backend/scripts/make_test_db.py`).

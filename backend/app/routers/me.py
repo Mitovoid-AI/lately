@@ -26,9 +26,9 @@ select p.id, p.email, p.full_name, p.handle, p.avatar_url, p.plan,
        p.saves_free_limit, p.created_at::date as member_since,
        (select count(*) from public.reels r where r.auth_user_id = p.id) as total_saves,
        (select count(*) from public.stacks s where s.auth_user_id = p.id) as stacks_count,
-       (select count(*) from public.reels r
-         where r.auth_user_id = p.id
-           and r.created_at >= date_trunc('month', now())) as saves_this_month,
+       (select count(*) from public.save_events e
+         where e.auth_user_id = p.id
+           and e.created_at >= date_trunc('month', now())) as saves_this_month,
        (date_trunc('month', now()) + interval '1 month')::date as resets_on,
        coalesce((select jsonb_agg(jsonb_build_object(
                    'provider', i.provider,
