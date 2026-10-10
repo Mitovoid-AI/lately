@@ -1,4 +1,4 @@
-import type { LatelyApi } from "../contract";
+import { ENDPOINTS, type LatelyApi } from "../contract";
 import { createApi, LIVE_ENDPOINTS } from "../index";
 
 function fakeApi(tag: string): LatelyApi {
@@ -7,13 +7,23 @@ function fakeApi(tag: string): LatelyApi {
   });
 }
 
-test("only the endpoints the backend has today are live", () => {
-  expect([...LIVE_ENDPOINTS].sort()).toEqual(["createSave", "getMe", "listSaves", "setNote"]);
+test("every endpoint in the contract is live", () => {
+  expect([...LIVE_ENDPOINTS].sort()).toEqual([...ENDPOINTS].sort());
+  expect(ENDPOINTS).toEqual(
+    expect.arrayContaining(["deleteSave", "retryEnrichment", "removeFromStack", "deleteStack", "deleteAccount"]),
+  );
 });
 
-test("live mode sends live endpoints to http and the rest to demo", async () => {
+test("live mode sends every call to http", async () => {
   const api = createApi({ mode: "live", demo: fakeApi("demo"), http: fakeApi("http") });
   expect(await api.listSaves()).toBe("http:listSaves");
+  expect(await api.getMe()).toBe("http:getMe");
+  expect(await api.listStacks()).toBe("http:listStacks");
+  expect(await api.getCurated()).toBe("http:getCurated");
+});
+
+test("a custom live set still sends the rest to demo", async () => {
+  const api = createApi({ mode: "live", demo: fakeApi("demo"), http: fakeApi("http"), live: new Set(["getMe"]) });
   expect(await api.getMe()).toBe("http:getMe");
   expect(await api.listStacks()).toBe("demo:listStacks");
 });

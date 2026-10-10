@@ -3,21 +3,33 @@
 import {
   ApiError,
   CATEGORIES,
+  DEFAULT_PREFERENCES,
   type ApiErrorCode,
-  type Category,
   type Channel,
+  type CuratedFeed,
+  type CuratedSection,
   type LatelyApi,
+  type Preferences,
   type Save,
   type SaveDetail,
+  type SearchHit,
+  type Stack,
+  type StackDetail,
 } from "./contract";
 
 const KNOWN_CODES: ApiErrorCode[] = ["BAD_URL", "QUOTA_EXCEEDED", "RATE_LIMITED", "NOT_FOUND", "UNAUTHORIZED"];
 
-/** Today's backend sends a subset of the Save fields; fill the rest. */
-export function toSave(raw: Record<string, unknown>): Save {
-  const str = (k: string) => (typeof raw[k] === "string" ? (raw[k] as string) : null);
+type Raw = Record<string, unknown>;
+
+const strOf = (raw: Raw, k: string) => (typeof raw[k] === "string" ? (raw[k] as string) : null);
+const categoryOf = (v: unknown) => CATEGORIES.find((c) => c === v) ?? null;
+const listOf = (v: unknown): Raw[] => (Array.isArray(v) ? (v as Raw[]) : []);
+
+/** The backend may send a subset of the Save fields; fill the rest. */
+export function toSave(raw: Raw): Save {
+  const str = (k: string) => strOf(raw, k);
   return {
-    id: String(raw.id),
+    id: String(raw.id ?? raw.reel_id),
     source_url: String(raw.source_url),
     shortcode: str("shortcode"),
     status: (raw.status as Save["status"]) ?? "pending",
@@ -25,14 +37,14 @@ export function toSave(raw: Record<string, unknown>): Save {
     created_at: String(raw.created_at),
     title: str("title"),
     caption: str("caption"),
-    category: CATEGORIES.find((c) => c === str("category")) ?? null,
+    category: categoryOf(raw.category),
     thumbnail_url: str("thumbnail_url"),
     creator: str("creator"),
     channel: (str("channel") as Channel | null) ?? "app_share",
   };
 }
 
-function toDetail(raw: Record<string, unknown>): SaveDetail {
+function toDetail(raw: Raw): SaveDetail {
   return {
     ...toSave(raw),
     summary: typeof raw.summary === "string" ? raw.summary : null,
@@ -40,6 +52,54 @@ function toDetail(raw: Record<string, unknown>): SaveDetail {
     tags: Array.isArray(raw.tags) ? (raw.tags as string[]) : null,
     places: Array.isArray(raw.places) ? (raw.places as SaveDetail["places"]) : [],
     media_status: (raw.media_status as SaveDetail["media_status"]) ?? "pending",
+  };
+}
+
+function toStack(raw: Raw): Stack {
+  return {
+    id: String(raw.id),
+    name: String(raw.name ?? ""),
+    category: categoryOf(raw.category),
+    save_count: typeof raw.save_count === "number" ? raw.save_count : 0,
+    updated_at: String(raw.updated_at ?? raw.created_at ?? new Date(0).toISOString()),
+    cover_urls: Array.isArray(raw.cover_urls) ? (raw.cover_urls as unknown[]).filter((u): u is string => typeof u === "string") : [],
+  };
+}
+
+function toStackDetail(raw: Raw): StackDetail {
+  const saves = listOf(raw.saves).map(toSave);
+  const stack = toStack(raw);
+  return { ...stack, save_count: typeof raw.save_count === "number" ? raw.save_count : saves.length, saves };
+}
+
+/** Search items are {save, why, matched_by}; a flat item (the save's fields + why) is accepted too. */
+function toHit(raw: Raw): SearchHit {
+  const save = raw.save && typeof raw.save === "object" ? (raw.save as Raw) : raw;
+  const hit: SearchHit = { save: toSave(save), why: Array.isArray(raw.why) ? (raw.why as string[]) : [] };
+  if (Array.isArray(raw.matched_by)) hit.matched_by = raw.matched_by as string[];
+  return hit;
+}
+
+function toCurated(raw: Raw): CuratedFeed {
+  const hero = (raw.hero && typeof raw.hero === "object" ? raw.hero : {}) as Raw;
+  return {
+    date_label: String(raw.date_label ?? ""),
+    hero: {
+      label: String(hero.label ?? ""),
+      title: String(hero.title ?? ""),
+      subtitle: String(hero.subtitle ?? ""),
+      image_url: strOf(hero, "image_url"),
+      save_ids: Array.isArray(hero.save_ids) ? (hero.save_ids as unknown[]).map(String) : [],
+      query: String(hero.query ?? ""),
+    },
+    sections: listOf(raw.sections).map(
+      (s): CuratedSection => ({
+        kind: s.kind === "list" ? "list" : "row",
+        title: String(s.title ?? ""),
+        subtitle: strOf(s, "subtitle"),
+        saves: listOf(s.saves).map(toSave),
+      }),
+    ),
   };
 }
 
@@ -88,42 +148,45 @@ export function createHttpApi(o: {
     throw new ApiError("SERVER", res.status, err?.message ?? `HTTP ${res.status}`);
   }
 
+  /** For 202/204 calls: the body (if any) is not needed. */
+  async function call(method: string, path: string, body?: unknown): Promise<void> {
+    await request<unknown>(method, path, body);
+  }
+
   const query = (p: Record<string, string | number | undefined>) => {
     const parts = Object.entries(p)
       .filter(([, v]) => v !== undefined)
       .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`);
     return parts.length ? `?${parts.join("&")}` : "";
   };
+  const seg = encodeURIComponent;
 
   return {
     createSave: (text) => request("POST", "/saves", { text, channel: "app_share" }),
     listSaves: async (p = {}) =>
-      (await request<Record<string, unknown>[]>("GET", `/saves${query({ before: p.before, limit: p.limit, category: p.category })}`)).map(
-        toSave,
-      ),
-    getSave: async (id) => toDetail(await request("GET", `/saves/${encodeURIComponent(id)}`)),
-    setNote: async (id, note) => toSave(await request("PATCH", `/saves/${encodeURIComponent(id)}`, { note })),
-    deleteSave: async (id) => {
-      await request("DELETE", `/saves/${encodeURIComponent(id)}`);
-    },
+      listOf(await request("GET", `/saves${query({ before: p.before, limit: p.limit, category: p.category })}`)).map(toSave),
+    getSave: async (id) => toDetail(await request("GET", `/saves/${seg(id)}`)),
+    setNote: async (id, note) => toSave(await request("PATCH", `/saves/${seg(id)}`, { note })),
+    deleteSave: (id) => call("DELETE", `/saves/${seg(id)}`),
     getMe: () => request("GET", "/me"),
-    getPreferences: () => request("GET", "/me/preferences"),
-    updatePreferences: (p) => request("PATCH", "/me/preferences", p),
-    search: async (q) => {
-      const hits = await request<{ save: Record<string, unknown>; why: string[] }[]>("GET", `/search${query({ q })}`);
-      return hits.map((h) => ({ save: toSave(h.save), why: h.why ?? [] }));
+    getPreferences: async () => ({ ...DEFAULT_PREFERENCES, ...(await request<Partial<Preferences>>("GET", "/me/preferences")) }),
+    updatePreferences: async (p) => ({
+      ...DEFAULT_PREFERENCES,
+      ...(await request<Partial<Preferences>>("PATCH", "/me/preferences", p)),
+    }),
+    search: async (q) => listOf(await request("GET", `/search${query({ q })}`)).map(toHit),
+    listStacks: async () => listOf(await request("GET", "/stacks")).map(toStack),
+    createStack: async (name) => toStack(await request("POST", "/stacks", { name })),
+    getStack: async (id) => toStackDetail(await request("GET", `/stacks/${seg(id)}`)),
+    addToStack: (stackId, saveId) => call("POST", `/stacks/${seg(stackId)}/saves`, { save_id: saveId }),
+    removeFromStack: (stackId, saveId) => call("DELETE", `/stacks/${seg(stackId)}/saves/${seg(saveId)}`),
+    deleteStack: (id) => call("DELETE", `/stacks/${seg(id)}`),
+    getCurated: async () => toCurated((await request<Raw>("GET", "/curated")) ?? {}),
+    requestExport: async () => {
+      await call("POST", "/me/export");
+      return { status: "queued" };
     },
-    listStacks: () => request("GET", "/stacks"),
-    createStack: (name) => request("POST", "/stacks", { name }),
-    getStack: async (id) => {
-      const raw = await request<Record<string, unknown>>("GET", `/stacks/${encodeURIComponent(id)}`);
-      const saves = Array.isArray(raw.saves) ? (raw.saves as Record<string, unknown>[]).map(toSave) : [];
-      return { ...(raw as unknown as Omit<Awaited<ReturnType<LatelyApi["getStack"]>>, "saves">), saves };
-    },
-    addToStack: async (stackId, saveId) => {
-      await request("POST", `/stacks/${encodeURIComponent(stackId)}/saves`, { save_id: saveId });
-    },
-    getCurated: () => request("GET", "/curated"),
-    requestExport: () => request("POST", "/me/export"),
+    retryEnrichment: (reelId) => call("POST", `/retries/${seg(reelId)}`),
+    deleteAccount: () => call("DELETE", "/me"),
   };
 }

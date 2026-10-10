@@ -14,6 +14,7 @@ import { useShake } from "../components/motion/feedback";
 import { TextField } from "../components/TextField";
 import { useToast } from "../components/Toast";
 import { colors } from "../theme/tokens";
+import { goBack } from "../lib/navigation";
 
 export function CheckEmailScreen() {
   const { email = "" } = useLocalSearchParams<{ email?: string }>();
@@ -49,7 +50,7 @@ export function CheckEmailScreen() {
   return (
     <View className="flex-1 items-center bg-canvas" style={{ paddingTop: insets.top }}>
       <View className="w-full max-w-[440px] flex-1 px-4">
-        <IconButton icon="arrow-back" size={22} color={colors.ink} label="Back" onPress={() => router.back()} />
+        <IconButton icon="arrow-back" size={22} color={colors.ink} label="Back" onPress={() => goBack(router, "/sign-in")} />
         <View className="mt-8 items-center">
           <PopIn>
             <View className="h-16 w-16 items-center justify-center rounded-full bg-raised">
@@ -81,7 +82,7 @@ export function CheckEmailScreen() {
           </Animated.View>
           <Button title="Verify" onPress={verify} disabled={code.length !== 6} loading={busy} className="mt-4" />
           <Button title="Resend link" variant="ghost" onPress={resend} className="mt-2" />
-          <Button title="Use a different email" variant="ghost" onPress={() => router.back()} />
+          <Button title="Use a different email" variant="ghost" onPress={() => goBack(router, "/sign-in")} />
         </Reveal>
       </View>
     </View>

@@ -141,3 +141,41 @@ test("listSaves can filter by category", async () => {
   expect(fitness.length).toBeGreaterThan(0);
   expect(fitness.every((s) => s.category === "Fitness")).toBe(true);
 });
+
+test("a partial card can be retried and becomes pending again", async () => {
+  const { api, advance } = setup();
+  const before = (await api.listSaves({ limit: 100 })).find((s) => s.status === "partial");
+  expect(before).toBeDefined();
+  await api.retryEnrichment(before!.id);
+  expect((await api.getSave(before!.id)).status).toBe("pending");
+  advance(PENDING_MS + 1);
+  expect((await api.getSave(before!.id)).status).toBe("enriched");
+});
+
+test("retrying an unknown save is NOT_FOUND", async () => {
+  const { api } = setup();
+  expect((await rejection(api.retryEnrichment("nope"))).code).toBe("NOT_FOUND");
+});
+
+test("stacks: a save can be removed and a stack deleted", async () => {
+  const { api } = setup();
+  const [first] = await api.listStacks();
+  const detail = await api.getStack(first.id);
+  const saveId = detail.saves[0].id;
+  await api.removeFromStack(first.id, saveId);
+  const after = await api.getStack(first.id);
+  expect(after.saves.map((s) => s.id)).not.toContain(saveId);
+  expect(after.save_count).toBe(detail.save_count - 1);
+  await api.deleteStack(first.id);
+  expect((await api.listStacks()).map((s) => s.id)).not.toContain(first.id);
+  expect((await rejection(api.getStack(first.id))).code).toBe("NOT_FOUND");
+  // Deleting a stack keeps its saves.
+  expect((await api.getSave(saveId)).id).toBe(saveId);
+});
+
+test("deleting the account empties the library", async () => {
+  const { api } = setup();
+  await api.deleteAccount();
+  expect(await api.listSaves()).toEqual([]);
+  expect(await api.listStacks()).toEqual([]);
+});

@@ -28,6 +28,7 @@ import { useToast } from "../components/Toast";
 import { haptic } from "../lib/haptics";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "../theme/motion";
 import { colors } from "../theme/tokens";
+import { usePendingShare } from "../share/ShareRouter";
 
 const IMG = {
   trail: require("../../assets/stitch/signin-trail.jpg"),
@@ -314,6 +315,7 @@ export function SignInScreen() {
   const [email, setEmail] = useState("");
   const [sending, setSending] = useState(false);
   const signUp = tab === "sign-up";
+  const pendingShare = usePendingShare();
 
   async function choose(provider: Provider) {
     if (auth.mode === "demo") {
@@ -392,6 +394,17 @@ export function SignInScreen() {
             </Reveal>
           )}
 
+          {pendingShare ? (
+            <Reveal index={6} style={{ width: "100%" }}>
+              <View className="mt-6 w-full flex-row items-center rounded-2xl border border-hairline bg-card px-4 py-3">
+                <Icon name="ios-share" size={20} color={colors.accent} />
+                <Text className="ml-3 flex-1 font-sans-medium text-body text-ink">
+                  Sign in to finish saving the reel you shared.
+                </Text>
+              </View>
+            </Reveal>
+          ) : null}
+
           <Reveal index={6} style={{ width: "100%" }}>
           <View className="mt-6 w-full gap-3">
             <ProviderButton
@@ -439,6 +452,22 @@ export function SignInScreen() {
               </Text>
             </Pressable>
           </View>
+
+          <Text className="mt-4 text-center font-sans text-meta text-ink-3">
+            {"By continuing you agree to Lately's "}
+            <Text accessibilityRole="link" onPress={() => router.push("/legal/terms")} className="font-sans-medium text-ink-2 underline">
+              Terms
+            </Text>
+            {" and "}
+            <Text
+              accessibilityRole="link"
+              onPress={() => router.push("/legal/privacy")}
+              className="font-sans-medium text-ink-2 underline"
+            >
+              Privacy Policy
+            </Text>
+            .
+          </Text>
         </View>
       </ScrollView>
 

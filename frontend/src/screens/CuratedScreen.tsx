@@ -13,10 +13,11 @@ import { ReelCard, ZoomLink, cardTitle } from "../components/ReelCard";
 import { Skeleton, SkeletonGroup, SkeletonRow } from "../components/Skeleton";
 import { Thumb } from "../components/Thumb";
 import { useNow } from "../hooks/useNow";
-import { useMe } from "../hooks/useSaves";
+import { pollWhilePending, useMe } from "../hooks/useSaves";
 import { relativeShort } from "../lib/dates";
 import { haptic } from "../lib/haptics";
 import { colors } from "../theme/tokens";
+import { ErrorState } from "../components/ErrorState";
 
 function ListRow({ save, now }: { save: Save; now: number }) {
   return (
@@ -90,7 +91,11 @@ export function CuratedScreen() {
   const insets = useSafeAreaInsets();
   const now = useNow();
   const me = useMe().data;
-  const feed = useQuery({ queryKey: ["curated"], queryFn: () => api.getCurated() });
+  const feed = useQuery({
+    queryKey: ["curated"],
+    queryFn: () => api.getCurated(),
+    refetchInterval: (q) => pollWhilePending(q.state.data?.sections.flatMap((s) => s.saves)),
+  });
   const hero = feed.data?.hero;
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({ onScroll: (e) => scrollY.set(e.contentOffset.y) });
@@ -144,6 +149,18 @@ export function CuratedScreen() {
                 <SkeletonRow />
               </View>
             </SkeletonGroup>
+          ) : null}
+
+          {feed.isError && !feed.data ? (
+            <ErrorState title="Couldn't load your picks" onRetry={() => feed.refetch()} retrying={feed.isRefetching} />
+          ) : null}
+
+          {feed.data && !hero?.save_ids.length && feed.data.sections.every((s) => s.saves.length === 0) ? (
+            <ErrorState
+              icon="auto-awesome"
+              title="Nothing to resurface yet"
+              body="Save a few reels and Lately will bring the best ones back here."
+            />
           ) : null}
 
           {hero && hero.save_ids.length > 0 ? (

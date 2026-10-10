@@ -2,7 +2,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 import { act, fireEvent, screen } from "@testing-library/react-native";
 
 import { NOW } from "../../test/fixtures";
-import { renderWithProviders } from "../../test/render";
+import { demoApi, renderWithProviders } from "../../test/render";
 import { SearchScreen } from "../SearchScreen";
 
 let mockCanGoBack = true;
@@ -91,4 +91,12 @@ test("back with no history goes to the Library", async () => {
   await fireEvent.press(screen.getByLabelText("Back"));
   expect(mockRouter.back).not.toHaveBeenCalled();
   expect(mockRouter.replace).toHaveBeenCalledWith("/");
+});
+
+test("a failed search says so with a retry", async () => {
+  mockParams = { q: "cafe" };
+  const api = { ...demoApi(), search: jest.fn(async () => Promise.reject(new Error("down"))) };
+  await renderWithProviders(<SearchScreen />, { api });
+  expect(await screen.findByText("Couldn't search right now")).toBeTruthy();
+  expect(screen.getByText("Try again")).toBeTruthy();
 });

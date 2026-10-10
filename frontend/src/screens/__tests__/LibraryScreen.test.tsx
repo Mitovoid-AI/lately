@@ -1,6 +1,8 @@
-import { fireEvent, screen } from "@testing-library/react-native";
+import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { ApiError, type LatelyApi } from "../../api/contract";
+import { enqueueSave, queueKey } from "../../lib/saveQueue";
+import { createMemoryStore } from "../../test/memoryStore";
 import { demoApi, renderWithProviders } from "../../test/render";
 import { LibraryScreen } from "../LibraryScreen";
 
@@ -86,4 +88,18 @@ test("a category chip asks the API for that category", async () => {
   await screen.findByText(MOMO);
   await fireEvent.press(screen.getByText("Fitness"));
   expect(listSaves).toHaveBeenCalledWith(expect.objectContaining({ category: "Fitness" }));
+});
+
+test("saves waiting offline show as queued and can be retried", async () => {
+  const queueStore = createMemoryStore();
+  await enqueueSave(queueStore, queueKey("demo-user"), "https://www.instagram.com/reel/OFF1/");
+  const api = demoApi();
+  const createSave = jest.spyOn(api, "createSave").mockRejectedValue(new ApiError("NETWORK", 0));
+  await renderWithProviders(<LibraryScreen />, { api, queueStore });
+  expect(await screen.findByText("1 reel waiting to save")).toBeTruthy();
+  await waitFor(() => expect(createSave).toHaveBeenCalledTimes(1));
+  createSave.mockResolvedValueOnce({ reel_id: "s-new", deduped: false, status: "pending" });
+  await fireEvent.press(screen.getByText("Retry"));
+  await waitFor(() => expect(screen.queryByText("1 reel waiting to save")).toBeNull());
+  expect(createSave).toHaveBeenCalledTimes(2);
 });

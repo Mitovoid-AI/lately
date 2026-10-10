@@ -7,7 +7,9 @@ export type SaveOutcome =
   | { kind: "bad_url" }
   | { kind: "quota" }
   | { kind: "rate_limited" }
-  | { kind: "network" };
+  | { kind: "network" }
+  /** Offline: the text waits in the save queue and is sent when the API is reachable. */
+  | { kind: "queued" };
 
 export function outcomeFromResult(r: SaveResult): SaveOutcome {
   return r.deduped ? { kind: "deduped", reelId: r.reel_id } : { kind: "saved", reelId: r.reel_id };

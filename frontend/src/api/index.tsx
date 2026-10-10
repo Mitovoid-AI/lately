@@ -1,13 +1,12 @@
 import { createContext, useContext, type ReactNode } from "react";
 
-import type { Endpoint, LatelyApi } from "./contract";
+import { ENDPOINTS, type Endpoint, type LatelyApi } from "./contract";
 
 /**
- * Endpoints the FastAPI backend serves today. In live mode these go to the
- * backend; everything else is still answered by demo data. When the backend
- * ships an endpoint from the contract, add it here.
+ * Endpoints served by the FastAPI backend in live mode — all of them. Anything left out of
+ * this set would be answered by demo data instead (kept for partial backends and tests).
  */
-export const LIVE_ENDPOINTS: ReadonlySet<Endpoint> = new Set<Endpoint>(["createSave", "listSaves", "setNote", "getMe"]);
+export const LIVE_ENDPOINTS: ReadonlySet<Endpoint> = new Set<Endpoint>(ENDPOINTS);
 
 export function createApi(o: {
   mode: "demo" | "live";

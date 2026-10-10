@@ -28,6 +28,10 @@ import { displayLink, extractReelUrl } from "../lib/instagram";
 import { outcomeFromError, outcomeFromResult, type SaveOutcome } from "../lib/saveOutcome";
 import { DURATION, EASE_OUT } from "../theme/motion";
 import { colors } from "../theme/tokens";
+import { useToast } from "../components/Toast";
+import { refreshSaveViews } from "../lib/queryClient";
+import { useSaveQueue } from "../hooks/useSaveQueue";
+import { ApiError } from "../api/contract";
 
 const SHARE_BACKDROP = require("../../assets/stitch/save-bg.jpg");
 const QUICK = ["To try", "To buy", "To visit", "To learn", "Watch later"];
@@ -96,6 +100,9 @@ export function SaveSheetScreen() {
   const router = useRouter();
   const api = useApi();
   const queryClient = useQueryClient();
+  const toast = useToast();
+  const queue = useSaveQueue();
+  const queuedRef = useRef(false);
   const shared = !!text;
   const now = useNow();
   const { motion, backdropStyle } = useSheetMotion();
@@ -126,13 +133,25 @@ export function SaveSheetScreen() {
       setSavedText(t);
       try {
         const result = await api.createSave(t);
+        // A manual retry of a queued save landed: it no longer needs the queue.
+        if (queuedRef.current) {
+          queuedRef.current = false;
+          queue.dequeue(t);
+        }
         const next = outcomeFromResult(result);
         // The confirmation lands with its haptic, in the same frame the success mark appears.
         if (next.kind === "saved") haptic.success();
         setOutcome(next);
-        queryClient.invalidateQueries({ queryKey: ["saves"] });
-        queryClient.invalidateQueries({ queryKey: ["me"] });
+        refreshSaveViews(queryClient);
       } catch (e) {
+        if (e instanceof ApiError && e.code === "NETWORK") {
+          // Offline: keep it on the device; it goes out when Lately can reach the API.
+          await queue.enqueue(t);
+          queuedRef.current = true;
+          haptic.light();
+          setOutcome({ kind: "queued" });
+          return;
+        }
         const next = outcomeFromError(e);
         if (next.kind !== "deduped") haptic.error();
         setOutcome(next);
@@ -141,7 +160,7 @@ export function SaveSheetScreen() {
         setBusy(false);
       }
     },
-    [api, queryClient],
+    [api, queryClient, queue],
   );
 
   // A share hands us the text: save immediately (once).
@@ -171,13 +190,20 @@ export function SaveSheetScreen() {
   });
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.getMe(), enabled: outcome?.kind === "quota" });
 
+  const noteInFlight = useRef(false);
   async function saveNote() {
-    if (!reelId || !note.trim()) return;
+    if (!reelId || !note.trim() || noteInFlight.current) return;
+    noteInFlight.current = true;
     setSavingNote(true);
     try {
       await api.setNote(reelId, note.trim());
-      queryClient.invalidateQueries({ queryKey: ["saves"] });
+      refreshSaveViews(queryClient);
+      // Stays latched: the sheet is closing, a second tap must not send the note again.
       close();
+    } catch {
+      noteInFlight.current = false;
+      haptic.error();
+      toast.show("Couldn't save your note. Try again.");
     } finally {
       setSavingNote(false);
     }
@@ -317,6 +343,23 @@ export function SaveSheetScreen() {
         body="Try again in a minute."
       >
         <Button title="Close" onPress={close} className="mt-5" />
+      </Message>
+    );
+  } else if (outcome.kind === "queued") {
+    content = (
+      <Message
+        icon={<StatusIcon name="cloud-upload" color={colors.accent} bg={colors.raised} />}
+        title="Saved for later"
+        body="You're offline. Lately will save this reel as soon as you're back online."
+      >
+        <View className="mt-4 h-9 flex-row items-center self-start rounded-full border border-hairline bg-raised px-3" style={{ maxWidth: "100%" }}>
+          <Icon name="link" size={18} color={colors.accent} />
+          <Text numberOfLines={1} className="ml-2 shrink font-sans text-meta text-ink-2">
+            {link}
+          </Text>
+        </View>
+        <Button title="Try again now" variant="secondary" onPress={() => save(savedText)} className="mt-5" />
+        <Button title="Close" variant="ghost" onPress={close} className="mt-1" />
       </Message>
     );
   } else {

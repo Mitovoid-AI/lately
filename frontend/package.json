@@ -20,6 +20,8 @@
     "expo-image": "~57.0.5",
     "expo-linking": "~57.0.11",
     "expo-router": "~57.0.24",
+    "expo-share-intent": "~8.0.1",
+    "expo-splash-screen": "~57.0.9",
     "expo-status-bar": "~57.0.1",
     "expo-web-browser": "~57.0.3",
     "nativewind": "^4.2.7",
@@ -70,6 +72,9 @@
       "/node_modules/",
       "/dist/"
     ],
-    "testTimeout": 15000
+    "testTimeout": 15000,
+    "moduleNameMapper": {
+      "\\.css$": "<rootDir>/src/test/styleStub.js"
+    }
   }
 }

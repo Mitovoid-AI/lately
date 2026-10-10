@@ -118,3 +118,101 @@ test("listSaves passes a category filter", async () => {
   await setup(f).api.listSaves({ category: "Food & Places", limit: 25 });
   expect(f.mock.calls[0][0]).toBe("http://api.test/saves?limit=25&category=Food%20%26%20Places");
 });
+
+const SAVE = {
+  id: "r1",
+  source_url: "https://www.instagram.com/reel/abc/",
+  shortcode: "abc",
+  status: "enriched",
+  note: null,
+  created_at: "2026-10-04T00:00:00Z",
+  title: "T",
+  category: "Fitness",
+};
+
+const callOf = (f: ReturnType<typeof fakeFetch>, call = 0) => ({
+  url: f.mock.calls[call][0],
+  method: f.mock.calls[call][1]?.method,
+  body: f.mock.calls[call][1]?.body ? JSON.parse(f.mock.calls[call][1]?.body as string) : undefined,
+});
+
+type Api = ReturnType<typeof setup>["api"];
+
+test("every contract call hits its path and method", async () => {
+  const cases: [string, (api: Api) => Promise<unknown>, string, string, unknown?, Reply?][] = [
+    ["getSave", (a) => a.getSave("r 1"), "GET", "/saves/r%201", undefined, { status: 200, body: SAVE }],
+    ["setNote", (a) => a.setNote("r1", "hi"), "PATCH", "/saves/r1", { note: "hi" }, { status: 200, body: SAVE }],
+    ["deleteSave", (a) => a.deleteSave("r1"), "DELETE", "/saves/r1", undefined, { status: 204 }],
+    ["getMe", (a) => a.getMe(), "GET", "/me"],
+    ["getPreferences", (a) => a.getPreferences(), "GET", "/me/preferences"],
+    ["updatePreferences", (a) => a.updatePreferences({ text_size: 18 }), "PATCH", "/me/preferences", { text_size: 18 }],
+    ["search", (a) => a.search("momo cafe"), "GET", "/search?q=momo%20cafe", undefined, { status: 200, body: [] }],
+    ["listStacks", (a) => a.listStacks(), "GET", "/stacks", undefined, { status: 200, body: [] }],
+    ["createStack", (a) => a.createStack("Trip"), "POST", "/stacks", { name: "Trip" }, { status: 201, body: { id: "st1", name: "Trip" } }],
+    ["getStack", (a) => a.getStack("st1"), "GET", "/stacks/st1", undefined, { status: 200, body: { id: "st1", name: "x", saves: [] } }],
+    ["addToStack", (a) => a.addToStack("st1", "r1"), "POST", "/stacks/st1/saves", { save_id: "r1" }, { status: 204 }],
+    ["removeFromStack", (a) => a.removeFromStack("st1", "r1"), "DELETE", "/stacks/st1/saves/r1", undefined, { status: 204 }],
+    ["deleteStack", (a) => a.deleteStack("st1"), "DELETE", "/stacks/st1", undefined, { status: 204 }],
+    ["getCurated", (a) => a.getCurated(), "GET", "/curated", undefined, { status: 200, body: { sections: [] } }],
+    ["requestExport", (a) => a.requestExport(), "POST", "/me/export", undefined, { status: 202, body: { status: "queued" } }],
+    ["retryEnrichment", (a) => a.retryEnrichment("r1"), "POST", "/retries/r1", undefined, { status: 202, body: {} }],
+    ["deleteAccount", (a) => a.deleteAccount(), "DELETE", "/me", undefined, { status: 204 }],
+  ];
+  for (const [name, call, method, path, body, reply] of cases) {
+    const f = fakeFetch(reply ?? { status: 200, body: {} });
+    await call(setup(f).api);
+    expect([name, callOf(f)]).toEqual([name, { url: `http://api.test${path}`, method, body }]);
+  }
+});
+
+test("search maps {save, why, matched_by} items to hits", async () => {
+  const f = fakeFetch({
+    status: 200,
+    body: [{ save: { ...SAVE, category: "Travel" }, why: ["#momos"], matched_by: ["keyword", "meaning"] }],
+  });
+  const [hit] = await setup(f).api.search("momo");
+  expect(hit.save.id).toBe("r1");
+  expect(hit.save.category).toBeNull();
+  expect(hit.why).toEqual(["#momos"]);
+  expect(hit.matched_by).toEqual(["keyword", "meaning"]);
+});
+
+test("stacks fill missing fields and drop unknown categories", async () => {
+  const f = fakeFetch({ status: 200, body: [{ id: "st1", name: "Trip", category: "Travel", updated_at: "2026-10-04T00:00:00Z" }] });
+  const [st] = await setup(f).api.listStacks();
+  expect(st).toEqual({ id: "st1", name: "Trip", category: null, save_count: 0, updated_at: "2026-10-04T00:00:00Z", cover_urls: [] });
+});
+
+test("curated saves go through toSave", async () => {
+  const f = fakeFetch({
+    status: 200,
+    body: {
+      date_label: "Sat",
+      hero: { label: "L", title: "T", subtitle: "S", image_url: null, save_ids: ["r1"], query: "cafe" },
+      sections: [{ kind: "row", title: "Row", subtitle: null, saves: [{ ...SAVE, category: "Travel" }] }],
+    },
+  });
+  const feed = await setup(f).api.getCurated();
+  expect(feed.sections[0].saves[0].category).toBeNull();
+  expect(feed.sections[0].saves[0].channel).toBe("app_share");
+  expect(feed.hero.query).toBe("cafe");
+});
+
+test("a curated feed without a hero gets an empty one", async () => {
+  const f = fakeFetch({ status: 200, body: { date_label: "Sat", hero: null, sections: [] } });
+  const feed = await setup(f).api.getCurated();
+  expect(feed.hero.save_ids).toEqual([]);
+});
+
+test("getStack maps its saves", async () => {
+  const f = fakeFetch({ status: 200, body: { id: "st1", name: "x", save_count: 1, saves: [SAVE] } });
+  const st = await setup(f).api.getStack("st1");
+  expect(st.saves[0].title).toBe("T");
+  expect(st.cover_urls).toEqual([]);
+});
+
+test("a 404 on delete is NOT_FOUND", async () => {
+  const f = fakeFetch({ status: 404, body: { error: { code: "NOT_FOUND", message: "gone" } } });
+  const e = await rejection(setup(f).api.deleteSave("r1"));
+  expect(e.code).toBe("NOT_FOUND");
+});

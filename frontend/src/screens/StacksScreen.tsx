@@ -20,6 +20,7 @@ import { relativeShort } from "../lib/dates";
 import { haptic } from "../lib/haptics";
 import { colors } from "../theme/tokens";
 import { NewStackSheet } from "./NewStackSheet";
+import { ErrorState } from "../components/ErrorState";
 
 const MAX_WIDTH = 1280;
 const GAP = 12;
@@ -102,7 +103,7 @@ export function StacksScreen() {
       />
       <Animated.FlatList
         key={`stacks-${columns}`}
-        data={stacks.isLoading ? [] : data}
+        data={stacks.isLoading || (stacks.isError && !stacks.data) ? [] : data}
         keyExtractor={(s: Item) => s.id}
         numColumns={columns}
         columnWrapperStyle={{ gap: GAP, paddingHorizontal: 16, alignSelf: "center", width: "100%", maxWidth: MAX_WIDTH }}
@@ -139,6 +140,11 @@ export function StacksScreen() {
                 </View>
               ))}
             </SkeletonGroup>
+          ) : null
+        }
+        ListFooterComponent={
+          stacks.isError && !stacks.data ? (
+            <ErrorState title="Couldn't load your stacks" onRetry={() => stacks.refetch()} retrying={stacks.isRefetching} />
           ) : null
         }
         renderItem={renderItem}

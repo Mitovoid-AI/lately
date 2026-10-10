@@ -81,3 +81,47 @@ test("back with no history goes to the Library", async () => {
   expect(mockRouter.back).not.toHaveBeenCalled();
   expect(mockRouter.replace).toHaveBeenCalledWith("/");
 });
+
+test("deleting the account asks twice, deletes, then signs out", async () => {
+  const api = demoApi();
+  const deleteAccount = jest.spyOn(api, "deleteAccount");
+  const { auth } = await renderWithProviders(<AccountScreen />, { api });
+  await screen.findByText("Aanya Sharma");
+  await fireEvent.press(screen.getByText("Delete account"));
+  expect(screen.getByText("Delete your account?")).toBeTruthy();
+  await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+  expect(screen.getByText("This can't be undone")).toBeTruthy();
+  expect(deleteAccount).not.toHaveBeenCalled();
+  await fireEvent.press(screen.getByRole("button", { name: "Delete forever" }));
+  await waitFor(() => expect(deleteAccount).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(auth.signOut).toHaveBeenCalled());
+});
+
+test("a failed account deletion keeps you signed in and says so", async () => {
+  const api = { ...demoApi(), deleteAccount: jest.fn(async () => Promise.reject(new Error("down"))) };
+  const { auth } = await renderWithProviders(<AccountScreen />, { api });
+  await screen.findByText("Aanya Sharma");
+  await fireEvent.press(screen.getByText("Delete account"));
+  await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Delete forever" }));
+  expect(await screen.findByText("Couldn't delete your account. Try again.")).toBeTruthy();
+  expect(auth.signOut).not.toHaveBeenCalled();
+});
+
+test("cancelling the first step deletes nothing", async () => {
+  const api = demoApi();
+  const deleteAccount = jest.spyOn(api, "deleteAccount");
+  await renderWithProviders(<AccountScreen />, { api });
+  await screen.findByText("Aanya Sharma");
+  await fireEvent.press(screen.getByText("Delete account"));
+  await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+  expect(deleteAccount).not.toHaveBeenCalled();
+});
+
+test("privacy policy and terms open from Account", async () => {
+  await open();
+  await fireEvent.press(screen.getByText("Privacy Policy"));
+  expect(mockRouter.push).toHaveBeenCalledWith("/legal/privacy");
+  await fireEvent.press(screen.getByText("Terms of Service"));
+  expect(mockRouter.push).toHaveBeenCalledWith("/legal/terms");
+});

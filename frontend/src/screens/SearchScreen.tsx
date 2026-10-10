@@ -22,6 +22,9 @@ import { loadRecent, pushRecent } from "../lib/recent";
 import { deviceStore } from "../lib/storage";
 import { DURATION } from "../theme/motion";
 import { colors } from "../theme/tokens";
+import { goBack } from "../lib/navigation";
+import { ErrorState } from "../components/ErrorState";
+import { pollWhilePending } from "../hooks/useSaves";
 
 const TRY = ["that cafe reel", "workout for back pain", "repo for job search"];
 
@@ -99,6 +102,7 @@ export function SearchScreen() {
     queryKey: ["search", debounced],
     queryFn: () => api.search(debounced),
     enabled: debounced.length > 0,
+    refetchInterval: (q) => pollWhilePending(q.state.data?.map((h) => h.save)),
   });
 
   const remember = useCallback(async (q: string) => setRecent(await pushRecent(deviceStore, q)), []);
@@ -133,7 +137,7 @@ export function SearchScreen() {
           size={24}
           color={colors.ink}
           label="Back"
-          onPress={() => router.back()}
+          onPress={() => goBack(router)}
         />
         <View style={{ flex: 1, marginRight: 8 }}>
           <TextField
@@ -193,6 +197,8 @@ export function SearchScreen() {
           <SkeletonRow />
           <SkeletonRow />
         </SkeletonGroup>
+      ) : results.isError && !results.data ? (
+        <ErrorState title="Couldn't search right now" onRetry={() => results.refetch()} retrying={results.isRefetching} />
       ) : hits.length === 0 ? (
         <View className="w-full max-w-[640px] self-center px-4 pt-10">
           <Reveal index={0}>

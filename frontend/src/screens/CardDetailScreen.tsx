@@ -46,6 +46,8 @@ import { displayLink } from "../lib/instagram";
 import { shareOrCopy } from "../lib/share";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "../theme/motion";
 import { colors } from "../theme/tokens";
+import { goBack } from "../lib/navigation";
+import { refreshSaveViews } from "../lib/queryClient";
 
 const CHANNEL = { app_share: "Share", web: "Web", meta_dm: "DM" } as const;
 
@@ -149,7 +151,11 @@ function Hero({ card, mediaStyle }: { card: Save; mediaStyle?: ReturnType<typeof
 function useCachedSave(id: string): Save | undefined {
   const queryClient = useQueryClient();
   return useMemo(
-    () => queryClient.getQueryData<InfiniteData<Save[]>>(["saves"])?.pages.flat().find((s) => s.id === id),
+    () =>
+      queryClient
+        .getQueriesData<InfiniteData<Save[]>>({ queryKey: ["saves"] })
+        .flatMap(([, data]) => data?.pages.flat() ?? [])
+        .find((s) => s.id === id),
     [queryClient, id],
   );
 }
@@ -191,6 +197,7 @@ export function CardDetailScreen() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [captionOpen, setCaptionOpen] = useState(false);
+  const [retrying, setRetrying] = useState(false);
   const bookmark = usePop();
 
   const scrollY = useSharedValue(0);
@@ -205,7 +212,7 @@ export function CardDetailScreen() {
   });
   const card = query.data;
   const preview = useCachedSave(id);
-  const back = () => (router.canGoBack() ? router.back() : router.replace("/"));
+  const back = () => goBack(router);
 
   async function share() {
     if (!card) return;
@@ -217,6 +224,29 @@ export function CardDetailScreen() {
     const updated = await api.setNote(id, note);
     queryClient.setQueryData<SaveDetail>(["save", id], (old) => (old ? { ...old, note: updated.note } : old));
     queryClient.invalidateQueries({ queryKey: ["saves"] });
+    queryClient.invalidateQueries({ queryKey: ["search"] });
+    queryClient.invalidateQueries({ queryKey: ["stack"] });
+    queryClient.invalidateQueries({ queryKey: ["curated"] });
+  }
+
+  async function retry() {
+    if (retrying) return;
+    setRetrying(true);
+    try {
+      await api.retryEnrichment(id);
+      haptic.success();
+      // Back to processing: the detail polls until the new card is ready.
+      queryClient.setQueryData<SaveDetail>(["save", id], (old) =>
+        old ? { ...old, status: "pending", media_status: "pending" } : old,
+      );
+      queryClient.invalidateQueries({ queryKey: ["saves"] });
+      queryClient.invalidateQueries({ queryKey: ["stack"] });
+    } catch {
+      haptic.error();
+      toast.show("Couldn't retry. Try again later.");
+    } finally {
+      setRetrying(false);
+    }
   }
 
   async function remove() {
@@ -224,10 +254,8 @@ export function CardDetailScreen() {
     try {
       await api.deleteSave(id);
       haptic.medium();
-      queryClient.removeQueries({ queryKey: ["save", id] });
-      queryClient.invalidateQueries({ queryKey: ["saves"] });
-      queryClient.invalidateQueries({ queryKey: ["me"] });
-      queryClient.invalidateQueries({ queryKey: ["stacks"] });
+      queryClient.removeQueries({ queryKey: ["save", id], exact: true });
+      refreshSaveViews(queryClient);
       setConfirmOpen(false);
       toast.show("Deleted");
       back();
@@ -339,6 +367,22 @@ export function CardDetailScreen() {
             textStyle={{ fontSize: readingStyle.fontSize, lineHeight: readingStyle.lineHeight }}
           />
         </Reveal>
+
+        {card.status === "partial" ? (
+          <Reveal index={next()} style={{ marginTop: 16 }}>
+            <Text className="font-sans text-meta text-ink-2">
+              {"Lately couldn't read this reel's video. It can try again."}
+            </Text>
+            <Button
+              title="Try getting details again"
+              variant="secondary"
+              icon="refresh"
+              onPress={retry}
+              loading={retrying}
+              className="mt-3"
+            />
+          </Reveal>
+        ) : null}
 
         {card.status === "pending" ? (
           <Reveal index={next()} style={{ marginTop: 20 }}>
