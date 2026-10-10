@@ -152,6 +152,15 @@ test("a partial card can be retried and becomes pending again", async () => {
   expect((await api.getSave(before!.id)).status).toBe("enriched");
 });
 
+test("sendHint is a no-op for a known save and NOT_FOUND otherwise", async () => {
+  const { api } = setup();
+  const [first] = await api.listSaves();
+  const before = await api.getSave(first.id);
+  await api.sendHint(first.id, { caption: "from the device" });
+  expect(await api.getSave(first.id)).toEqual(before);
+  expect((await rejection(api.sendHint("nope", {}))).code).toBe("NOT_FOUND");
+});
+
 test("retrying an unknown save is NOT_FOUND", async () => {
   const { api } = setup();
   expect((await rejection(api.retryEnrichment("nope"))).code).toBe("NOT_FOUND");

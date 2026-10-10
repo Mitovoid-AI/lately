@@ -32,6 +32,8 @@ import { useToast } from "../components/Toast";
 import { refreshSaveViews } from "../lib/queryClient";
 import { useSaveQueue } from "../hooks/useSaveQueue";
 import { ApiError } from "../api/contract";
+import { config } from "../config";
+import { sendDeviceHint } from "../lib/deviceFetch";
 
 const SHARE_BACKDROP = require("../../assets/stitch/save-bg.jpg");
 const QUICK = ["To try", "To buy", "To visit", "To learn", "Watch later"];
@@ -133,6 +135,9 @@ export function SaveSheetScreen() {
       setSavedText(t);
       try {
         const result = await api.createSave(t);
+        // Fire-and-forget: the phone reads the reel itself and hands the server a hint
+        // (Instagram often blocks the server). Never awaited, never throws.
+        void sendDeviceHint({ api, mode: config.apiMode, platform: Platform.OS, text: t, result });
         // A manual retry of a queued save landed: it no longer needs the queue.
         if (queuedRef.current) {
           queuedRef.current = false;

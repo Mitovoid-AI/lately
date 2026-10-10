@@ -59,6 +59,17 @@ export interface SaveResult {
   status: ReelStatus;
 }
 
+/** What the phone read from the reel's public embed page (POST /saves/{id}/hint). The server
+ *  validates every field again and drops media URLs that are not on Instagram's CDN. */
+export interface DeviceHint {
+  caption?: string;
+  creator_handle?: string;
+  thumbnail_url?: string;
+  video_url?: string;
+  duration_s?: number;
+  shortcode?: string;
+}
+
 export interface ConnectedAccount {
   provider: "instagram" | "google" | "email";
   label: string;
@@ -197,6 +208,8 @@ export interface LatelyApi {
   retryEnrichment(reelId: string): Promise<void>;
   /** DELETE /me → 204: deletes the account and everything saved in it */
   deleteAccount(): Promise<void>;
+  /** POST /saves/{id}/hint → 202: the device's own read of the reel (fire-and-forget after a save) */
+  sendHint(saveId: string, hint: DeviceHint): Promise<void>;
 }
 
 export type Endpoint = keyof LatelyApi;
@@ -222,6 +235,7 @@ const ENDPOINT_SET: Record<Endpoint, true> = {
   requestExport: true,
   retryEnrichment: true,
   deleteAccount: true,
+  sendHint: true,
 };
 
 /** Every call in the contract. */
