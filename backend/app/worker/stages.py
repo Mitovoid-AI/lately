@@ -29,7 +29,8 @@ import asyncpg
 import httpx
 
 from ..enrich.budget import BudgetExhausted, take_token
-from ..enrich.fetch import FetchResult, run_chain
+from ..enrich.device import DeviceHintProvider
+from ..enrich.fetch import FetchProvider, FetchResult, run_chain
 from ..enrich.runtime import Runtime, runtime
 from ..enrich.structure import (
     LLMUnavailable,
@@ -112,6 +113,12 @@ async def _shortcode(db: asyncpg.Pool, job: dict[str, Any]) -> str:
     return str(sc)
 
 
+# Is shared content `rc` trusted for save `r`? Server-fetched (or nothing fetched)
+# → yes; device-sourced → only for the user whose hint produced it.
+_TRUSTED_FOR_SAVE = ("(rc.fetch_source is distinct from 'device' "
+                     "or rc.device_user_id = r.auth_user_id)")
+
+
 @stage("resolve")
 async def resolve(db: asyncpg.Pool, job: dict[str, Any]) -> str | None:
     """URL → shortcode. Follows /share/ redirects; cache-hit jumps to finalize."""
@@ -154,9 +161,13 @@ async def resolve(db: asyncpg.Pool, job: dict[str, Any]) -> str | None:
         return None
 
     # Cache hit: shared content already structured → jump straight to finalize.
+    # Trust rule (PIPELINE.md §8): a card built from a device hint is reused only
+    # for saves of the user whose device supplied it; anyone else runs FETCH.
     hit = await db.fetchval(
-        "select media_status = 'ready' from public.reel_content where shortcode = $1",
-        shortcode,
+        f"""select rc.media_status = 'ready' and {_TRUSTED_FOR_SAVE}
+            from public.reel_content rc join public.reels r on r.id = $2
+            where rc.shortcode = $1""",
+        shortcode, reel_id,
     )
 
     await db.execute(
@@ -174,44 +185,98 @@ async def resolve(db: asyncpg.Pool, job: dict[str, Any]) -> str | None:
 
 # ------------------------------------------------------------------ fetch --
 
+# Device-sourced data never replaces server-fetched data (the WHERE skips the
+# update); `device_user_id` follows `fetch_source` (kept when nothing was fetched).
 _UPSERT_FETCH = """
 insert into public.reel_content
   (shortcode, source_url, caption, creator_handle, thumbnail_path, fetch_source, duration_s,
-   fetch_meta, fetched_at)
-values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, now())
+   fetch_meta, device_user_id, fetched_at)
+values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, now())
 on conflict (shortcode) do update set
   caption        = coalesce(excluded.caption, public.reel_content.caption),
   creator_handle = coalesce(excluded.creator_handle, public.reel_content.creator_handle),
   thumbnail_path = coalesce(excluded.thumbnail_path, public.reel_content.thumbnail_path),
   fetch_source   = coalesce(excluded.fetch_source, public.reel_content.fetch_source),
+  device_user_id = case when excluded.fetch_source is null
+                        then public.reel_content.device_user_id
+                        else excluded.device_user_id end,
   duration_s     = coalesce(excluded.duration_s, public.reel_content.duration_s),
   fetch_meta     = excluded.fetch_meta,
   fetched_at     = now()
+where excluded.fetch_source is distinct from 'device'
+   or public.reel_content.fetch_source is null
+   or public.reel_content.fetch_source = 'device'
 """
 
+SERVER_SOURCES = ("embed_page", "ytdlp", "scraper")
 
-async def _run_chain(db: asyncpg.Pool, rt: Runtime, sc: str) -> FetchResult:
+
+async def _run_chain(db: asyncpg.Pool, rt: Runtime, sc: str,
+                     providers: list[FetchProvider] | None = None) -> FetchResult:
     try:
-        return await run_chain(rt.fetchers, sc, reel_url(sc), take=_taker(db))
+        return await run_chain(rt.fetchers if providers is None else providers, sc,
+                               reel_url(sc), take=_taker(db))
     except BudgetExhausted as exc:
         raise Reschedule(exc.retry_after_s, str(exc)) from exc
 
 
+async def _device_hint(db: asyncpg.Pool, job: dict[str, Any], sc: str
+                       ) -> tuple[dict[str, Any] | None, Any]:
+    """This save's device hint (if it may be used) and the saving user's id.
+
+    Records the hint's `at` in the payload as `hint_seen`, so FINALIZE can tell a
+    hint that arrived after FETCH. A hint is not used when the shared row
+    already holds server-fetched data (PIPELINE.md §8: prefer server data)."""
+    row = await db.fetchrow(
+        """select r.device_hint, r.auth_user_id, rc.fetch_source
+           from public.reels r
+           left join public.reel_content rc on rc.shortcode = $2
+           where r.id = $1::uuid""", str(job["payload"]["reel_id"]), sc)
+    if row is None or not row["device_hint"]:
+        return None, row["auth_user_id"] if row else None
+    raw = row["device_hint"]
+    hint = json.loads(raw) if isinstance(raw, str) else dict(raw)
+    job["payload"]["hint_seen"] = float(hint.get("at") or 0)
+    if row["fetch_source"] in SERVER_SOURCES:
+        return None, row["auth_user_id"]
+    return hint, row["auth_user_id"]
+
+
 @stage("fetch")
 async def fetch(db: asyncpg.Pool, job: dict[str, Any]) -> str:
-    """Provider chain → reel_content caption/handle/thumbnail; partial if all fail."""
+    """Provider chain → reel_content caption/handle/thumbnail; partial if all fail.
+
+    Provider 0 is this save's own device hint (app/enrich/device.py), then the
+    server chain. Device data is marked `fetch_source = 'device'` with the
+    supplying user, and its thumbnail is only kept if the server can download a
+    real image from the CDN URL itself."""
     started = time.monotonic()
     rt = runtime()
     sc = await _shortcode(db, job)
+    hint, user_id = await _device_hint(db, job, sc)
+    providers = ([DeviceHintProvider(hint)] if hint else []) + list(rt.fetchers)
     try:
-        result = await _run_chain(db, rt, sc)
+        result = await _run_chain(db, rt, sc, providers)
     except Reschedule:
         await _metric(db, "worker", "fetch", started, "rescheduled")
         raise
-    thumb = await rt.thumbnails.store(sc, result.thumbnail_url)
-    meta = {**result.to_meta(), "at": time.time()}
-    await db.execute(_UPSERT_FETCH, sc, reel_url(sc), result.caption, result.creator_handle,
-                     thumb, result.source, result.duration_s, json.dumps(meta))
+    device = result.source == "device"
+    if device:
+        thumb = await rt.thumbnails.store_verified(sc, result.thumbnail_url)
+        if thumb is None:
+            result.thumbnail_url = None
+    else:
+        thumb = await rt.thumbnails.store(sc, result.thumbnail_url)
+    # A device hint's signed media URLs are as old as the hint, not this fetch.
+    at = min(time.time(), float(hint.get("at") or time.time())) if device and hint else time.time()
+    meta = {**result.to_meta(), "at": at}
+    status = await db.execute(_UPSERT_FETCH, sc, reel_url(sc), result.caption,
+                              result.creator_handle, thumb, result.source, result.duration_s,
+                              json.dumps(meta), user_id if device else None)
+    if device and status.endswith(" 0"):
+        # Server data landed meanwhile; the hint was not written, so don't claim it.
+        meta = {**FetchResult(source=None).to_meta(), "at": time.time()}
+        result = FetchResult(source=None)
     job["payload"]["fetch"] = meta
     await _metric(db, "worker", "fetch", started, "ok" if result.source else "partial",
                   {"source": result.source, "thumbnail": bool(thumb)})
@@ -366,7 +431,6 @@ async def enqueue_embed_jobs(db: asyncpg.Pool | asyncpg.Connection, reel_ids: li
         await db.execute(_ENQUEUE_EMBED, [str(i) for i in reel_ids])
 
 
-_STATUS = {"ready": "enriched"}
 
 
 @stage("finalize")
@@ -385,21 +449,55 @@ async def finalize(db: asyncpg.Pool, job: dict[str, Any]) -> None:
         # Shared content changed: every save of this reel gets the card + a re-embed.
         current = await db.fetchval(
             "select media_status from public.reel_content where shortcode = $1", sc)
-        rows = await db.fetch(
-            "update public.reels set status = $2 where shortcode_key = $1 returning id",
-            sc, _STATUS.get(current, "partial"))
+        rows = await db.fetch(_MARK_SAVES + "r.shortcode_key = $1 returning r.id", sc)
     else:
         # Cache hit (RESOLVE found a ready card): only this save needs finishing.
         current = await db.fetchval(
             "select media_status from public.reel_content where shortcode = $1", sc)
         await db.execute("select public.refresh_search_columns($1)", sc)
-        rows = await db.fetch(
-            "update public.reels set status = $2 where id = $1 returning id",
-            payload["reel_id"], _STATUS.get(current, "partial"))
+        rows = await db.fetch(_MARK_SAVES + "r.id = $2::uuid returning r.id",
+                              sc, str(payload["reel_id"]))
     await enqueue_embed_jobs(db, [r["id"] for r in rows])
     await _metric(db, "worker", "finalize", started, "ok",
                   {"media_status": current, "saves": len(rows), "cache_hit": card is None})
     await _total_metric(db, payload["reel_id"], current or "partial")
+    await _requeue_for_late_hint(db, payload, sc)
+
+
+# Every save gets `enriched` only when the shared card is ready AND trusted for
+# that save's user (a device-sourced card is trusted only for its supplier);
+# otherwise `partial`, which the user can retry (PIPELINE.md §8).
+_MARK_SAVES = f"""
+update public.reels r
+set status = case when rc.media_status = 'ready' and {_TRUSTED_FOR_SAVE}
+                  then 'enriched' else 'partial' end
+from public.reel_content rc
+where rc.shortcode = $1 and """
+
+
+async def _requeue_for_late_hint(db: asyncpg.Pool, payload: Mapping[str, Any], sc: str) -> None:
+    """A device hint that landed after this job's FETCH (newer than `hint_seen`)
+    and a save that ended `partial`: run it again from FETCH so the hint is used."""
+    row = await db.fetchrow(
+        "select status, auth_user_id, device_hint->>'at' as at from public.reels "
+        "where id = $1::uuid", str(payload["reel_id"]))
+    if row is None or row["status"] != "partial" or row["at"] is None:
+        return
+    if float(row["at"]) <= float(payload.get("hint_seen") or 0):
+        return
+    async with db.acquire() as con, con.transaction():
+        queued = await con.fetchval(
+            "select exists (select 1 from public.jobs where kind = 'enrich' "
+            "and payload->>'reel_id' = $1 and locked_at is null)", str(payload["reel_id"]))
+        if queued:
+            return
+        await con.execute(
+            """insert into public.jobs (kind, payload, stage)
+               values ('enrich', jsonb_build_object('reel_id', $1::uuid, 'user_id', $2::uuid,
+                                                    'shortcode', $3::text), 'fetch')""",
+            str(payload["reel_id"]), row["auth_user_id"], sc)
+        await con.execute("update public.reels set status = 'pending' where id = $1::uuid",
+                          str(payload["reel_id"]))
 
 
 async def _total_metric(db: asyncpg.Pool, reel_id: Any, outcome: str) -> None:
