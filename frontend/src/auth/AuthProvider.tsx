@@ -2,11 +2,12 @@ import type { AuthError, Session, SupabaseClient } from "@supabase/supabase-js";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 
+import { ApiError } from "../api/contract";
 import { DEMO_USER } from "../api/demo";
 import { config } from "../config";
-import { deviceStore, type KeyValueStore } from "../lib/storage";
+import { deviceStore, readJson, type KeyValueStore } from "../lib/storage";
 import { authParamsFromUrl, authRedirectUrl, isAuthRedirect } from "./redirect";
 import { getSupabase } from "./supabase";
 
@@ -45,6 +46,8 @@ export interface AuthValue {
   mode: "demo" | "live";
   /** Set when a sign-in link or redirect could not be completed. */
   linkError?: AuthFailure | null;
+  /** Signed in on a stored session that couldn't be refreshed because the phone is offline. */
+  offline: boolean;
   signInDemo(): Promise<void>;
   signInWithEmail(email: string): Promise<void>;
   verifyCode(email: string, code: string): Promise<void>;
@@ -90,6 +93,21 @@ export function failureFrom(error: AuthError | Error | null | undefined): AuthFa
   return "failed";
 }
 
+/** Where supabase-js keeps the session in storage (`sb-<project>-auth-token` by default). */
+function storageKeyOf(sb: SupabaseClient): string {
+  const key = (sb.auth as unknown as { storageKey?: unknown }).storageKey;
+  if (typeof key === "string") return key;
+  const host = config.supabaseUrl ? new URL(config.supabaseUrl).hostname.split(".")[0] : "";
+  return `sb-${host}-auth-token`;
+}
+
+/** A Supabase call that failed because it could not reach the server (worth retrying later). */
+export function isRetryableAuthError(error: AuthError | Error | null | undefined): boolean {
+  if (!error) return false;
+  const e = error as AuthError & { status?: number };
+  return e.name === "AuthRetryableFetchError" || failureFrom(error) === "network";
+}
+
 /** Is this OAuth provider switched on in the Supabase project? (null = couldn't tell) */
 async function providerEnabled(provider: string): Promise<boolean | null> {
   try {
@@ -103,10 +121,13 @@ async function providerEnabled(provider: string): Promise<boolean | null> {
 }
 
 /**
- * Turns a sign-in redirect into a session: implicit-flow tokens, a PKCE code, or an email
- * token hash. Throws AuthFlowError when the redirect carries an error or a dead token.
+ * Turns a sign-in redirect into a session: a PKCE `?code=` (Google and email links; the code
+ * is useless without the verifier this app kept) or an email `?token_hash=`. Raw tokens in a
+ * redirect are ignored: with the PKCE flow Supabase never sends them, so any that arrive over
+ * the custom scheme did not come from our own sign-in. Throws AuthFlowError when the redirect
+ * carries an error or a dead code.
  */
-async function sessionFromRedirect(sb: SupabaseClient, url: string): Promise<void> {
+export async function sessionFromRedirect(sb: SupabaseClient, url: string): Promise<void> {
   const p = authParamsFromUrl(url);
   if (p.error || p.error_description) {
     throw new AuthFlowError(
@@ -115,9 +136,7 @@ async function sessionFromRedirect(sb: SupabaseClient, url: string): Promise<voi
     );
   }
   let error: AuthError | null = null;
-  if (p.access_token && p.refresh_token) {
-    ({ error } = await sb.auth.setSession({ access_token: p.access_token, refresh_token: p.refresh_token }));
-  } else if (p.code) {
+  if (p.code) {
     ({ error } = await sb.auth.exchangeCodeForSession(p.code));
   } else if (p.token_hash) {
     const type = p.type === "signup" || p.type === "invite" || p.type === "recovery" ? p.type : "magiclink";
@@ -140,6 +159,7 @@ export function AuthProvider({
   const [status, setStatus] = useState<AuthValue["status"]>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [linkError, setLinkError] = useState<AuthFailure | null>(null);
+  const [offline, setOffline] = useState(false);
   const session = useRef<Session | null>(null);
   // A redirect can reach us twice (the Google window's result and the deep link): handle each once.
   const handled = useRef(new Set<string>());
@@ -173,18 +193,33 @@ export function AuthProvider({
         active = false;
       };
     }
-    const apply = (s: Session | null) => {
+    const apply = (s: Session | null, isOffline = false) => {
       if (!active) return;
       session.current = s;
       setUser(userFrom(s));
       setStatus(s ? "signed-in" : "signed-out");
+      setOffline(!!s && isOffline);
       if (s) setLinkError(null);
     };
     let unsubscribe = () => {};
     try {
       const sb = getSupabase();
-      sb.auth.getSession().then(({ data }) => apply(data.session));
-      const { data } = sb.auth.onAuthStateChange((_event, s) => apply(s));
+      sb.auth
+        .getSession()
+        .then(async ({ data, error }) => {
+          if (data.session || !isRetryableAuthError(error as AuthError | null)) return apply(data.session);
+          // Offline with an expired access token: Supabase couldn't refresh it but kept the
+          // stored session. Keep the person signed in on it; it refreshes once back online.
+          const stored = await readJson<Session | null>(storage, storageKeyOf(sb), null);
+          apply(stored?.access_token ? stored : null, true);
+        })
+        .catch(() => apply(null));
+      // INITIAL_SESSION repeats what getSession reports (and is empty when offline), so the
+      // getSession call above decides the start-up state; later events (sign-in, refresh,
+      // sign-out) apply as they come.
+      const { data } = sb.auth.onAuthStateChange((event, s) => {
+        if (event !== "INITIAL_SESSION") apply(s);
+      });
       unsubscribe = () => data.subscription.unsubscribe();
     } catch (e) {
       console.warn(e);
@@ -217,6 +252,23 @@ export function AuthProvider({
       linkSub?.remove();
     };
   }, [mode, storage, completeRedirect]);
+
+  // Supabase's advice for React Native: refresh tokens only while the app is in the foreground
+  // (timers don't run reliably in the background, and a refresh there just fails).
+  useEffect(() => {
+    if (mode !== "live" || Platform.OS === "web") return;
+    let sb: SupabaseClient;
+    try {
+      sb = getSupabase();
+    } catch {
+      return;
+    }
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void sb.auth.startAutoRefresh();
+      else void sb.auth.stopAutoRefresh();
+    });
+    return () => sub?.remove();
+  }, [mode]);
 
   const signInDemo = useCallback(async () => {
     await storage.setItem(DEMO_KEY, "1").catch(() => {});
@@ -263,18 +315,36 @@ export function AuthProvider({
     if (mode === "demo") {
       await storage.setItem(DEMO_KEY, "0").catch(() => {});
     } else {
-      await getSupabase().auth.signOut();
+      // Local scope: ends the session on this device without a network call, so it works offline.
+      const { error } = await getSupabase().auth.signOut({ scope: "local" });
+      if (error) console.warn("Supabase sign-out did not finish cleanly:", error.message);
     }
     session.current = null;
     setUser(null);
+    setOffline(false);
     setStatus("signed-out");
   }, [mode, storage]);
 
   const getAccessToken = useCallback(async () => session.current?.access_token ?? null, []);
 
+  /**
+   * A fresh access token, or null when the server refused the refresh (the session is over).
+   * A refresh that could not reach Supabase throws NETWORK and keeps the session: being
+   * offline must not sign anyone out.
+   */
   const refreshAccessToken = useCallback(async () => {
     if (mode === "demo") return null;
-    const { data } = await getSupabase().auth.refreshSession();
+    let result: Awaited<ReturnType<SupabaseClient["auth"]["refreshSession"]>>;
+    try {
+      result = await getSupabase().auth.refreshSession();
+    } catch (e) {
+      throw new ApiError("NETWORK", 0, e instanceof Error ? e.message : "Couldn't refresh the session.");
+    }
+    const { data, error } = result;
+    if (error) {
+      if (isRetryableAuthError(error)) throw new ApiError("NETWORK", 0, error.message);
+      return null;
+    }
     session.current = data.session;
     return data.session?.access_token ?? null;
   }, [mode]);
@@ -285,6 +355,7 @@ export function AuthProvider({
       user,
       mode,
       linkError,
+      offline,
       signInDemo,
       signInWithEmail,
       verifyCode,
@@ -293,7 +364,7 @@ export function AuthProvider({
       getAccessToken,
       refreshAccessToken,
     }),
-    [status, user, mode, linkError, signInDemo, signInWithEmail, verifyCode, signInWithGoogle, signOut, getAccessToken, refreshAccessToken],
+    [status, user, mode, linkError, offline, signInDemo, signInWithEmail, verifyCode, signInWithGoogle, signOut, getAccessToken, refreshAccessToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

@@ -16,6 +16,9 @@ export function getSupabase(): SupabaseClient {
     }
     client = createClient(config.supabaseUrl, config.supabaseKey, {
       auth: {
+        // PKCE: redirects carry a one-time ?code= that only this app (holding the verifier)
+        // can exchange, instead of tokens any app registered for lately:// could read.
+        flowType: "pkce",
         storage: AsyncStorage,
         autoRefreshToken: true,
         persistSession: true,

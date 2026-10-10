@@ -13,7 +13,7 @@ import { colors } from "../../theme/tokens";
 import { Icon } from "../Icon";
 
 /** Marigold checkbox: the fill floods in and the tick springs up from 60%. */
-export function Checkbox({ checked }: { checked: boolean }) {
+export function Checkbox({ checked, disabled = false, label }: { checked: boolean; disabled?: boolean; label?: string }) {
   const on = useSharedValue(checked ? 1 : 0);
   const tick = useSharedValue(checked ? 1 : 0);
   const first = useRef(true);
@@ -37,7 +37,13 @@ export function Checkbox({ checked }: { checked: boolean }) {
   }));
 
   return (
-    <Animated.View style={[styles.box, boxStyle]}>
+    <Animated.View
+      accessible
+      accessibilityRole="switch"
+      accessibilityLabel={label}
+      accessibilityState={{ checked, disabled }}
+      style={[styles.box, boxStyle]}
+    >
       <Animated.View style={tickStyle}>
         <Icon name="check" size={16} color="#FFFFFF" />
       </Animated.View>

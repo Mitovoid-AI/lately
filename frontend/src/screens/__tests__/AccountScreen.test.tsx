@@ -1,12 +1,18 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { queueKey } from "../../lib/saveQueue";
+import { PENDING_SHARE_KEY } from "../../share/ShareRouter";
 import { demoApi, renderWithProviders } from "../../test/render";
 import { AccountScreen } from "../AccountScreen";
 
 let mockCanGoBack = true;
 const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => mockCanGoBack };
 jest.mock("expo-router", () => ({ useRouter: () => mockRouter }));
+const mockShare = jest.fn(async (_name: string, _json: string) => {});
+jest.mock("../../lib/exportFile", () => ({ shareExportFile: (n: string, j: string) => mockShare(n, j) }));
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -52,18 +58,54 @@ test("dark theme says it is coming", async () => {
   await settled(client);
 });
 
-test("download archive asks for an export", async () => {
-  const { requestExport } = await open();
+test("download archive prepares a JSON export in the app, then offers Download", async () => {
+  const api = demoApi();
+  const requestExport = jest.spyOn(api, "requestExport");
+  jest
+    .spyOn(api, "downloadExport")
+    .mockResolvedValueOnce({ status: "queued" })
+    .mockResolvedValue({ status: "ready", filename: "lately-export-20261010.json", json: "{}" });
+  await renderWithProviders(<AccountScreen />, { api });
+  await screen.findByText("Aanya Sharma");
+  expect(screen.queryByText(/email your archive/i)).toBeNull();
+  expect(screen.queryByText(/markdown/i)).toBeNull();
+  expect(screen.getByText("Export your reels, notes and stacks as a JSON file")).toBeTruthy();
   await fireEvent.press(screen.getByText("Download Vault Archive"));
   await waitFor(() => expect(requestExport).toHaveBeenCalled());
-  expect(await screen.findByText("We'll email your archive when it's ready")).toBeTruthy();
+  expect(screen.getByText("Preparing…")).toBeTruthy();
+  await fireEvent.press(await screen.findByText("Download", {}, { timeout: 8000 }));
+  await waitFor(() => expect(mockShare).toHaveBeenCalledWith("lately-export-20261010.json", "{}"));
 });
 
-test("digests can be turned off", async () => {
-  const { updatePreferences, client } = await open();
+test("the delete dialog offers the export first", async () => {
+  const api = demoApi();
+  const requestExport = jest.spyOn(api, "requestExport");
+  const deleteAccount = jest.spyOn(api, "deleteAccount");
+  await renderWithProviders(<AccountScreen />, { api });
+  await screen.findByText("Aanya Sharma");
+  await fireEvent.press(screen.getByText("Delete account"));
+  await fireEvent.press(screen.getByRole("button", { name: /Download my archive first/ }));
+  await waitFor(() => expect(requestExport).toHaveBeenCalled());
+  expect(deleteAccount).not.toHaveBeenCalled();
+  expect(screen.queryByText("Delete your account?")).toBeNull();
+});
+
+test("no placeholder password row (Lately has no passwords)", async () => {
+  await open();
+  expect(screen.queryByText("Password & Security")).toBeNull();
+  expect(screen.queryByText("Last changed 3 months ago")).toBeNull();
+  expect(screen.queryByText("Reset")).toBeNull();
+});
+
+test("digests and offline reading are marked coming soon and can't be toggled", async () => {
+  const { updatePreferences } = await open();
+  expect(screen.getAllByText("Coming soon")).toHaveLength(2);
   await fireEvent.press(screen.getByText("Push Digests"));
-  expect(updatePreferences).toHaveBeenCalledWith({ push_digests: false });
-  await settled(client);
+  await fireEvent.press(screen.getByText("Offline Reading Storage"));
+  expect(updatePreferences).not.toHaveBeenCalled();
+  const digests = screen.getByRole("switch", { name: "Push Digests" });
+  expect(digests.props.accessibilityState).toEqual({ checked: false, disabled: true });
+  expect(screen.getByRole("switch", { name: "Offline Reading Storage" })).toBeTruthy();
 });
 
 test("log out and back", async () => {
@@ -72,6 +114,36 @@ test("log out and back", async () => {
   expect(auth.signOut).toHaveBeenCalled();
   await fireEvent.press(screen.getByLabelText("Back"));
   expect(mockRouter.back).toHaveBeenCalled();
+});
+
+async function seedDeviceData() {
+  await AsyncStorage.setItem("lately.recent-searches", JSON.stringify(["momo"]));
+  await AsyncStorage.setItem(queueKey("demo-user"), JSON.stringify([{ id: "q1", text: "x", queued_at: "t" }]));
+  await AsyncStorage.setItem(PENDING_SHARE_KEY, "https://www.instagram.com/reel/abc/");
+}
+
+async function expectDeviceDataCleared() {
+  expect(JSON.parse((await AsyncStorage.getItem("lately.recent-searches")) ?? "[]")).toEqual([]);
+  expect(JSON.parse((await AsyncStorage.getItem(queueKey("demo-user"))) ?? "[]")).toEqual([]);
+  expect((await AsyncStorage.getItem(PENDING_SHARE_KEY)) ?? "").toBe("");
+}
+
+test("logging out forgets recent searches, the offline queue and a pending share", async () => {
+  await seedDeviceData();
+  const { auth } = await open();
+  await fireEvent.press(screen.getByText("Log Out of Lately"));
+  await waitFor(() => expect(auth.signOut).toHaveBeenCalled());
+  await expectDeviceDataCleared();
+});
+
+test("deleting the account forgets device data too", async () => {
+  await seedDeviceData();
+  const { auth } = await open();
+  await fireEvent.press(screen.getByText("Delete account"));
+  await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Delete forever" }));
+  await waitFor(() => expect(auth.signOut).toHaveBeenCalled());
+  await expectDeviceDataCleared();
 });
 
 test("back with no history goes to the Library", async () => {

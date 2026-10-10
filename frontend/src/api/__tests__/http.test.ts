@@ -1,14 +1,15 @@
 import { ApiError } from "../contract";
-import { createHttpApi, toSave } from "../http";
+import { createHttpApi, DEFAULT_TIMEOUT_MS, SAVE_TIMEOUT_MS, toSave } from "../http";
 
-type Reply = { status: number; body?: unknown; raw?: string };
+type Reply = { status: number; body?: unknown; raw?: string; headers?: Record<string, string> };
 
 function fakeFetch(...replies: Reply[]) {
   const queue = [...replies];
   return jest.fn(async (_url: string, _init?: RequestInit) => {
-    const r = queue.shift() ?? { status: 200, body: {} };
+    const r: Reply = queue.shift() ?? { status: 200, body: {} };
     const text = r.raw ?? (r.body === undefined ? "" : JSON.stringify(r.body));
-    return { ok: r.status >= 200 && r.status < 300, status: r.status, text: async () => text } as Response;
+    const headers = { get: (k: string) => r.headers?.[k.toLowerCase()] ?? null };
+    return { ok: r.status >= 200 && r.status < 300, status: r.status, text: async () => text, headers } as unknown as Response;
   });
 }
 
@@ -75,6 +76,33 @@ test("a 401 refreshes the token once and retries", async () => {
   await expect(api.listSaves()).resolves.toEqual([]);
   expect(refreshToken).toHaveBeenCalledTimes(1);
   expect(headersOf(f, 1).Authorization).toBe("Bearer tok-2");
+});
+
+test("a refresh that fails on the network is NETWORK, not UNAUTHORIZED", async () => {
+  const f = fakeFetch({ status: 401 }, { status: 200, body: [] });
+  const api = createHttpApi({
+    baseUrl: "http://api.test",
+    getToken: async () => "tok-1",
+    refreshToken: async () => {
+      throw new ApiError("NETWORK", 0);
+    },
+    fetchImpl: f as unknown as typeof fetch,
+  });
+  const e = await rejection(api.listSaves());
+  expect(e.code).toBe("NETWORK");
+});
+
+test("a refresh that throws something unexpected is NETWORK too", async () => {
+  const f = fakeFetch({ status: 401 });
+  const api = createHttpApi({
+    baseUrl: "http://api.test",
+    getToken: async () => "tok-1",
+    refreshToken: async () => {
+      throw new TypeError("fetch failed");
+    },
+    fetchImpl: f as unknown as typeof fetch,
+  });
+  expect((await rejection(api.listSaves())).code).toBe("NETWORK");
 });
 
 test("a second 401 is UNAUTHORIZED", async () => {
@@ -223,4 +251,78 @@ test("a 404 on delete is NOT_FOUND", async () => {
   const f = fakeFetch({ status: 404, body: { error: { code: "NOT_FOUND", message: "gone" } } });
   const e = await rejection(setup(f).api.deleteSave("r1"));
   expect(e.code).toBe("NOT_FOUND");
+});
+
+/** A fetch that answers after `ms`, or rejects as soon as its signal aborts. */
+function slowFetch(ms: number, reply: Reply = { status: 200, body: [] }) {
+  return jest.fn(
+    (_url: string, init?: RequestInit) =>
+      new Promise<Response>((resolve, reject) => {
+        const t = setTimeout(() => resolve(fakeFetch(reply)("", init)), ms);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(t);
+          reject(new Error("Aborted"));
+        });
+      }),
+  );
+}
+
+function timed(fetchImpl: unknown, timeoutMs: number, saveTimeoutMs: number) {
+  return createHttpApi({
+    baseUrl: "http://api.test",
+    getToken: async () => "tok-1",
+    refreshToken: async () => null,
+    fetchImpl: fetchImpl as typeof fetch,
+    timeoutMs,
+    saveTimeoutMs,
+  });
+}
+
+test("a request that takes longer than the timeout is aborted as NETWORK", async () => {
+  const f = slowFetch(500);
+  const e = await rejection(timed(f, 20, 1000).listSaves());
+  expect([e.code, e.status]).toEqual(["NETWORK", 0]);
+  expect((f.mock.calls[0][1]?.signal as AbortSignal).aborted).toBe(true);
+});
+
+test("a fetch that ignores the abort signal still times out", async () => {
+  const f = jest.fn(() => new Promise<Response>(() => {}));
+  const e = await rejection(timed(f, 20, 1000).getMe());
+  expect(e.code).toBe("NETWORK");
+});
+
+test("createSave gets the longer save timeout", async () => {
+  const f = slowFetch(60, { status: 201, body: { reel_id: "r1", deduped: false, status: "pending" } });
+  await expect(timed(f, 20, 1000).createSave("https://www.instagram.com/reel/abc/")).resolves.toMatchObject({ reel_id: "r1" });
+});
+
+test("the default timeouts are 15 s, and 25 s for a save", () => {
+  expect(DEFAULT_TIMEOUT_MS).toBe(15_000);
+  expect(SAVE_TIMEOUT_MS).toBe(25_000);
+});
+
+test("downloadExport returns the JSON file and its name when it is ready", async () => {
+  const f = fakeFetch({
+    status: 200,
+    raw: '{"saves":[]}',
+    headers: { "content-disposition": 'attachment; filename="lately-export-20261010.json"' },
+  });
+  const out = await setup(f).api.downloadExport();
+  expect(callOf(f)).toEqual({ url: "http://api.test/me/export", method: "GET", body: undefined });
+  expect(out).toEqual({ status: "ready", filename: "lately-export-20261010.json", json: '{"saves":[]}' });
+});
+
+test("downloadExport without a Content-Disposition still names the file", async () => {
+  const f = fakeFetch({ status: 200, raw: "{}" });
+  expect(await setup(f).api.downloadExport()).toEqual({ status: "ready", filename: "lately-export.json", json: "{}" });
+});
+
+test("downloadExport is queued while the export is being built", async () => {
+  const f = fakeFetch({ status: 202, body: { status: "queued" } });
+  expect(await setup(f).api.downloadExport()).toEqual({ status: "queued" });
+});
+
+test("downloadExport before any request is NOT_FOUND", async () => {
+  const f = fakeFetch({ status: 404, body: { error: { code: "NOT_FOUND", message: "No export yet." } } });
+  expect((await rejection(setup(f).api.downloadExport())).code).toBe("NOT_FOUND");
 });

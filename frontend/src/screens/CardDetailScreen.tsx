@@ -39,6 +39,7 @@ import { Skeleton, SkeletonGroup } from "../components/Skeleton";
 import { Thumb } from "../components/Thumb";
 import { useToast } from "../components/Toast";
 import { useNow } from "../hooks/useNow";
+import { isStalePending, markRetried, pollWhilePending } from "../hooks/useSaves";
 import { useReadingStyle } from "../hooks/usePreferences";
 import { savedAgo } from "../lib/dates";
 import { haptic } from "../lib/haptics";
@@ -208,7 +209,7 @@ export function CardDetailScreen() {
     queryKey: ["save", id],
     queryFn: () => api.getSave(id),
     retry: (count, e) => !(e instanceof ApiError && e.code === "NOT_FOUND") && count < 2,
-    refetchInterval: (q) => (q.state.data?.status === "pending" ? 4000 : false),
+    refetchInterval: (q) => pollWhilePending(q.state.data ? [q.state.data] : undefined),
   });
   const card = query.data;
   const preview = useCachedSave(id);
@@ -234,6 +235,7 @@ export function CardDetailScreen() {
     setRetrying(true);
     try {
       await api.retryEnrichment(id);
+      markRetried(id);
       haptic.success();
       // Back to processing: the detail polls until the new card is ready.
       queryClient.setQueryData<SaveDetail>(["save", id], (old) =>
@@ -316,6 +318,7 @@ export function CardDetailScreen() {
           : { text: "READY • SYNCED", color: colors.success };
     const title = card.title ?? (card.status === "pending" ? displayLink(card.source_url) : card.caption?.split("\n")[0] ?? displayLink(card.source_url));
     const showCaption = card.status === "partial" || captionOpen;
+    const stale = isStalePending(card, now);
     // The hero sits at the same place in the tree while loading and once loaded, so it stays
     // mounted (the zoom lands on it, the image never re-fades); the text below it arrives in turn.
     let i = 0;
@@ -368,10 +371,12 @@ export function CardDetailScreen() {
           />
         </Reveal>
 
-        {card.status === "partial" ? (
+        {card.status === "partial" || stale ? (
           <Reveal index={next()} style={{ marginTop: 16 }}>
             <Text className="font-sans text-meta text-ink-2">
-              {"Lately couldn't read this reel's video. It can try again."}
+              {stale
+                ? "This is taking longer than usual. Lately can try again."
+                : "Lately couldn't read this reel's video. It can try again."}
             </Text>
             <Button
               title="Try getting details again"

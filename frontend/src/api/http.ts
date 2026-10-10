@@ -103,49 +103,98 @@ function toCurated(raw: Raw): CuratedFeed {
   };
 }
 
+/** How long one call may take before it is given up as NETWORK. */
+export const DEFAULT_TIMEOUT_MS = 15_000;
+/** Saving waits a little longer: the server checks the link and quota before answering. */
+export const SAVE_TIMEOUT_MS = 25_000;
+
+/** `attachment; filename="x.json"` → `x.json`; anything unsafe or missing → a fixed name. */
+function filenameFrom(disposition: string | null | undefined): string {
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition ?? "");
+  let name = m ? m[1].trim() : "";
+  try {
+    name = decodeURIComponent(name);
+  } catch {
+    name = "";
+  }
+  return /^[\w.-]+\.json$/.test(name) ? name : "lately-export.json";
+}
+
 export function createHttpApi(o: {
   baseUrl: string;
   getToken: () => Promise<string | null>;
   refreshToken: () => Promise<string | null>;
   fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+  saveTimeoutMs?: number;
 }): LatelyApi {
   const doFetch = o.fetchImpl ?? fetch;
+  const timeoutMs = o.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+  const saveTimeoutMs = o.saveTimeoutMs ?? SAVE_TIMEOUT_MS;
 
   async function send(method: string, path: string, token: string | null, body?: unknown) {
     const headers: Record<string, string> = { Accept: "application/json" };
     if (token) headers.Authorization = `Bearer ${token}`;
     if (body !== undefined) headers["Content-Type"] = "application/json";
-    try {
-      return await doFetch(`${o.baseUrl}${path}`, {
+    // A request (headers and body) that takes too long is abandoned as NETWORK, so nothing
+    // waits forever on a dead connection. The race also covers a fetch that ignores `signal`.
+    const ms = method === "POST" && path === "/saves" ? saveTimeoutMs : timeoutMs;
+    const ctrl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        ctrl.abort();
+        reject(new ApiError("NETWORK", 0, "The request timed out."));
+      }, ms);
+    });
+    const attempt = (async () => {
+      const res = await doFetch(`${o.baseUrl}${path}`, {
         method,
         headers,
         body: body === undefined ? undefined : JSON.stringify(body),
+        signal: ctrl.signal,
       });
+      return { res, text: await res.text() };
+    })();
+    attempt.catch(() => {}); // settled by the race below; don't report it twice
+    try {
+      return await Promise.race([attempt, timeout]);
     } catch (e) {
+      if (e instanceof ApiError) throw e;
+      if (ctrl.signal.aborted) throw new ApiError("NETWORK", 0, "The request timed out.");
       throw new ApiError("NETWORK", 0, e instanceof Error ? e.message : "Network request failed");
+    } finally {
+      clearTimeout(timer);
     }
   }
 
-  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
-    let res = await send(method, path, await o.getToken(), body);
+  /** Sends the call (refreshing the token once on a 401); a non-2xx answer throws an ApiError. */
+  async function exchange(method: string, path: string, body?: unknown): Promise<{ res: Response; text: string; data: unknown }> {
+    let { res, text } = await send(method, path, await o.getToken(), body);
     if (res.status === 401) {
-      const fresh = await o.refreshToken();
-      if (fresh) res = await send(method, path, fresh, body);
+      // A refresh that can't reach Supabase is NETWORK (retry later), never UNAUTHORIZED.
+      const fresh = await o.refreshToken().catch((e: unknown) => {
+        throw e instanceof ApiError ? e : new ApiError("NETWORK", 0, e instanceof Error ? e.message : "Couldn't refresh the session.");
+      });
+      if (fresh) ({ res, text } = await send(method, path, fresh, body));
     }
-    const text = await res.text();
     let data: unknown = undefined;
     try {
       data = text ? JSON.parse(text) : undefined;
     } catch {
       data = undefined;
     }
-    if (res.ok) return data as T;
+    if (res.ok) return { res, text, data };
     if (res.status === 401) throw new ApiError("UNAUTHORIZED", 401, "Please sign in again.");
     const err = (data as { error?: { code?: string; message?: string } } | undefined)?.error;
     const code = KNOWN_CODES.find((c) => c === err?.code);
     if (code) throw new ApiError(code, res.status, err?.message);
     if (res.status === 404) throw new ApiError("NOT_FOUND", 404, err?.message);
     throw new ApiError("SERVER", res.status, err?.message ?? `HTTP ${res.status}`);
+  }
+
+  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    return (await exchange(method, path, body)).data as T;
   }
 
   /** For 202/204 calls: the body (if any) is not needed. */
@@ -185,6 +234,11 @@ export function createHttpApi(o: {
     requestExport: async () => {
       await call("POST", "/me/export");
       return { status: "queued" };
+    },
+    downloadExport: async () => {
+      const { res, text } = await exchange("GET", "/me/export");
+      if (res.status === 202) return { status: "queued" };
+      return { status: "ready", filename: filenameFrom(res.headers?.get?.("content-disposition")), json: text };
     },
     retryEnrichment: (reelId) => call("POST", `/retries/${seg(reelId)}`),
     deleteAccount: () => call("DELETE", "/me"),

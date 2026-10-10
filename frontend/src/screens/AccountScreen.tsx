@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 import Animated, { FadeIn, useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -21,9 +21,11 @@ import { SettingsRow, SettingsSection } from "../components/settings/SettingsSec
 import { TextSizeControl } from "../components/settings/TextSizeControl";
 import { IMAGE_FADE } from "../components/Thumb";
 import { useToast } from "../components/Toast";
+import { useExport, type ExportPhase } from "../hooks/useExport";
 import { usePreferences } from "../hooks/usePreferences";
 import { useMe } from "../hooks/useSaves";
 import { monthYear } from "../lib/dates";
+import { forgetDeviceData } from "../lib/deviceData";
 import { haptic } from "../lib/haptics";
 import { DURATION } from "../theme/motion";
 import { colors } from "../theme/tokens";
@@ -54,6 +56,20 @@ function InfoChip({ icon, text, tone = "plain" }: { icon: IconName; text: string
   );
 }
 
+/** A setting that isn't built yet: a "Coming soon" pill beside a switched-off, disabled box. */
+function ComingSoon({ label }: { label: string }) {
+  return (
+    <View className="flex-row items-center">
+      <View className="mr-2 rounded-full bg-raised px-2 py-0.5">
+        <Text className="font-sans-medium text-caption text-ink-2">Coming soon</Text>
+      </View>
+      <View style={{ opacity: 0.4 }}>
+        <Checkbox checked={false} disabled label={label} />
+      </View>
+    </View>
+  );
+}
+
 export function AccountScreen() {
   const router = useRouter();
   const api = useApi();
@@ -74,14 +90,16 @@ export function AccountScreen() {
   const sizeName = SIZES.find((s) => s.size === prefs.text_size)?.name ?? "Default";
   const version = Constants.expoConfig?.version ?? "1.0.0";
 
-  async function exportArchive() {
-    try {
-      await api.requestExport();
-      haptic.success();
-      toast.show("We'll email your archive when it's ready");
-    } catch {
-      toast.show("Couldn't start the export. Try again.");
-    }
+  const archive = useExport();
+  const ARCHIVE_SUBTITLE: Record<ExportPhase, string> = {
+    idle: "Export your reels, notes and stacks as a JSON file",
+    preparing: "Preparing…",
+    ready: "Your archive is ready",
+    sharing: "Your archive is ready",
+  };
+  function onArchivePress() {
+    if (archive.phase === "idle") void archive.start();
+    else if (archive.phase === "ready") void archive.download();
   }
 
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
@@ -93,6 +111,7 @@ export function AccountScreen() {
       await api.deleteAccount();
       haptic.medium();
       setDeleteStep(0);
+      await forgetDeviceData(auth.user?.id);
       await auth.signOut();
     } catch {
       haptic.error();
@@ -102,11 +121,6 @@ export function AccountScreen() {
       setDeletingAccount(false);
     }
   }
-
-  const toggle = (key: "push_digests" | "offline_reading") => {
-    haptic.selection();
-    update({ [key]: !prefs[key] });
-  };
 
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
@@ -246,19 +260,7 @@ export function AccountScreen() {
 
           <Reveal index={2}>
             <SettingsSection icon="shield" title="Account & Security">
-              <SettingsRow
-                icon="lock-outline"
-                title="Password & Security"
-                subtitle="Last changed 3 months ago"
-                onPress={() => toast.show("Password reset is coming soon")}
-                right={
-                  <View className="flex-row items-center">
-                    <Text className="font-sans-semibold text-meta text-accent">Reset</Text>
-                    <Icon name="chevron-right" size={20} color={colors.ink2} />
-                  </View>
-                }
-              />
-              <SettingsRow icon="link" title="Connected Accounts" subtitle="Sync services & authenticators" divider>
+              <SettingsRow icon="link" title="Connected Accounts" subtitle="How you sign in to Lately">
                 <View className="ml-14 mt-3 gap-2">
                   {(me?.connected_accounts ?? []).map((a) => (
                     <View key={a.provider} className="h-11 flex-row items-center rounded-xl bg-raised px-3">
@@ -282,9 +284,17 @@ export function AccountScreen() {
               <SettingsRow
                 icon="cloud-download"
                 title="Download Vault Archive"
-                subtitle="Export all reels & notes as JSON or Markdown"
-                onPress={exportArchive}
-                right={<Icon name="chevron-right" size={20} color={colors.ink2} />}
+                subtitle={ARCHIVE_SUBTITLE[archive.phase]}
+                onPress={onArchivePress}
+                right={
+                  archive.phase === "preparing" || archive.phase === "sharing" ? (
+                    <ActivityIndicator color={colors.ink2} accessibilityLabel="Preparing your archive" />
+                  ) : archive.phase === "ready" ? (
+                    <Text className="font-sans-semibold text-meta text-accent">Download</Text>
+                  ) : (
+                    <Icon name="chevron-right" size={20} color={colors.ink2} />
+                  )
+                }
                 divider
               />
             </SettingsSection>
@@ -292,19 +302,18 @@ export function AccountScreen() {
 
           <Reveal index={3}>
             <SettingsSection icon="tune" title="Reading Preferences">
+              {/* Not built yet: shown as coming soon, switched off and not pressable. */}
               <SettingsRow
                 icon="notifications-none"
                 title="Push Digests"
                 subtitle="Weekly summaries of your curated reels"
-                onPress={() => toggle("push_digests")}
-                right={<Checkbox checked={prefs.push_digests} />}
+                right={<ComingSoon label="Push Digests" />}
               />
               <SettingsRow
                 icon="offline-pin"
                 title="Offline Reading Storage"
                 subtitle="Keep recent transcripts ready offline"
-                onPress={() => toggle("offline_reading")}
-                right={<Checkbox checked={prefs.offline_reading} />}
+                right={<ComingSoon label="Offline Reading Storage" />}
                 divider
               />
             </SettingsSection>
@@ -333,7 +342,10 @@ export function AccountScreen() {
           <Reveal index={5}>
             <PressableScale
               accessibilityRole="button"
-              onPress={() => auth.signOut()}
+              onPress={async () => {
+                await forgetDeviceData(auth.user?.id);
+                await auth.signOut();
+              }}
               highlightColor="#F9CFCD"
               containerClassName="mt-8"
               className="flex-row items-center justify-center rounded-2xl bg-danger-soft px-4 py-5"
@@ -369,15 +381,23 @@ export function AccountScreen() {
       <ConfirmDialog
         visible={deleteStep === 1}
         title="Delete your account?"
-        message="Your saved reels, notes, cards and stacks will be deleted, and you'll be signed out."
+        message="Your saved reels, notes, cards and stacks will be deleted, and you'll be signed out. Want a copy? Download your archive (a JSON file) first."
         confirmLabel="Continue"
+        aside={{
+          label: "Download my archive first",
+          onPress: () => {
+            setDeleteStep(0);
+            if (archive.phase === "idle") void archive.start();
+            else if (archive.phase === "ready") void archive.download();
+          },
+        }}
         onConfirm={() => setDeleteStep(2)}
         onCancel={() => setDeleteStep(0)}
       />
       <ConfirmDialog
         visible={deleteStep === 2}
         title="This can't be undone"
-        message="Everything in your Lately is removed for good. Export your archive first if you want a copy."
+        message="Everything in your Lately is removed for good."
         confirmLabel="Delete forever"
         busy={deletingAccount}
         onConfirm={deleteAccount}

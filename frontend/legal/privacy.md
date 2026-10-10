@@ -36,12 +36,12 @@ Your searches are processed to return results; they are not used for advertising
 
 ## How long data is kept
 
-Your data is kept while your account exists. When you delete a save in the app, its link, note, card and search data are deleted. When you delete your account, everything listed above is deleted. Copies may remain in our providers' backups for a limited period before they are overwritten.
+Your data is kept while your account exists. When you delete a save in the app, your link, note and your copy of the save (with its search data) are deleted. The card made from the reel's public content is shared by everyone who saved that reel and holds none of your data, so that card stays. When you delete your account, everything listed above is deleted. Copies may remain in our providers' backups for a limited period before they are overwritten.
 
 ## Your choices and rights
 
 - **See and edit.** Everything Lately stores about your saves is visible in the app, and notes can be edited at any time.
-- **Export.** In Account and Settings, "Download Vault Archive" sends you a copy of your reels and notes.
+- **Export.** In Account and Settings, "Download Vault Archive" prepares a copy of your saves, notes, cards and stacks as a JSON file in the app. When it is ready, tap Download to save it to your phone or share it.
 - **Delete a save.** Open a card, tap the ⋮ menu, then Delete.
 - **Delete your account.** In Account and Settings, tap "Delete account" and confirm twice. This deletes your account and everything in it, then signs you out.
 

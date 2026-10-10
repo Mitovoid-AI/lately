@@ -145,6 +145,7 @@ export function SearchScreen() {
             onChangeText={setQuery}
             onSubmitEditing={() => remember(query)}
             placeholder="Search what you remember…"
+            maxLength={200}
             autoFocus
             returnKeyType="search"
             tone="card"

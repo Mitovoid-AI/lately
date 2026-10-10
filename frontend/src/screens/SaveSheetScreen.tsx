@@ -25,7 +25,7 @@ import { useNow } from "../hooks/useNow";
 import { savedAgo, shortDate } from "../lib/dates";
 import { haptic } from "../lib/haptics";
 import { displayLink, extractReelUrl } from "../lib/instagram";
-import { outcomeFromError, outcomeFromResult, type SaveOutcome } from "../lib/saveOutcome";
+import { outcomeFromError, outcomeFromResult, QUEUE_REASON, QUEUED_BODY, type SaveOutcome } from "../lib/saveOutcome";
 import { DURATION, EASE_OUT } from "../theme/motion";
 import { colors } from "../theme/tokens";
 import { useToast } from "../components/Toast";
@@ -149,12 +149,19 @@ export function SaveSheetScreen() {
         setOutcome(next);
         refreshSaveViews(queryClient);
       } catch (e) {
-        if (e instanceof ApiError && e.code === "NETWORK") {
-          // Offline: keep it on the device; it goes out when Lately can reach the API.
+        const reason = e instanceof ApiError ? QUEUE_REASON[e.code] : undefined;
+        if (reason) {
+          // Nothing the server said about the link itself: keep it on the device and send it
+          // when Lately can take it — but only if there is a reel link to send.
+          if (!extractReelUrl(t)) {
+            haptic.error();
+            setOutcome({ kind: "bad_url" });
+            return;
+          }
           await queue.enqueue(t);
           queuedRef.current = true;
           haptic.light();
-          setOutcome({ kind: "queued" });
+          setOutcome({ kind: "queued", reason });
           return;
         }
         const next = outcomeFromError(e);
@@ -355,7 +362,7 @@ export function SaveSheetScreen() {
       <Message
         icon={<StatusIcon name="cloud-upload" color={colors.accent} bg={colors.raised} />}
         title="Saved for later"
-        body="You're offline. Lately will save this reel as soon as you're back online."
+        body={QUEUED_BODY[outcome.reason]}
       >
         <View className="mt-4 h-9 flex-row items-center self-start rounded-full border border-hairline bg-raised px-3" style={{ maxWidth: "100%" }}>
           <Icon name="link" size={18} color={colors.accent} />

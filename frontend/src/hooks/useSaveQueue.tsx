@@ -6,8 +6,8 @@ import { useApi } from "../api/index";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../components/Toast";
 import { refreshSaveViews } from "../lib/queryClient";
-import { enqueueSave, flushQueue, queueKey, readQueue, type QueuedSave } from "../lib/saveQueue";
-import { deviceStore, writeJson, type KeyValueStore } from "../lib/storage";
+import { dequeueSave, enqueueSave, flushQueue, queueKey, readQueue, type QueuedSave } from "../lib/saveQueue";
+import { deviceStore, type KeyValueStore } from "../lib/storage";
 
 /** How often a non-empty queue is retried while the app is open (catches reconnects). */
 export const QUEUE_RETRY_MS = 30_000;
@@ -93,9 +93,7 @@ export function SaveQueueProvider({
   const dequeue = useCallback(
     async (text: string) => {
       if (!key) return;
-      const next = (await readQueue(store, key)).filter((q) => q.text !== text.trim());
-      await writeJson(store, key, next);
-      setQueued(next);
+      setQueued(await dequeueSave(store, key, text));
     },
     [key, store],
   );

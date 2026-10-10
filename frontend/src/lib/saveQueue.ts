@@ -26,13 +26,42 @@ export async function readQueue(store: KeyValueStore, key: string): Promise<Queu
   return Array.isArray(items) ? (items as QueuedSave[]).filter((q) => q && typeof q.text === "string") : [];
 }
 
-export async function enqueueSave(store: KeyValueStore, key: string, text: string, now = Date.now()): Promise<QueuedSave[]> {
-  const t = text.trim();
-  const items = await readQueue(store, key);
-  if (!t || items.some((q) => q.text === t)) return items;
-  const next = [...items, { id: `q-${now}-${items.length}`, text: t, queued_at: new Date(now).toISOString() }];
-  await writeJson(store, key, next);
-  return next;
+// Every read-modify-write of a queue runs on one promise chain per key, so a share queued
+// while another is queued, dequeued or flushed is never overwritten by a stale copy.
+const chains = new Map<string, Promise<unknown>>();
+
+function serialized<T>(key: string, fn: () => Promise<T>): Promise<T> {
+  const run = (chains.get(key) ?? Promise.resolve()).then(fn, fn);
+  chains.set(
+    key,
+    run.catch(() => {}),
+  );
+  return run;
+}
+
+export function enqueueSave(store: KeyValueStore, key: string, text: string, now = Date.now()): Promise<QueuedSave[]> {
+  return serialized(key, async () => {
+    const t = text.trim();
+    const items = await readQueue(store, key);
+    if (!t || items.some((q) => q.text === t)) return items;
+    const next = [...items, { id: `q-${now}-${items.length}`, text: t, queued_at: new Date(now).toISOString() }];
+    await writeJson(store, key, next);
+    return next;
+  });
+}
+
+/** Takes a text off the queue (it was saved another way). */
+export function dequeueSave(store: KeyValueStore, key: string, text: string): Promise<QueuedSave[]> {
+  return serialized(key, async () => {
+    const next = (await readQueue(store, key)).filter((q) => q.text !== text.trim());
+    await writeJson(store, key, next);
+    return next;
+  });
+}
+
+/** Empties the queue (sign-out, account deletion). */
+export function clearQueue(store: KeyValueStore, key: string): Promise<void> {
+  return serialized(key, () => writeJson(store, key, []));
 }
 
 /** Sends queued saves oldest first; stops at the first failure a later retry might fix. */
@@ -52,11 +81,12 @@ export async function flushQueue(store: KeyValueStore, key: string, api: Pick<La
       break;
     }
   }
-  out.remaining = items.slice(i);
   // Something may have been queued while this ran: keep it as well.
   const done = new Set([...out.saved, ...out.dropped].map((x) => x.item.id));
-  const latest = (await readQueue(store, key)).filter((q) => !done.has(q.id));
-  await writeJson(store, key, latest);
-  out.remaining = latest;
+  out.remaining = await serialized(key, async () => {
+    const latest = (await readQueue(store, key)).filter((q) => !done.has(q.id));
+    await writeJson(store, key, latest);
+    return latest;
+  });
   return out;
 }

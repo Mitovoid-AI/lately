@@ -1,7 +1,7 @@
 import { NOW } from "../../test/fixtures";
 import { createMemoryStore } from "../../test/memoryStore";
 import { ApiError } from "../contract";
-import { createDemoApi, PENDING_MS } from "../demo";
+import { createDemoApi, EXPORT_MS, PENDING_MS } from "../demo";
 
 const MOMO = "Hole-in-the-wall momo spot in Koramangala";
 const STACK_NAMES = [
@@ -187,4 +187,19 @@ test("deleting the account empties the library", async () => {
   await api.deleteAccount();
   expect(await api.listSaves()).toEqual([]);
   expect(await api.listStacks()).toEqual([]);
+});
+
+test("an export is NOT_FOUND until requested, queued briefly, then a JSON file", async () => {
+  const { api, advance } = setup();
+  expect((await rejection(api.downloadExport())).code).toBe("NOT_FOUND");
+  await api.requestExport();
+  expect(await api.downloadExport()).toEqual({ status: "queued" });
+  advance(EXPORT_MS);
+  const out = await api.downloadExport();
+  if (out.status !== "ready") throw new Error("expected a ready export");
+  expect(out.filename).toMatch(/^lately-export-\d{8}\.json$/);
+  const data = JSON.parse(out.json);
+  expect(data.saves.length).toBeGreaterThan(0);
+  expect(data.saves[0]).toHaveProperty("source_url");
+  expect(Array.isArray(data.stacks)).toBe(true);
 });

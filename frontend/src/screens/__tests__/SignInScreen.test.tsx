@@ -30,15 +30,34 @@ test("shows the sign-in options and switches to sign up", async () => {
 
 test("demo mode: any provider signs in as the demo user", async () => {
   const { auth } = await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out", mode: "demo" } });
-  await fireEvent.press(screen.getByText("Continue with Instagram"));
+  await fireEvent.press(screen.getByText("Continue with Google"));
   expect(auth.signInDemo).toHaveBeenCalledTimes(1);
 });
 
-test("live mode: Instagram is not available yet", async () => {
-  const { auth } = await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out", mode: "live" } });
-  await fireEvent.press(screen.getByText("Continue with Instagram"));
-  expect(screen.getByText("Instagram sign-in is coming soon")).toBeTruthy();
-  expect(auth.signInDemo).not.toHaveBeenCalled();
+test("live mode: a double tap on Google opens one sign-in", async () => {
+  const signInWithGoogle = jest.fn(() => new Promise<void>(() => {}));
+  await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out", mode: "live", signInWithGoogle } });
+  await fireEvent.press(screen.getByText("Continue with Google"));
+  await fireEvent.press(screen.getByText("Continue with Google"));
+  expect(signInWithGoogle).toHaveBeenCalledTimes(1);
+});
+
+test("live mode: Google can be tried again after it fails", async () => {
+  const signInWithGoogle = jest.fn(async () => Promise.reject(new Error("cancelled")));
+  await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out", mode: "live", signInWithGoogle } });
+  await fireEvent.press(screen.getByText("Continue with Google"));
+  await fireEvent.press(screen.getByText("Continue with Google"));
+  expect(signInWithGoogle).toHaveBeenCalledTimes(2);
+});
+
+test("only the sign-in methods that work are offered (no Instagram or Facebook)", async () => {
+  await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out", mode: "live" } });
+  expect(screen.queryByText(/with Instagram/)).toBeNull();
+  expect(screen.queryByText(/Facebook/)).toBeNull();
+  await fireEvent.press(screen.getByRole("tab", { name: "Sign up" }));
+  expect(screen.queryByText(/with Instagram/)).toBeNull();
+  expect(screen.queryByText("Facebook")).toBeNull();
+  expect(screen.getByText("Sign up with email")).toBeTruthy();
 });
 
 test("live mode: email sends a link and opens the code screen", async () => {

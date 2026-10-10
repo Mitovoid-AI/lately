@@ -147,6 +147,23 @@ test("a partial card can retry getting its details", async () => {
   expect(await screen.findByText("GETTING DETAILS")).toBeTruthy();
 });
 
+test("a card still processing after 10 minutes offers Try again", async () => {
+  const base = demoApi();
+  const stuck = { ...(await base.getSave("s-pending")), created_at: new Date(NOW - 11 * 60_000).toISOString() };
+  const api = { ...base, getSave: jest.fn(async () => stuck) };
+  const retry = jest.spyOn(api, "retryEnrichment");
+  await open("s-pending", api);
+  expect(await screen.findByText("This is taking longer than usual. Lately can try again.")).toBeTruthy();
+  await fireEvent.press(screen.getByText("Try getting details again"));
+  expect(retry).toHaveBeenCalledWith("s-pending");
+});
+
+test("a young processing card does not offer a retry", async () => {
+  await open("s-pending");
+  expect(await screen.findByText("GETTING DETAILS")).toBeTruthy();
+  expect(screen.queryByText("Try getting details again")).toBeNull();
+});
+
 test("a failed retry says so", async () => {
   const api = { ...demoApi(), retryEnrichment: jest.fn(async () => Promise.reject(new Error("down"))) };
   await open("s-partial", api);

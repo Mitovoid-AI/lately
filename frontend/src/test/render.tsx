@@ -23,6 +23,7 @@ export function fakeAuth(overrides: Partial<AuthValue> = {}): AuthValue {
   return {
     status: "signed-in",
     mode: "demo",
+    offline: false,
     user: { id: "demo-user", email: "aanya.sharma@example.com", name: "Aanya Sharma", avatarUrl: null },
     signInDemo: jest.fn(async () => {}),
     signInWithEmail: jest.fn(async () => {}),

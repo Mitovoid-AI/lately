@@ -16,6 +16,7 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
   busy = false,
+  aside,
 }: {
   visible: boolean;
   title: string;
@@ -24,6 +25,8 @@ export function ConfirmDialog({
   onConfirm: () => void;
   onCancel: () => void;
   busy?: boolean;
+  /** An alternative to confirming, shown above the two buttons (e.g. "Download my archive first"). */
+  aside?: { label: string; onPress: () => void };
 }) {
   const progress = useSharedValue(0);
   const mounted = usePresence(visible, progress, { enter: 240, exit: 160 });
@@ -33,19 +36,26 @@ export function ConfirmDialog({
     transform: [{ scale: 0.96 + 0.04 * progress.get() }],
   }));
   if (!visible && !mounted) return null;
+  // While the action runs, nothing may close the dialog out from under it.
+  const cancel = () => {
+    if (!busy) onCancel();
+  };
 
   return (
-    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={onCancel}>
+    <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={cancel}>
       <View className="flex-1 items-center justify-center px-6">
         <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}>
-          <Pressable accessibilityLabel="Dismiss" onPress={onCancel} style={StyleSheet.absoluteFill} />
+          <Pressable accessibilityLabel="Dismiss" onPress={cancel} disabled={busy} style={StyleSheet.absoluteFill} />
         </Animated.View>
         <Animated.View style={[styles.cardWrap, cardStyle]}>
           <View className="w-full rounded-2xl border border-hairline bg-card p-6">
             <Text className="font-display text-display-sm text-ink">{title}</Text>
             <Text className="mt-2 font-sans text-body text-ink-2">{message}</Text>
-            <View className="mt-6 flex-row gap-3">
-              <Button title="Cancel" variant="secondary" onPress={onCancel} className="flex-1" />
+            {aside ? (
+              <Button title={aside.label} variant="secondary" icon="cloud-download" onPress={aside.onPress} disabled={busy} className="mt-5" />
+            ) : null}
+            <View className={`${aside ? "mt-3" : "mt-6"} flex-row gap-3`}>
+              <Button title="Cancel" variant="secondary" onPress={cancel} disabled={busy} className="flex-1" />
               <Button title={confirmLabel} variant="danger" onPress={onConfirm} loading={busy} className="flex-1" />
             </View>
           </View>
