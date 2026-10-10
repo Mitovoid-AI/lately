@@ -38,6 +38,13 @@ test("the privacy policy describes the export as an in-app JSON file, not an ema
   expect(exportLine).not.toMatch(/email|sends you|markdown/i);
 });
 
+test("deleting a save removes your link, note and copy; the shared card is said to stay", () => {
+  const text = LEGAL_DOCS.privacy.markdown;
+  expect(text).toContain("your link, note and your copy");
+  expect(text).not.toContain("its link, note, card and search data are deleted");
+  expect(text).toMatch(/card .*stays/);
+});
+
 test("the privacy policy names what is stored, every processor, and how to delete", () => {
   const text = LEGAL_DOCS.privacy.markdown;
   for (const word of ["email", "links", "notes", "card", "Supabase", "OpenRouter", "Groq", "OpenAI", "Delete account"]) {

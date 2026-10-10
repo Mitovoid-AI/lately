@@ -36,7 +36,7 @@ Your searches are processed to return results; they are not used for advertising
 
 ## How long data is kept
 
-Your data is kept while your account exists. When you delete a save in the app, its link, note, card and search data are deleted. When you delete your account, everything listed above is deleted. Copies may remain in our providers' backups for a limited period before they are overwritten.
+Your data is kept while your account exists. When you delete a save in the app, your link, note and your copy of the save (with its search data) are deleted. The card made from the reel's public content is shared by everyone who saved that reel and holds none of your data, so that card stays. When you delete your account, everything listed above is deleted. Copies may remain in our providers' backups for a limited period before they are overwritten.
 
 ## Your choices and rights
 
