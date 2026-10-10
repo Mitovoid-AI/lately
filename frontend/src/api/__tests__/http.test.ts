@@ -1,5 +1,5 @@
 import { ApiError } from "../contract";
-import { createHttpApi, toSave } from "../http";
+import { createHttpApi, DEFAULT_TIMEOUT_MS, SAVE_TIMEOUT_MS, toSave } from "../http";
 
 type Reply = { status: number; body?: unknown; raw?: string; headers?: Record<string, string> };
 
@@ -224,6 +224,54 @@ test("a 404 on delete is NOT_FOUND", async () => {
   const f = fakeFetch({ status: 404, body: { error: { code: "NOT_FOUND", message: "gone" } } });
   const e = await rejection(setup(f).api.deleteSave("r1"));
   expect(e.code).toBe("NOT_FOUND");
+});
+
+/** A fetch that answers after `ms`, or rejects as soon as its signal aborts. */
+function slowFetch(ms: number, reply: Reply = { status: 200, body: [] }) {
+  return jest.fn(
+    (_url: string, init?: RequestInit) =>
+      new Promise<Response>((resolve, reject) => {
+        const t = setTimeout(() => resolve(fakeFetch(reply)("", init)), ms);
+        init?.signal?.addEventListener("abort", () => {
+          clearTimeout(t);
+          reject(new Error("Aborted"));
+        });
+      }),
+  );
+}
+
+function timed(fetchImpl: unknown, timeoutMs: number, saveTimeoutMs: number) {
+  return createHttpApi({
+    baseUrl: "http://api.test",
+    getToken: async () => "tok-1",
+    refreshToken: async () => null,
+    fetchImpl: fetchImpl as typeof fetch,
+    timeoutMs,
+    saveTimeoutMs,
+  });
+}
+
+test("a request that takes longer than the timeout is aborted as NETWORK", async () => {
+  const f = slowFetch(500);
+  const e = await rejection(timed(f, 20, 1000).listSaves());
+  expect([e.code, e.status]).toEqual(["NETWORK", 0]);
+  expect((f.mock.calls[0][1]?.signal as AbortSignal).aborted).toBe(true);
+});
+
+test("a fetch that ignores the abort signal still times out", async () => {
+  const f = jest.fn(() => new Promise<Response>(() => {}));
+  const e = await rejection(timed(f, 20, 1000).getMe());
+  expect(e.code).toBe("NETWORK");
+});
+
+test("createSave gets the longer save timeout", async () => {
+  const f = slowFetch(60, { status: 201, body: { reel_id: "r1", deduped: false, status: "pending" } });
+  await expect(timed(f, 20, 1000).createSave("https://www.instagram.com/reel/abc/")).resolves.toMatchObject({ reel_id: "r1" });
+});
+
+test("the default timeouts are 15 s, and 25 s for a save", () => {
+  expect(DEFAULT_TIMEOUT_MS).toBe(15_000);
+  expect(SAVE_TIMEOUT_MS).toBe(25_000);
 });
 
 test("downloadExport returns the JSON file and its name when it is ready", async () => {
