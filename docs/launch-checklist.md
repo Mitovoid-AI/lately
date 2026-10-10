@@ -44,7 +44,16 @@ Order matters: top to bottom.
 - Selling a digital subscription that unlocks in-app features **must go through Google Play Billing** (India allows user-choice billing as an alternative, with extra setup).
 - The app has the free/pro plan model and quotas (`profiles.plan`, `saves_free_limit`). Wiring the purchase flow needs: products created in Play Console, then the in-app purchase SDK (RevenueCat is the quickest path) + a backend webhook that sets `profiles.plan`. This is the next build step once the Play Console account exists, because products and test purchases can't be created without it.
 
-## 6. Legal / business risks to know
+## 6. Before the first upload (found in the final review)
+
+- **App icon:** the icon is rendered from `docs/design/stitch/logo-insta.svg` (the gradient egg used inside the app). If it reads as Instagram's logo, swap it: edit `frontend/scripts/render-icons.js` to use `logo-icon.svg` (or a new mark) and re-run it.
+- **Legal text:** `frontend/legal/privacy.md` and `terms.md` have no company name, contact email or governing law. Fill them in, then run `node scripts/build-legal.js` in `frontend/`.
+- **Release builds refuse to build without live settings** (`frontend/app.config.js`): `EXPO_PUBLIC_API_MODE=live`, an `https://` API URL and both Supabase values. To test a release APK against your PC before Fly is up, expose the backend with `ngrok http 8001` and use that https URL.
+- **Supabase redirect allow-list** must include `lately://auth-callback` (sign-in now uses the PKCE code flow).
+- **LLM model:** `backend/.env` now uses `dots-studio/dots-3-note-preview:free` with `google/gemma-4-31b-it:free` as fallback (the old `qwen/qwen3.8-27b:free` doesn't exist on OpenRouter).
+- **Signing:** the generated `android/` signs release builds with the debug key. Use EAS credentials or your own upload keystore for the Play AAB (`docs/deploy.md`).
+
+## 7. Legal / business risks to know
 
 - Reading Instagram pages automatically may conflict with Meta's terms. The product saves links users share and builds notes about them; keep thumbnails small, never store video, and link back to the original reel (all already true). Get advice before scaling.
 - You are the data controller: keep the privacy policy accurate when you add providers.
