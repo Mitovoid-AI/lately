@@ -2,7 +2,7 @@ import type { AuthError, Session, SupabaseClient } from "@supabase/supabase-js";
 import * as Linking from "expo-linking";
 import * as WebBrowser from "expo-web-browser";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Platform } from "react-native";
+import { AppState, Platform } from "react-native";
 
 import { DEMO_USER } from "../api/demo";
 import { config } from "../config";
@@ -218,6 +218,23 @@ export function AuthProvider({
       linkSub?.remove();
     };
   }, [mode, storage, completeRedirect]);
+
+  // Supabase's advice for React Native: refresh tokens only while the app is in the foreground
+  // (timers don't run reliably in the background, and a refresh there just fails).
+  useEffect(() => {
+    if (mode !== "live" || Platform.OS === "web") return;
+    let sb: SupabaseClient;
+    try {
+      sb = getSupabase();
+    } catch {
+      return;
+    }
+    const sub = AppState.addEventListener("change", (state) => {
+      if (state === "active") void sb.auth.startAutoRefresh();
+      else void sb.auth.stopAutoRefresh();
+    });
+    return () => sub?.remove();
+  }, [mode]);
 
   const signInDemo = useCallback(async () => {
     await storage.setItem(DEMO_KEY, "1").catch(() => {});

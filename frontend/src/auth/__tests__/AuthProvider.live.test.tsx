@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import type { ReactNode } from "react";
+import { AppState } from "react-native";
 
 import { createMemoryStore } from "../../test/memoryStore";
 import { AuthProvider, sessionFromRedirect, useAuth } from "../AuthProvider";
@@ -61,6 +62,20 @@ test("the email 6-digit code still verifies with verifyOtp", async () => {
   await waitFor(() => expect(result.current.status).toBe("signed-out"));
   await act(() => result.current.verifyCode("a@b.co", "123456"));
   expect(mockSupabase.auth.verifyOtp).toHaveBeenCalledWith({ email: "a@b.co", token: "123456", type: "email" });
+});
+
+test("token auto-refresh runs only while the app is in the foreground", async () => {
+  const addListener = AppState.addEventListener as unknown as jest.Mock;
+  const before = addListener.mock.calls.length;
+  await renderHook(() => useAuth(), { wrapper: Wrapper });
+  const listeners = addListener.mock.calls
+    .slice(before)
+    .filter(([type]) => type === "change")
+    .map(([, fn]) => fn as (s: string) => void);
+  await act(async () => listeners.forEach((fn) => fn("background")));
+  expect(mockSupabase.auth.stopAutoRefresh).toHaveBeenCalled();
+  await act(async () => listeners.forEach((fn) => fn("active")));
+  expect(mockSupabase.auth.startAutoRefresh).toHaveBeenCalled();
 });
 
 test("a stored session signs in on start", async () => {

@@ -26,10 +26,14 @@ import { AuthProvider, useAuth } from "../auth/AuthProvider";
 import { ToastProvider } from "../components/Toast";
 import { Button } from "../components/Button";
 import { config } from "../config";
+import { wireAppFocus } from "../lib/appFocus";
 import { createAppQueryClient } from "../lib/queryClient";
 import { colors } from "../theme/tokens";
 import { ShareRouter } from "../share/ShareRouter";
 import { SaveQueueProvider } from "../hooks/useSaveQueue";
+
+// Queries (and their polling) pause while the app is in the background.
+wireAppFocus();
 
 /** Where the query client reports a dead session; AppProviders points it at the current sign-out. */
 const sessionExpired = { handler: () => {} };
