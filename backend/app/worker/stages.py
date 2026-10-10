@@ -469,10 +469,12 @@ async def finalize(db: asyncpg.Pool, job: dict[str, Any]) -> None:
 # otherwise `partial`, which the user can retry (PIPELINE.md §8).
 _MARK_SAVES = f"""
 update public.reels r
-set status = case when rc.media_status = 'ready' and {_TRUSTED_FOR_SAVE}
-                  then 'enriched' else 'partial' end
-from public.reel_content rc
-where rc.shortcode = $1 and """
+set status = coalesce(
+  (select case when rc.media_status = 'ready' and {_TRUSTED_FOR_SAVE}
+               then 'enriched' else 'partial' end
+   from public.reel_content rc where rc.shortcode = $1),
+  'partial')
+where """
 
 
 async def _requeue_for_late_hint(db: asyncpg.Pool, payload: Mapping[str, Any], sc: str) -> None:
