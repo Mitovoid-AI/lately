@@ -102,10 +102,29 @@ test("monthly limit shows the limit and the reset date", async () => {
   expect(await screen.findByText("Saves reset on 1 Nov.")).toBeTruthy();
 });
 
-test("rate limited", async () => {
+test("rate limited: the save waits in the queue instead of being lost", async () => {
   mockParams = { text: link("RATE") };
-  await renderWithProviders(<SaveSheetScreen />);
-  expect(await screen.findByText("That's a lot of saves at once")).toBeTruthy();
+  const { queueStore } = await renderWithProviders(<SaveSheetScreen />);
+  expect(await screen.findByText("Saved for later")).toBeTruthy();
+  expect(screen.getByText("Lately is busy right now. It will save this reel in a moment.")).toBeTruthy();
+  expect((await readQueue(queueStore, queueKey("demo-user"))).map((q) => q.text)).toEqual([link("RATE")]);
+});
+
+test("a server error (5xx) queues the save", async () => {
+  mockParams = { text: link("NEW500") };
+  const api: LatelyApi = { ...demoApi(), createSave: jest.fn().mockRejectedValue(new ApiError("SERVER", 503)) };
+  const { queueStore } = await renderWithProviders(<SaveSheetScreen />, { api });
+  expect(await screen.findByText("Saved for later")).toBeTruthy();
+  expect(screen.getByText("Lately's server is having trouble. It will save this reel as soon as it's back.")).toBeTruthy();
+  expect((await readQueue(queueStore, queueKey("demo-user"))).map((q) => q.text)).toEqual([link("NEW500")]);
+});
+
+test("offline with text that has no reel link: says so at once and queues nothing", async () => {
+  mockParams = { text: "look at this cool thing" };
+  const api: LatelyApi = { ...demoApi(), createSave: jest.fn().mockRejectedValue(new ApiError("NETWORK", 0)) };
+  const { queueStore } = await renderWithProviders(<SaveSheetScreen />, { api });
+  expect(await screen.findByText("No reel link found")).toBeTruthy();
+  expect(await readQueue(queueStore, queueKey("demo-user"))).toEqual([]);
 });
 
 test("offline: the save is queued on the device and can be retried now", async () => {
