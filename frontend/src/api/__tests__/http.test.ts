@@ -157,6 +157,14 @@ test("every contract call hits its path and method", async () => {
     ["requestExport", (a) => a.requestExport(), "POST", "/me/export", undefined, { status: 202, body: { status: "queued" } }],
     ["retryEnrichment", (a) => a.retryEnrichment("r1"), "POST", "/retries/r1", undefined, { status: 202, body: {} }],
     ["deleteAccount", (a) => a.deleteAccount(), "DELETE", "/me", undefined, { status: 204 }],
+    [
+      "sendHint",
+      (a) => a.sendHint("r1", { caption: "c", shortcode: "SC1" }),
+      "POST",
+      "/saves/r1/hint",
+      { caption: "c", shortcode: "SC1" },
+      { status: 202, body: { status: "accepted", requeued: false } },
+    ],
   ];
   for (const [name, call, method, path, body, reply] of cases) {
     const f = fakeFetch(reply ?? { status: 200, body: {} });

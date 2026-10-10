@@ -12,8 +12,7 @@ from app.worker import stages
 def test_stage_graph_is_complete_and_terminates():
     """Every NEXT value is a registered stage or None — no dead ends."""
     assert set(stages.STAGES) == {
-        "resolve", "fetch", "transcribe", "vision", "structure", "finalize", "embed",
-        "export",
+        "resolve", "fetch", "transcribe", "vision", "structure", "finalize", "embed", "export"
     }
     for name, nxt in stages.NEXT.items():
         assert nxt is None or nxt in stages.STAGES, f"dead end at {name}"

@@ -301,6 +301,11 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
       await writeJson(store, PREFS_KEY, {});
     },
 
+    // Demo saves have their content already; the device never reads Instagram in demo mode.
+    async sendHint(saveId) {
+      find(saveId);
+    },
+
     async getCurated(): Promise<CuratedFeed> {
       await wait();
       const all = sorted().map(present);

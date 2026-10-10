@@ -188,5 +188,6 @@ export function createHttpApi(o: {
     },
     retryEnrichment: (reelId) => call("POST", `/retries/${seg(reelId)}`),
     deleteAccount: () => call("DELETE", "/me"),
+    sendHint: (saveId, hint) => call("POST", `/saves/${seg(saveId)}/hint`, hint),
   };
 }

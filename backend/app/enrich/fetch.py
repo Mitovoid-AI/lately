@@ -310,10 +310,10 @@ class ScraperApiProvider:
 # -------------------------------------------------------------- thumbnail --
 
 async def download_limited(client: httpx.AsyncClient, url: str, max_bytes: int,
-                           timeout: float = 15.0) -> bytes | None:
+                           timeout: float = 15.0, follow_redirects: bool = True) -> bytes | None:
     """GET `url` into memory, or None if it fails or exceeds `max_bytes`."""
     try:
-        async with client.stream("GET", url, timeout=timeout, follow_redirects=True,
+        async with client.stream("GET", url, timeout=timeout, follow_redirects=follow_redirects,
                                  headers={"User-Agent": BROWSER_UA}) as resp:
             if resp.status_code != 200:
                 return None
@@ -352,6 +352,28 @@ class ThumbnailStore:
         data = await download_limited(self._client, image_url, self._max)
         if data is None:
             return image_url
+        return await self._upload(shortcode, data) or image_url
+
+    async def store_verified(self, shortcode: str, image_url: str | None) -> str | None:
+        """Like `store`, for a thumbnail URL supplied by a device: it must be an
+        Instagram/Facebook CDN URL and the server must download a real image from
+        it itself (no redirects) — otherwise None; a device's URL is never shown
+        unconfirmed (PIPELINE.md §8 trust rule)."""
+        from .device import is_instagram_cdn_url, looks_like_image
+
+        if image_url is None or not is_instagram_cdn_url(image_url):
+            return None
+        data = await download_limited(self._client, image_url, self._max,
+                                      follow_redirects=False)
+        if not data or not looks_like_image(data):
+            log.info("device thumbnail for %s not confirmed", shortcode)
+            return None
+        if not self._key:
+            return image_url
+        return await self._upload(shortcode, data) or image_url
+
+    async def _upload(self, shortcode: str, data: bytes) -> str | None:
+        """Upsert `thumbnails/{sc}.jpg`: the object path, or None on failure."""
         path = f"{shortcode}.jpg"
         try:
             resp = await self._client.post(
@@ -361,8 +383,8 @@ class ThumbnailStore:
                 timeout=15.0)
         except httpx.HTTPError as exc:
             log.warning("thumbnail upload %s failed: %s", shortcode, exc)
-            return image_url
+            return None
         if resp.status_code >= 300:
             log.warning("thumbnail upload %s: HTTP %s", shortcode, resp.status_code)
-            return image_url
+            return None
         return path

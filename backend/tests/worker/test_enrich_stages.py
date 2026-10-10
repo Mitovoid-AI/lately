@@ -158,8 +158,7 @@ async def test_save_to_card_end_to_end(client, make_user, jwt_for, db, full_runt
     outcomes = {r["stage"]: r["outcome"] for r in await db.fetch(
         "select stage, outcome from public.metrics")}
     assert outcomes == {"resolve": "ok", "fetch": "ok", "transcribe": "ok", "vision": "skipped",
-                        "structure": "ok", "finalize": "ok", "embed": "ok",
-                        "enrich": "ready"}
+                        "structure": "ok", "finalize": "ok", "embed": "ok", "enrich": "ready"}
     cost = await db.fetchval("select cost_usd from public.metrics where stage = 'transcribe'")
     assert cost > 0
 

@@ -14,6 +14,12 @@ jest.mock("expo-router", () => ({
   useLocalSearchParams: () => mockParams,
 }));
 
+// The device-side read never settles here: the sheet must not wait for it.
+jest.mock("../../lib/deviceFetch", () => ({
+  sendDeviceHint: jest.fn(() => new Promise(() => {})),
+}));
+const { sendDeviceHint: mockSendDeviceHint } = jest.requireMock("../../lib/deviceFetch") as { sendDeviceHint: jest.Mock };
+
 const link = (code: string) => `https://www.instagram.com/reel/${code}/`;
 
 beforeEach(() => {
@@ -36,6 +42,31 @@ test("shared text is saved right away; a note can be added", async () => {
   await fireEvent.press(screen.getByText("Save note"));
   expect(setNote).toHaveBeenCalledWith("s-new-1", "for june");
   expect(mockRouter.back).toHaveBeenCalled();
+});
+
+test("a shared save fires the device hint without waiting for it", async () => {
+  mockParams = { text: link("NEW123") };
+  const api = demoApi();
+  await renderWithProviders(<SaveSheetScreen />, { api });
+  expect(await screen.findByText("Saved to Lately")).toBeTruthy();
+  expect(mockSendDeviceHint).toHaveBeenCalledTimes(1);
+  const [arg] = mockSendDeviceHint.mock.calls[0];
+  expect(arg).toMatchObject({ api, mode: "demo", text: link("NEW123"), result: { reel_id: "s-new-1", deduped: false } });
+});
+
+test("a pasted link fires the device hint too", async () => {
+  await renderWithProviders(<SaveSheetScreen />);
+  await fireEvent.changeText(screen.getByPlaceholderText("instagram.com/reel/…"), link("NEW123"));
+  await fireEvent.press(screen.getByText("Save"));
+  await screen.findByText("Saved to Lately");
+  expect(mockSendDeviceHint).toHaveBeenCalledWith(expect.objectContaining({ text: link("NEW123") }));
+});
+
+test("a failed save sends no hint", async () => {
+  mockParams = { text: "hello" };
+  await renderWithProviders(<SaveSheetScreen />);
+  await screen.findByText("No reel link found");
+  expect(mockSendDeviceHint).not.toHaveBeenCalled();
 });
 
 test("a quick chip fills the note", async () => {

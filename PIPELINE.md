@@ -50,6 +50,7 @@ Offline (app door): queue locally in the app, retry when online.
 |---|---|
 | **1 RESOLVE** | URL → shortcode (follow `/share/` redirect). If `reel_content.media_status == 'ready'` → jump straight to FINALIZE (cache hit). |
 | **2 FETCH** | Provider chain: (later) on-device data → scraper API by URL → oEmbed / caption-only → give up: `media_status=partial` |
+| | Built: this save's device hint (`DeviceHintProvider`, see §8 trust rule) → embed page → yt-dlp → scraper API → give up |
 | **3 TRANSCRIBE** | audio only (**costly**). Skip if partial OR caption strong |
 | **4 VISION** | 2–3 keyframes → on-screen text (**costly**). Only if no speech AND caption weak |
 | **5 STRUCTURE** | ONE LLM call → validated JSON: `title, summary, category, tags, entities, steps, search_text, likely_queries` (5–8 user questions) |
@@ -88,6 +89,34 @@ Hinglish handling, reranking, thumbnails, golden-set evaluation: `SEARCH.md`.
 Do **not** write client-supplied caption/transcript into shared `reel_content`
 unless validated; prefer server-fetched data. Meta webhook payloads are trusted
 only after `X-Hub-Signature-256` verification.
+
+**Device hints** (FETCH provider 0, migration 0009). After a save the app reads
+`instagram.com/p/{sc}/embed/captioned/` from the phone (residential IP; the cloud
+worker's IP is often blocked) and sends `POST /saves/{id}/hint`
+`{caption, creator_handle, thumbnail_url, video_url, duration_s, shortcode}`:
+- Owner only (404 otherwise), 202. Caption ≤ 5000 chars, handle
+  `^[A-Za-z0-9._]{1,30}$`, duration 0..3600 (else 422); media URLs must be https
+  on `*.cdninstagram.com` / `*.fbcdn.net` (default port, no credentials) or they
+  are dropped. Stored on that user's save only (`reels.device_hint`); the API
+  writes nothing shared. The worker re-validates it when it reads it.
+- FETCH tries the save's own hint first, then the server chain. It skips the hint
+  when the shared row already holds server-fetched data, and the upsert refuses
+  to let device data replace server data. Content from a hint is written with
+  `fetch_source = 'device'` and `device_user_id` = the supplying user.
+- The thumbnail from a hint is kept only after the server downloads a real image
+  from that CDN URL itself (no redirects); otherwise it is dropped.
+- RESOLVE's cache hit reuses a `device` card only for the supplying user's saves.
+  Anyone else's save runs FETCH: their own hint, or the server chain (a successful
+  server fetch overwrites the device data and clears `device_user_id`).
+- FINALIZE marks a save `enriched` only if the card is ready and trusted for that
+  save's user (server-fetched, or device-sourced by that same user); otherwise
+  `partial`, which the user can retry.
+- A hint that arrives after FETCH: a `partial` save is re-enqueued from FETCH
+  (by the hint API when no job is queued, or by FINALIZE when the hint is newer
+  than the one its FETCH saw).
+- Known limit: `reel_content` is shared per shortcode, so a device card written
+  for user B is what another saver of the same reel sees until a server fetch
+  replaces it; their save is marked `partial` (retryable), not `enriched`.
 
 ## 9. Deferred until real load
 

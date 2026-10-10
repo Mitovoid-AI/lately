@@ -10,9 +10,12 @@ Reads and edits return the app's `Save` / `SaveDetail` shapes
 
 from __future__ import annotations
 
+import json
 import logging
+import time
 import uuid
 from datetime import datetime
+from typing import Any
 
 import asyncpg
 from fastapi import APIRouter, HTTPException, Response
@@ -20,7 +23,8 @@ from fastapi.responses import JSONResponse
 
 from ..config import settings
 from ..deps import CurrentUser, pool
-from ..models import NoteRequest, SaveRequest, SaveResponse, api_error
+from ..enrich.device import hint_is_useful, sanitize_hint
+from ..models import DeviceHintRequest, NoteRequest, SaveRequest, SaveResponse, api_error
 from ..services import jobs as jobs_service
 from ..services.saves_view import (
     SAVE_COLUMNS,
@@ -160,6 +164,44 @@ async def delete_save(save_id: uuid.UUID, user: CurrentUser) -> Response:
             "delete from public.jobs where payload->>'reel_id' = $1 and locked_at is null",
             str(save_id))
     return Response(status_code=204)
+
+
+# --------------------------------------------------------------- device hint --
+
+@router.post("/{save_id}/hint", status_code=202)
+async def device_hint(save_id: uuid.UUID, body: DeviceHintRequest,
+                      user: CurrentUser) -> dict[str, Any]:
+    """The phone's own read of the reel's public embed page (PIPELINE.md §5
+    FETCH "on-device data"). Stored on this user's save only; the worker's
+    FETCH uses it first. Nothing shared is written here (§8 trust rule).
+
+    A save that already ended `partial` is re-enqueued from FETCH so the hint
+    gets used; a queued or running job reads the newest hint itself."""
+    uid = uuid.UUID(user.id)
+    hint = sanitize_hint(body.model_dump())
+    useful = hint_is_useful(hint)
+    async with pool().acquire() as con, con.transaction():
+        reel = await con.fetchrow(
+            "select status, shortcode_key from public.reels "
+            "where id = $1 and auth_user_id = $2 for update",
+            save_id, uid)
+        if reel is None:
+            raise _not_found()
+        if not useful:
+            return {"status": "ignored", "requeued": False}
+        stored = {**hint, "shortcode": body.shortcode, "at": time.time()}
+        await con.execute("update public.reels set device_hint = $2::jsonb where id = $1",
+                          save_id, json.dumps(stored))
+        requeued = False
+        if reel["status"] == "partial" and not await con.fetchval(
+            "select exists (select 1 from public.jobs "
+            "where kind = 'enrich' and payload->>'reel_id' = $1)", str(save_id)):
+            stage = "fetch" if reel["shortcode_key"] else "resolve"
+            await jobs_service.enqueue_enrich(con, str(save_id), str(uid), stage)
+            await con.execute("update public.reels set status = 'pending' where id = $1",
+                              save_id)
+            requeued = True
+    return {"status": "accepted", "requeued": requeued}
 
 
 # ------------------------------------------------------------------ retries --
