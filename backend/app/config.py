@@ -52,6 +52,35 @@ class Settings(BaseSettings):
     # Optional AI keys — saves work without them; cards stay partial (Part 2)
     groq_api_key: str = ""
 
+    # Enrichment (Phase 2, PIPELINE.md §5) ------------------------------------
+    # FETCH provider chain: IG embed page → yt-dlp → optional paid scraper.
+    fetch_timeout_seconds: float = 15.0
+    ytdlp_enabled: bool = True
+    scraper_api_url: str = ""          # empty = scraper provider disabled
+    scraper_api_key: str = ""
+    thumbnail_max_bytes: int = 2_000_000
+    media_url_max_age_seconds: int = 1800  # older signed media URLs are re-fetched
+    # TRANSCRIBE: Groq Whisper (OpenAI-compatible /audio/transcriptions).
+    groq_base_url: str = "https://api.groq.com/openai/v1"
+    groq_transcribe_model: str = "whisper-large-v3-turbo"
+    groq_cost_per_hour_usd: float = 0.04
+    transcribe_max_duration_s: float = 180.0
+    transcribe_caption_max_words: int = 40
+    transcribe_max_bytes: int = 25_000_000
+    # STRUCTURE: any OpenAI-compatible chat-completions endpoint.
+    llm_api_key: str = ""
+    llm_base_url: str = "https://openrouter.ai/api/v1"
+    llm_model: str = ""
+    llm_fallback_models: str = ""      # comma-separated, tried in order after LLM_MODEL
+    llm_timeout_seconds: float = 60.0
+    llm_cost_per_mtok_in_usd: float = 0.0
+    llm_cost_per_mtok_out_usd: float = 0.0
+
+    @property
+    def llm_models(self) -> list[str]:
+        extra = [m.strip() for m in self.llm_fallback_models.split(",") if m.strip()]
+        return [m for m in [self.llm_model.strip(), *extra] if m]
+
 
 @lru_cache
 def settings() -> Settings:

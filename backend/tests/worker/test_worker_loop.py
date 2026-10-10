@@ -36,8 +36,26 @@ async def test_run_job_walks_all_stages_to_finalize(db, make_user, monkeypatch):
     pass_middle_stages(monkeypatch, "fetch", "transcribe", "vision", "structure")
     reel_id = await enqueue(db, await make_user())
     await loop.run_job(db, await claim(db), "w1")
-    assert await db.fetchval("select status from public.reels where id = $1", reel_id) == "enriched"
-    assert await db.fetchval("select count(*) from public.jobs") == 0
+    # No card was built (middle stages skipped), so the save finishes as partial
+    # and FINALIZE leaves exactly one embed job behind.
+    assert await db.fetchval("select status from public.reels where id = $1", reel_id) == "partial"
+    assert await db.fetchval("select count(*) from public.jobs where kind = 'enrich'") == 0
+    assert await db.fetchval("select count(*) from public.jobs where kind = 'embed'") == 1
+
+
+async def test_run_job_reschedule_keeps_attempt_and_payload(db, make_user, monkeypatch):
+    async def no_budget(db, job):
+        job["payload"]["note"] = "kept"
+        raise stages.Reschedule(120, "budget exhausted for llm")
+    monkeypatch.setitem(stages.STAGES, "fetch", no_budget)
+    await enqueue(db, await make_user())
+    await loop.run_job(db, await claim(db), "w1")
+    job = await db.fetchrow(
+        "select *, run_at between now() + interval '100 seconds' and now() + interval '140 seconds'"
+        " as later from public.jobs")
+    assert job["attempts"] == 0 and job["stage"] == "fetch" and job["later"] is True
+    assert job["locked_by"] is None and job["last_error"] == "budget exhausted for llm"
+    assert '"note": "kept"' in job["payload"]
 
 
 async def test_run_job_stage_error_backs_off(db, make_user, monkeypatch):
@@ -52,7 +70,11 @@ async def test_run_job_stage_error_backs_off(db, make_user, monkeypatch):
     assert job["last_error"] == "boom" and job["backed_off"] is True
 
 
-async def test_run_job_not_implemented_requeues_without_burning_attempt(db, make_user):
+async def test_run_job_not_implemented_requeues_without_burning_attempt(db, make_user,
+                                                                        monkeypatch):
+    async def unbuilt(db, job):
+        raise NotImplementedError
+    monkeypatch.setitem(stages.STAGES, "fetch", unbuilt)
     await enqueue(db, await make_user())
     await loop.run_job(db, await claim(db), "w1")
     job = await db.fetchrow(
@@ -89,7 +111,9 @@ async def test_run_forever_processes_jobs_concurrently(db, make_user, monkeypatc
 
     assert len(windows) == 3
     assert max(s for s, _ in windows) < min(e for _, e in windows), "fetches did not overlap"
-    assert await db.fetchval("select count(*) from public.reels where status = 'enriched'") == 3
+    # Middle stages are skipped, so no card: every save finishes partial, and the
+    # embed jobs FINALIZE enqueued were drained too (FakeEmbedder).
+    assert await db.fetchval("select count(*) from public.reels where status = 'partial'") == 3
 
 
 async def test_crash_mid_job_resumes_from_saved_stage(db, make_user):

@@ -39,6 +39,7 @@ async def run_job(db: asyncpg.Pool, job: Mapping[str, Any], worker_id: str) -> N
         "payload": json.loads(payload) if isinstance(payload, str) else dict(payload or {}),
         "stage": job["stage"],
         "attempts": job["attempts"],
+        "max_attempts": job.get("max_attempts") or 3,
     }
     heartbeat = asyncio.create_task(_heartbeat(db, j["id"], worker_id))
     try:
@@ -62,6 +63,20 @@ async def run_job(db: asyncpg.Pool, job: Mapping[str, Any], worker_id: str) -> N
                     j["id"], worker_id,
                 )
                 log.info("stage %s not implemented; job %s requeued", stage_name, j["id"])
+                return
+            except stages.Reschedule as r:
+                # Provider budget exhausted: wait it out without burning an attempt,
+                # keeping any progress the stage recorded in the payload.
+                await db.execute(
+                    """update public.jobs
+                       set locked_at = null, locked_by = null, heartbeat_at = null,
+                           attempts = greatest(attempts - 1, 0),
+                           run_at = now() + make_interval(secs => $3),
+                           payload = $4::jsonb, last_error = $5
+                       where id = $1 and locked_by = $2""",
+                    j["id"], worker_id, float(r.delay_s), json.dumps(j["payload"]), r.reason,
+                )
+                log.info("job %s rescheduled at %s: %s", j["id"], stage_name, r.reason)
                 return
             except Exception as exc:  # noqa: BLE001 — any stage error → backoff
                 await _release(db, j["id"], worker_id, str(exc))
