@@ -4,7 +4,7 @@ import { AppState } from "react-native";
 
 import { createMemoryStore } from "../../test/memoryStore";
 import { AuthProvider, sessionFromRedirect, useAuth } from "../AuthProvider";
-import { mockSupabase, resetMockSupabase, SESSION } from "../../test/fakeSupabase";
+import { emitAuthEvent, mockSupabase, resetMockSupabase, SESSION } from "../../test/fakeSupabase";
 
 jest.mock("../supabase", () => ({ getSupabase: () => jest.requireActual("../../test/fakeSupabase").mockSupabase }));
 jest.mock("expo-linking", () => ({
@@ -119,6 +119,52 @@ test("sign-out is local to this device and checks the result", async () => {
   await act(() => result.current.signOut());
   expect(mockSupabase.auth.signOut).toHaveBeenCalledWith({ scope: "local" });
   expect(result.current.status).toBe("signed-out");
+});
+
+describe("cold start offline with an expired access token", () => {
+  function offlineStart() {
+    const store = createMemoryStore({ "sb-test-auth-token": JSON.stringify(SESSION) });
+    mockSupabase.auth.getSession.mockResolvedValueOnce({ data: { session: null }, error: RETRYABLE });
+    const OfflineWrapper = ({ children }: { children: ReactNode }) => (
+      <AuthProvider mode="live" storage={store}>
+        {children}
+      </AuthProvider>
+    );
+    return renderHook(() => useAuth(), { wrapper: OfflineWrapper });
+  }
+
+  test("keeps the stored session and reports offline instead of signing out", async () => {
+    const { result } = await offlineStart();
+    await waitFor(() => expect(result.current.status).toBe("signed-in"));
+    expect(result.current.offline).toBe(true);
+    expect(result.current.user?.email).toBe("a@b.co");
+    expect(await result.current.getAccessToken()).toBe("access-1");
+  });
+
+  test("the empty initial-session event that follows does not sign out", async () => {
+    const { result } = await offlineStart();
+    await waitFor(() => expect(result.current.status).toBe("signed-in"));
+    await act(async () => emitAuthEvent("INITIAL_SESSION", null));
+    expect(result.current.status).toBe("signed-in");
+  });
+
+  test("a later refresh clears the offline state", async () => {
+    const { result } = await offlineStart();
+    await waitFor(() => expect(result.current.offline).toBe(true));
+    await act(async () => emitAuthEvent("TOKEN_REFRESHED", { ...SESSION, access_token: "access-2" }));
+    expect(result.current.offline).toBe(false);
+    expect(await result.current.getAccessToken()).toBe("access-2");
+  });
+
+  test("a refused session at start still signs out", async () => {
+    mockSupabase.auth.getSession.mockResolvedValueOnce({
+      data: { session: null },
+      error: { name: "AuthApiError", message: "Invalid Refresh Token", status: 400 },
+    });
+    const { result } = await renderHook(() => useAuth(), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.status).toBe("signed-out"));
+    expect(result.current.offline).toBe(false);
+  });
 });
 
 test("a stored session signs in on start", async () => {

@@ -25,6 +25,7 @@ import { ApiProvider, createApi } from "../api/index";
 import { AuthProvider, useAuth } from "../auth/AuthProvider";
 import { ToastProvider } from "../components/Toast";
 import { Button } from "../components/Button";
+import { OfflineBanner } from "../components/OfflineBanner";
 import { config } from "../config";
 import { wireAppFocus } from "../lib/appFocus";
 import { createAppQueryClient } from "../lib/queryClient";
@@ -157,6 +158,7 @@ export default function RootLayout() {
             <AppProviders>
               <ShareIntake>
                 <RootStack />
+                <OfflineBanner />
               </ShareIntake>
             </AppProviders>
           </AuthProvider>

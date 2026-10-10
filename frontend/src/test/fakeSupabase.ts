@@ -7,10 +7,23 @@ export const SESSION = {
 
 const ok = (session: unknown = SESSION) => ({ data: { session, user: (session as { user?: unknown } | null)?.user ?? null }, error: null });
 
+type Listener = (event: string, s: unknown) => void;
+const listeners: Listener[] = [];
+
+/** Fire an auth event at every onAuthStateChange subscriber. */
+export function emitAuthEvent(event: string, session: unknown) {
+  listeners.forEach((cb) => cb(event, session));
+}
+
 function makeAuth() {
+  listeners.length = 0;
   return {
+    storageKey: "sb-test-auth-token",
     getSession: jest.fn(async () => ({ data: { session: null as unknown }, error: null as unknown })),
-    onAuthStateChange: jest.fn((_cb: (event: string, s: unknown) => void) => ({ data: { subscription: { unsubscribe() {} } } })),
+    onAuthStateChange: jest.fn((cb: Listener) => {
+      listeners.push(cb);
+      return { data: { subscription: { unsubscribe() {} } } };
+    }),
     setSession: jest.fn(async (_t: unknown) => ok() as { data: unknown; error: unknown }),
     exchangeCodeForSession: jest.fn(async (_code: string) => ok() as { data: unknown; error: unknown }),
     verifyOtp: jest.fn(async (_p: unknown) => ok() as { data: unknown; error: unknown }),

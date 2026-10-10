@@ -7,7 +7,7 @@ import { AppState, Platform } from "react-native";
 import { ApiError } from "../api/contract";
 import { DEMO_USER } from "../api/demo";
 import { config } from "../config";
-import { deviceStore, type KeyValueStore } from "../lib/storage";
+import { deviceStore, readJson, type KeyValueStore } from "../lib/storage";
 import { authParamsFromUrl, authRedirectUrl, isAuthRedirect } from "./redirect";
 import { getSupabase } from "./supabase";
 
@@ -46,6 +46,8 @@ export interface AuthValue {
   mode: "demo" | "live";
   /** Set when a sign-in link or redirect could not be completed. */
   linkError?: AuthFailure | null;
+  /** Signed in on a stored session that couldn't be refreshed because the phone is offline. */
+  offline: boolean;
   signInDemo(): Promise<void>;
   signInWithEmail(email: string): Promise<void>;
   verifyCode(email: string, code: string): Promise<void>;
@@ -89,6 +91,14 @@ export function failureFrom(error: AuthError | Error | null | undefined): AuthFa
   if (text.includes("otp_expired") || text.includes("expired") || text.includes("invalid")) return "invalid_code";
   if (e.name === "AuthRetryableFetchError" || text.includes("network") || text.includes("fetch")) return "network";
   return "failed";
+}
+
+/** Where supabase-js keeps the session in storage (`sb-<project>-auth-token` by default). */
+function storageKeyOf(sb: SupabaseClient): string {
+  const key = (sb.auth as unknown as { storageKey?: unknown }).storageKey;
+  if (typeof key === "string") return key;
+  const host = config.supabaseUrl ? new URL(config.supabaseUrl).hostname.split(".")[0] : "";
+  return `sb-${host}-auth-token`;
 }
 
 /** A Supabase call that failed because it could not reach the server (worth retrying later). */
@@ -149,6 +159,7 @@ export function AuthProvider({
   const [status, setStatus] = useState<AuthValue["status"]>("loading");
   const [user, setUser] = useState<AuthUser | null>(null);
   const [linkError, setLinkError] = useState<AuthFailure | null>(null);
+  const [offline, setOffline] = useState(false);
   const session = useRef<Session | null>(null);
   // A redirect can reach us twice (the Google window's result and the deep link): handle each once.
   const handled = useRef(new Set<string>());
@@ -182,18 +193,33 @@ export function AuthProvider({
         active = false;
       };
     }
-    const apply = (s: Session | null) => {
+    const apply = (s: Session | null, isOffline = false) => {
       if (!active) return;
       session.current = s;
       setUser(userFrom(s));
       setStatus(s ? "signed-in" : "signed-out");
+      setOffline(!!s && isOffline);
       if (s) setLinkError(null);
     };
     let unsubscribe = () => {};
     try {
       const sb = getSupabase();
-      sb.auth.getSession().then(({ data }) => apply(data.session));
-      const { data } = sb.auth.onAuthStateChange((_event, s) => apply(s));
+      sb.auth
+        .getSession()
+        .then(async ({ data, error }) => {
+          if (data.session || !isRetryableAuthError(error as AuthError | null)) return apply(data.session);
+          // Offline with an expired access token: Supabase couldn't refresh it but kept the
+          // stored session. Keep the person signed in on it; it refreshes once back online.
+          const stored = await readJson<Session | null>(storage, storageKeyOf(sb), null);
+          apply(stored?.access_token ? stored : null, true);
+        })
+        .catch(() => apply(null));
+      // INITIAL_SESSION repeats what getSession reports (and is empty when offline), so the
+      // getSession call above decides the start-up state; later events (sign-in, refresh,
+      // sign-out) apply as they come.
+      const { data } = sb.auth.onAuthStateChange((event, s) => {
+        if (event !== "INITIAL_SESSION") apply(s);
+      });
       unsubscribe = () => data.subscription.unsubscribe();
     } catch (e) {
       console.warn(e);
@@ -295,6 +321,7 @@ export function AuthProvider({
     }
     session.current = null;
     setUser(null);
+    setOffline(false);
     setStatus("signed-out");
   }, [mode, storage]);
 
@@ -328,6 +355,7 @@ export function AuthProvider({
       user,
       mode,
       linkError,
+      offline,
       signInDemo,
       signInWithEmail,
       verifyCode,
@@ -336,7 +364,7 @@ export function AuthProvider({
       getAccessToken,
       refreshAccessToken,
     }),
-    [status, user, mode, linkError, signInDemo, signInWithEmail, verifyCode, signInWithGoogle, signOut, getAccessToken, refreshAccessToken],
+    [status, user, mode, linkError, offline, signInDemo, signInWithEmail, verifyCode, signInWithGoogle, signOut, getAccessToken, refreshAccessToken],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
