@@ -25,6 +25,7 @@ import { useExport, type ExportPhase } from "../hooks/useExport";
 import { usePreferences } from "../hooks/usePreferences";
 import { useMe } from "../hooks/useSaves";
 import { monthYear } from "../lib/dates";
+import { forgetDeviceData } from "../lib/deviceData";
 import { haptic } from "../lib/haptics";
 import { DURATION } from "../theme/motion";
 import { colors } from "../theme/tokens";
@@ -110,6 +111,7 @@ export function AccountScreen() {
       await api.deleteAccount();
       haptic.medium();
       setDeleteStep(0);
+      await forgetDeviceData(auth.user?.id);
       await auth.signOut();
     } catch {
       haptic.error();
@@ -340,7 +342,10 @@ export function AccountScreen() {
           <Reveal index={5}>
             <PressableScale
               accessibilityRole="button"
-              onPress={() => auth.signOut()}
+              onPress={async () => {
+                await forgetDeviceData(auth.user?.id);
+                await auth.signOut();
+              }}
               highlightColor="#F9CFCD"
               containerClassName="mt-8"
               className="flex-row items-center justify-center rounded-2xl bg-danger-soft px-4 py-5"

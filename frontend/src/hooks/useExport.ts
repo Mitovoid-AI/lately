@@ -10,8 +10,6 @@ export type ExportPhase = "idle" | "preparing" | "ready" | "sharing";
 
 type ReadyExport = Extract<ExportDownload, { status: "ready" }>;
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-
 /**
  * The account archive, delivered in the app: ask the server to build it, poll until the JSON
  * file is ready (giving up after a few minutes), then hand it to the system share sheet.
@@ -25,10 +23,24 @@ export function useExport({ pollMs = 3000, giveUpMs = 3 * 60_000 }: { pollMs?: n
   const alive = useRef(true);
   const busy = useRef(false);
 
+  // The wait between polls; unmounting ends it at once so no timer outlives the screen.
+  const wake = useRef<{ timer: ReturnType<typeof setTimeout>; resolve: () => void } | null>(null);
+  const sleep = useCallback(
+    (ms: number) =>
+      new Promise<void>((resolve) => {
+        wake.current = { timer: setTimeout(resolve, ms), resolve };
+      }),
+    [],
+  );
+
   useEffect(() => {
     alive.current = true;
     return () => {
       alive.current = false;
+      if (wake.current) {
+        clearTimeout(wake.current.timer);
+        wake.current.resolve();
+      }
     };
   }, []);
 
@@ -64,7 +76,7 @@ export function useExport({ pollMs = 3000, giveUpMs = 3 * 60_000 }: { pollMs?: n
       await sleep(pollMs);
     }
     finish("idle", "Your archive is taking longer than usual. Try again in a few minutes.");
-  }, [api, finish, pollMs, giveUpMs]);
+  }, [api, finish, sleep, pollMs, giveUpMs]);
 
   const start = useCallback(async () => {
     if (busy.current) return;

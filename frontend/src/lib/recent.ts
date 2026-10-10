@@ -1,6 +1,7 @@
 import { readJson, writeJson, type KeyValueStore } from "./storage";
 
-const KEY = "lately.recent-searches";
+export const RECENT_KEY = "lately.recent-searches";
+const KEY = RECENT_KEY;
 const MAX = 5;
 
 export function loadRecent(store: KeyValueStore): Promise<string[]> {

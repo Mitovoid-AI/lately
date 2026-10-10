@@ -1,6 +1,10 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+import { queueKey } from "../../lib/saveQueue";
+import { PENDING_SHARE_KEY } from "../../share/ShareRouter";
 import { demoApi, renderWithProviders } from "../../test/render";
 import { AccountScreen } from "../AccountScreen";
 
@@ -110,6 +114,36 @@ test("log out and back", async () => {
   expect(auth.signOut).toHaveBeenCalled();
   await fireEvent.press(screen.getByLabelText("Back"));
   expect(mockRouter.back).toHaveBeenCalled();
+});
+
+async function seedDeviceData() {
+  await AsyncStorage.setItem("lately.recent-searches", JSON.stringify(["momo"]));
+  await AsyncStorage.setItem(queueKey("demo-user"), JSON.stringify([{ id: "q1", text: "x", queued_at: "t" }]));
+  await AsyncStorage.setItem(PENDING_SHARE_KEY, "https://www.instagram.com/reel/abc/");
+}
+
+async function expectDeviceDataCleared() {
+  expect(JSON.parse((await AsyncStorage.getItem("lately.recent-searches")) ?? "[]")).toEqual([]);
+  expect(JSON.parse((await AsyncStorage.getItem(queueKey("demo-user"))) ?? "[]")).toEqual([]);
+  expect((await AsyncStorage.getItem(PENDING_SHARE_KEY)) ?? "").toBe("");
+}
+
+test("logging out forgets recent searches, the offline queue and a pending share", async () => {
+  await seedDeviceData();
+  const { auth } = await open();
+  await fireEvent.press(screen.getByText("Log Out of Lately"));
+  await waitFor(() => expect(auth.signOut).toHaveBeenCalled());
+  await expectDeviceDataCleared();
+});
+
+test("deleting the account forgets device data too", async () => {
+  await seedDeviceData();
+  const { auth } = await open();
+  await fireEvent.press(screen.getByText("Delete account"));
+  await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+  await fireEvent.press(screen.getByRole("button", { name: "Delete forever" }));
+  await waitFor(() => expect(auth.signOut).toHaveBeenCalled());
+  await expectDeviceDataCleared();
 });
 
 test("back with no history goes to the Library", async () => {
