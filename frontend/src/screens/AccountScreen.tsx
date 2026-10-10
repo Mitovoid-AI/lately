@@ -3,7 +3,7 @@ import Constants from "expo-constants";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { ActivityIndicator, Text, View } from "react-native";
 import Animated, { FadeIn, useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -21,6 +21,7 @@ import { SettingsRow, SettingsSection } from "../components/settings/SettingsSec
 import { TextSizeControl } from "../components/settings/TextSizeControl";
 import { IMAGE_FADE } from "../components/Thumb";
 import { useToast } from "../components/Toast";
+import { useExport, type ExportPhase } from "../hooks/useExport";
 import { usePreferences } from "../hooks/usePreferences";
 import { useMe } from "../hooks/useSaves";
 import { monthYear } from "../lib/dates";
@@ -74,14 +75,16 @@ export function AccountScreen() {
   const sizeName = SIZES.find((s) => s.size === prefs.text_size)?.name ?? "Default";
   const version = Constants.expoConfig?.version ?? "1.0.0";
 
-  async function exportArchive() {
-    try {
-      await api.requestExport();
-      haptic.success();
-      toast.show("We'll email your archive when it's ready");
-    } catch {
-      toast.show("Couldn't start the export. Try again.");
-    }
+  const archive = useExport();
+  const ARCHIVE_SUBTITLE: Record<ExportPhase, string> = {
+    idle: "Export your reels, notes and stacks as a JSON file",
+    preparing: "Preparing…",
+    ready: "Your archive is ready",
+    sharing: "Your archive is ready",
+  };
+  function onArchivePress() {
+    if (archive.phase === "idle") void archive.start();
+    else if (archive.phase === "ready") void archive.download();
   }
 
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
@@ -282,9 +285,17 @@ export function AccountScreen() {
               <SettingsRow
                 icon="cloud-download"
                 title="Download Vault Archive"
-                subtitle="Export all reels & notes as JSON or Markdown"
-                onPress={exportArchive}
-                right={<Icon name="chevron-right" size={20} color={colors.ink2} />}
+                subtitle={ARCHIVE_SUBTITLE[archive.phase]}
+                onPress={onArchivePress}
+                right={
+                  archive.phase === "preparing" || archive.phase === "sharing" ? (
+                    <ActivityIndicator color={colors.ink2} accessibilityLabel="Preparing your archive" />
+                  ) : archive.phase === "ready" ? (
+                    <Text className="font-sans-semibold text-meta text-accent">Download</Text>
+                  ) : (
+                    <Icon name="chevron-right" size={20} color={colors.ink2} />
+                  )
+                }
                 divider
               />
             </SettingsSection>
@@ -369,15 +380,23 @@ export function AccountScreen() {
       <ConfirmDialog
         visible={deleteStep === 1}
         title="Delete your account?"
-        message="Your saved reels, notes, cards and stacks will be deleted, and you'll be signed out."
+        message="Your saved reels, notes, cards and stacks will be deleted, and you'll be signed out. Want a copy? Download your archive (a JSON file) first."
         confirmLabel="Continue"
+        aside={{
+          label: "Download my archive first",
+          onPress: () => {
+            setDeleteStep(0);
+            if (archive.phase === "idle") void archive.start();
+            else if (archive.phase === "ready") void archive.download();
+          },
+        }}
         onConfirm={() => setDeleteStep(2)}
         onCancel={() => setDeleteStep(0)}
       />
       <ConfirmDialog
         visible={deleteStep === 2}
         title="This can't be undone"
-        message="Everything in your Lately is removed for good. Export your archive first if you want a copy."
+        message="Everything in your Lately is removed for good."
         confirmLabel="Delete forever"
         busy={deletingAccount}
         onConfirm={deleteAccount}

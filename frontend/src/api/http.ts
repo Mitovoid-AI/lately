@@ -103,6 +103,18 @@ function toCurated(raw: Raw): CuratedFeed {
   };
 }
 
+/** `attachment; filename="x.json"` → `x.json`; anything unsafe or missing → a fixed name. */
+function filenameFrom(disposition: string | null | undefined): string {
+  const m = /filename\*?=(?:UTF-8'')?"?([^";]+)"?/i.exec(disposition ?? "");
+  let name = m ? m[1].trim() : "";
+  try {
+    name = decodeURIComponent(name);
+  } catch {
+    name = "";
+  }
+  return /^[\w.-]+\.json$/.test(name) ? name : "lately-export.json";
+}
+
 export function createHttpApi(o: {
   baseUrl: string;
   getToken: () => Promise<string | null>;
@@ -126,7 +138,8 @@ export function createHttpApi(o: {
     }
   }
 
-  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+  /** Sends the call (refreshing the token once on a 401); a non-2xx answer throws an ApiError. */
+  async function exchange(method: string, path: string, body?: unknown): Promise<{ res: Response; text: string; data: unknown }> {
     let res = await send(method, path, await o.getToken(), body);
     if (res.status === 401) {
       const fresh = await o.refreshToken();
@@ -139,13 +152,17 @@ export function createHttpApi(o: {
     } catch {
       data = undefined;
     }
-    if (res.ok) return data as T;
+    if (res.ok) return { res, text, data };
     if (res.status === 401) throw new ApiError("UNAUTHORIZED", 401, "Please sign in again.");
     const err = (data as { error?: { code?: string; message?: string } } | undefined)?.error;
     const code = KNOWN_CODES.find((c) => c === err?.code);
     if (code) throw new ApiError(code, res.status, err?.message);
     if (res.status === 404) throw new ApiError("NOT_FOUND", 404, err?.message);
     throw new ApiError("SERVER", res.status, err?.message ?? `HTTP ${res.status}`);
+  }
+
+  async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
+    return (await exchange(method, path, body)).data as T;
   }
 
   /** For 202/204 calls: the body (if any) is not needed. */
@@ -185,6 +202,11 @@ export function createHttpApi(o: {
     requestExport: async () => {
       await call("POST", "/me/export");
       return { status: "queued" };
+    },
+    downloadExport: async () => {
+      const { res, text } = await exchange("GET", "/me/export");
+      if (res.status === 202) return { status: "queued" };
+      return { status: "ready", filename: filenameFrom(res.headers?.get?.("content-disposition")), json: text };
     },
     retryEnrichment: (reelId) => call("POST", `/retries/${seg(reelId)}`),
     deleteAccount: () => call("DELETE", "/me"),

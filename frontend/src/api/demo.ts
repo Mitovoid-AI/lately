@@ -20,6 +20,8 @@ import { buildDemoSeed, EXTRA_CONTENT, IMAGES, type DemoSave, type DemoStack } f
 
 /** How long a newly saved demo reel stays "processing". */
 export const PENDING_MS = 6000;
+/** How long a demo export takes to "build". */
+export const EXPORT_MS = 1500;
 
 export const DEMO_USER = {
   id: "demo-user",
@@ -56,6 +58,7 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
   let saves: DemoSave[] = seed.saves;
   let stacks: DemoStack[] = seed.stacks;
   let created = 0;
+  let exportRequestedAt: number | null = null;
 
   const wait = () => (latency ? new Promise((r) => setTimeout(r, latency)) : Promise.resolve());
 
@@ -335,7 +338,23 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
 
     async requestExport() {
       await wait();
+      exportRequestedAt = now();
       return { status: "queued" };
+    },
+
+    async downloadExport() {
+      await wait();
+      if (exportRequestedAt === null) throw new ApiError("NOT_FOUND", 404, "No export yet. Request one first.");
+      if (now() < exportRequestedAt + EXPORT_MS) return { status: "queued" };
+      const day = new Date(exportRequestedAt).toISOString().slice(0, 10).replace(/-/g, "");
+      const data = {
+        exported_at: new Date(now()).toISOString(),
+        account: { email: DEMO_USER.email, name: DEMO_USER.name },
+        saves: sorted().map(present),
+        stacks: stacks.map((st) => ({ ...stackView(st), save_ids: st.save_ids })),
+        preferences: { ...DEFAULT_PREFERENCES, ...(await readJson<Partial<Preferences>>(store, PREFS_KEY, {})) },
+      };
+      return { status: "ready", filename: `lately-export-${day}.json`, json: JSON.stringify(data, null, 2) };
     },
   };
 }

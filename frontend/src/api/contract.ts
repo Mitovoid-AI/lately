@@ -149,6 +149,9 @@ export interface CuratedFeed {
   sections: CuratedSection[];
 }
 
+/** GET /me/export: the archive file once it is built, or still queued. */
+export type ExportDownload = { status: "queued" } | { status: "ready"; filename: string; json: string };
+
 export type ApiErrorCode =
   | "BAD_URL"
   | "QUOTA_EXCEEDED"
@@ -202,8 +205,13 @@ export interface LatelyApi {
   deleteStack(id: string): Promise<void>;
   /** GET /curated */
   getCurated(): Promise<CuratedFeed>;
-  /** POST /me/export → 202 */
+  /** POST /me/export → 202: start building a JSON export of the account */
   requestExport(): Promise<{ status: "queued" }>;
+  /**
+   * GET /me/export → 200 with the JSON file (Content-Disposition names it), 202 while it is
+   * still being built; NOT_FOUND when no export was ever requested.
+   */
+  downloadExport(): Promise<ExportDownload>;
   /** POST /retries/{reel_id} → 202: re-run enrichment for a partial card (it goes back to pending) */
   retryEnrichment(reelId: string): Promise<void>;
   /** DELETE /me → 204: deletes the account and everything saved in it */
@@ -233,6 +241,7 @@ const ENDPOINT_SET: Record<Endpoint, true> = {
   deleteStack: true,
   getCurated: true,
   requestExport: true,
+  downloadExport: true,
   retryEnrichment: true,
   deleteAccount: true,
   sendHint: true,

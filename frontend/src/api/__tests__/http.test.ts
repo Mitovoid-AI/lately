@@ -1,14 +1,15 @@
 import { ApiError } from "../contract";
 import { createHttpApi, toSave } from "../http";
 
-type Reply = { status: number; body?: unknown; raw?: string };
+type Reply = { status: number; body?: unknown; raw?: string; headers?: Record<string, string> };
 
 function fakeFetch(...replies: Reply[]) {
   const queue = [...replies];
   return jest.fn(async (_url: string, _init?: RequestInit) => {
-    const r = queue.shift() ?? { status: 200, body: {} };
+    const r: Reply = queue.shift() ?? { status: 200, body: {} };
     const text = r.raw ?? (r.body === undefined ? "" : JSON.stringify(r.body));
-    return { ok: r.status >= 200 && r.status < 300, status: r.status, text: async () => text } as Response;
+    const headers = { get: (k: string) => r.headers?.[k.toLowerCase()] ?? null };
+    return { ok: r.status >= 200 && r.status < 300, status: r.status, text: async () => text, headers } as unknown as Response;
   });
 }
 
@@ -223,4 +224,30 @@ test("a 404 on delete is NOT_FOUND", async () => {
   const f = fakeFetch({ status: 404, body: { error: { code: "NOT_FOUND", message: "gone" } } });
   const e = await rejection(setup(f).api.deleteSave("r1"));
   expect(e.code).toBe("NOT_FOUND");
+});
+
+test("downloadExport returns the JSON file and its name when it is ready", async () => {
+  const f = fakeFetch({
+    status: 200,
+    raw: '{"saves":[]}',
+    headers: { "content-disposition": 'attachment; filename="lately-export-20261010.json"' },
+  });
+  const out = await setup(f).api.downloadExport();
+  expect(callOf(f)).toEqual({ url: "http://api.test/me/export", method: "GET", body: undefined });
+  expect(out).toEqual({ status: "ready", filename: "lately-export-20261010.json", json: '{"saves":[]}' });
+});
+
+test("downloadExport without a Content-Disposition still names the file", async () => {
+  const f = fakeFetch({ status: 200, raw: "{}" });
+  expect(await setup(f).api.downloadExport()).toEqual({ status: "ready", filename: "lately-export.json", json: "{}" });
+});
+
+test("downloadExport is queued while the export is being built", async () => {
+  const f = fakeFetch({ status: 202, body: { status: "queued" } });
+  expect(await setup(f).api.downloadExport()).toEqual({ status: "queued" });
+});
+
+test("downloadExport before any request is NOT_FOUND", async () => {
+  const f = fakeFetch({ status: 404, body: { error: { code: "NOT_FOUND", message: "No export yet." } } });
+  expect((await rejection(setup(f).api.downloadExport())).code).toBe("NOT_FOUND");
 });

@@ -41,7 +41,7 @@ Your data is kept while your account exists. When you delete a save in the app, 
 ## Your choices and rights
 
 - **See and edit.** Everything Lately stores about your saves is visible in the app, and notes can be edited at any time.
-- **Export.** In Account and Settings, "Download Vault Archive" sends you a copy of your reels and notes.
+- **Export.** In Account and Settings, "Download Vault Archive" prepares a copy of your saves, notes, cards and stacks as a JSON file in the app. When it is ready, tap Download to save it to your phone or share it.
 - **Delete a save.** Open a card, tap the ⋮ menu, then Delete.
 - **Delete your account.** In Account and Settings, tap "Delete account" and confirm twice. This deletes your account and everything in it, then signs you out.
 

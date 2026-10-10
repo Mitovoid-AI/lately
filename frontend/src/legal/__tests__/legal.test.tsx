@@ -32,6 +32,12 @@ test("the bundled documents match legal/*.md (run scripts/build-legal.js after e
   }
 });
 
+test("the privacy policy describes the export as an in-app JSON file, not an email", () => {
+  const exportLine = LEGAL_DOCS.privacy.markdown.split("\n").find((l) => l.includes("**Export.**")) ?? "";
+  expect(exportLine).toContain("JSON");
+  expect(exportLine).not.toMatch(/email|sends you|markdown/i);
+});
+
 test("the privacy policy names what is stored, every processor, and how to delete", () => {
   const text = LEGAL_DOCS.privacy.markdown;
   for (const word of ["email", "links", "notes", "card", "Supabase", "OpenRouter", "Groq", "OpenAI", "Delete account"]) {

@@ -7,6 +7,8 @@ import { AccountScreen } from "../AccountScreen";
 let mockCanGoBack = true;
 const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => mockCanGoBack };
 jest.mock("expo-router", () => ({ useRouter: () => mockRouter }));
+const mockShare = jest.fn(async (_name: string, _json: string) => {});
+jest.mock("../../lib/exportFile", () => ({ shareExportFile: (n: string, j: string) => mockShare(n, j) }));
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -52,11 +54,36 @@ test("dark theme says it is coming", async () => {
   await settled(client);
 });
 
-test("download archive asks for an export", async () => {
-  const { requestExport } = await open();
+test("download archive prepares a JSON export in the app, then offers Download", async () => {
+  const api = demoApi();
+  const requestExport = jest.spyOn(api, "requestExport");
+  jest
+    .spyOn(api, "downloadExport")
+    .mockResolvedValueOnce({ status: "queued" })
+    .mockResolvedValue({ status: "ready", filename: "lately-export-20261010.json", json: "{}" });
+  await renderWithProviders(<AccountScreen />, { api });
+  await screen.findByText("Aanya Sharma");
+  expect(screen.queryByText(/email your archive/i)).toBeNull();
+  expect(screen.queryByText(/markdown/i)).toBeNull();
+  expect(screen.getByText("Export your reels, notes and stacks as a JSON file")).toBeTruthy();
   await fireEvent.press(screen.getByText("Download Vault Archive"));
   await waitFor(() => expect(requestExport).toHaveBeenCalled());
-  expect(await screen.findByText("We'll email your archive when it's ready")).toBeTruthy();
+  expect(screen.getByText("Preparing…")).toBeTruthy();
+  await fireEvent.press(await screen.findByText("Download", {}, { timeout: 8000 }));
+  await waitFor(() => expect(mockShare).toHaveBeenCalledWith("lately-export-20261010.json", "{}"));
+});
+
+test("the delete dialog offers the export first", async () => {
+  const api = demoApi();
+  const requestExport = jest.spyOn(api, "requestExport");
+  const deleteAccount = jest.spyOn(api, "deleteAccount");
+  await renderWithProviders(<AccountScreen />, { api });
+  await screen.findByText("Aanya Sharma");
+  await fireEvent.press(screen.getByText("Delete account"));
+  await fireEvent.press(screen.getByRole("button", { name: /Download my archive first/ }));
+  await waitFor(() => expect(requestExport).toHaveBeenCalled());
+  expect(deleteAccount).not.toHaveBeenCalled();
+  expect(screen.queryByText("Delete your account?")).toBeNull();
 });
 
 test("digests can be turned off", async () => {
