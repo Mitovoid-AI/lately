@@ -25,15 +25,36 @@ import asyncpg
 
 from .embed import Embedder, LruCache
 from .query import ParsedQuery, parse_query
-from .retrieve import ALL_LEGS, FUSED_CAP, Hit, LegRow, fuse, lexical_rows, meaning_rows
+from .retrieve import (
+    ALL_LEGS,
+    FUSED_CAP,
+    Hit,
+    LegRow,
+    fuse,
+    lexical_rows,
+    meaning_rows,
+    prune_meaning,
+)
 
 log = logging.getLogger(__name__)
 
+# Place names for the 📍 hint: `place` entities (name, parent, region) of cards
+# with typed entities; cards without them (older seeds) fall back to entity_names.
 KNOWN_PLACES_SQL = """
-select distinct unnest(rc.entity_names) as place
+select distinct p.place
 from public.reels r
 join public.reel_content rc on rc.shortcode = r.shortcode_key
-where r.auth_user_id = $1
+cross join lateral (
+  select unnest(array[e->>'name', e->>'parent', e->>'region']) as place
+  from jsonb_array_elements(case when jsonb_typeof(rc.entities) = 'array'
+                                 then rc.entities else '[]'::jsonb end) e
+  where e->>'type' = 'place'
+  union all
+  select unnest(rc.entity_names)
+  where rc.entities is null or jsonb_typeof(rc.entities) <> 'array'
+     or jsonb_array_length(rc.entities) = 0
+) p
+where r.auth_user_id = $1 and nullif(trim(p.place), '') is not null
 limit 500
 """
 
@@ -72,7 +93,9 @@ async def query_vector(embedder: Embedder | None, text: str, *, cache: LruCache 
 async def run_search(db: asyncpg.Pool, user_id: UUID, q: str, embedder: Embedder | None, *,
                      category: str | None = None, legs: frozenset[str] = ALL_LEGS,
                      limit: int = FUSED_CAP, cache: LruCache | None = None,
-                     embed_timeout: float = 2.0, now: datetime | None = None) -> SearchRun:
+                     embed_timeout: float = 2.0, now: datetime | None = None,
+                     meaning_spread: float | None = None,
+                     meaning_max_distance: float | None = None) -> SearchRun:
     now = now or datetime.now(UTC)
     base = parse_query(q, now=now, known_places=())
     if not base.text:
@@ -96,4 +119,6 @@ async def run_search(db: asyncpg.Pool, user_id: UUID, q: str, embedder: Embedder
 
     embedded, meaning = meaning_t.result()
     parsed = parse_query(q, now=now, known_places=places_t.result())
-    return SearchRun(parsed, fuse([*lexical_t.result(), *meaning], parsed, limit), embedded)
+    rows = prune_meaning([*lexical_t.result(), *meaning], spread=meaning_spread,
+                         max_distance=meaning_max_distance)
+    return SearchRun(parsed, fuse(rows, parsed, limit), embedded)

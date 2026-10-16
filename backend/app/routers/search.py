@@ -66,7 +66,9 @@ async def search(
     q = clean_text(q)
     run = await run_search(db, uid, q, embedder, category=category or None, limit=limit,
                            cache=QUERY_CACHE,
-                           embed_timeout=settings().search_embed_timeout_seconds)
+                           embed_timeout=settings().search_embed_timeout_seconds,
+                           meaning_spread=settings().search_meaning_spread,
+                           meaning_max_distance=settings().search_meaning_max_distance)
     hits = run.hits[:limit]
     saves = {s.id: s for s in await fetch_saves(db, uid, [h.reel_id for h in hits])}
     out = [

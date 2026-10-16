@@ -54,6 +54,7 @@ class LegRow:
     created_at: datetime
     category: str | None
     entity_names: tuple[str, ...]
+    distance: float | None = None  # meaning leg: cosine distance to the query
 
 
 # $1 user id · $2 filters jsonb (hard: category, saved_after, saved_before)
@@ -106,13 +107,14 @@ MEANING_SQL = f"""
 with {_MINE.format(extra=', r.embedding').strip()},
 vec as (
   select m.id,
+         m.embedding <=> $3::text::vector as d,
          row_number() over (order by m.embedding <=> $3::text::vector,
                                      m.created_at desc) as rk
   from mine m
   where m.embedding is not null
   order by rk limit {MEANING_LIMIT}
 )
-select v.id, 'meaning' as src, v.rk, m.created_at, m.category, m.entity_names
+select v.id, 'meaning' as src, v.rk, m.created_at, m.category, m.entity_names, v.d
 from vec v join mine m using (id)
 """
 
@@ -130,7 +132,30 @@ def _filters(parsed: ParsedQuery, category: str | None) -> str:
 
 def _rows(records: Iterable[asyncpg.Record]) -> list[LegRow]:
     return [LegRow(r["id"], r["src"], int(r["rk"]), r["created_at"], r["category"],
-                   tuple(r["entity_names"] or ())) for r in records]
+                   tuple(r["entity_names"] or ()),
+                   float(d) if (d := r.get("d")) is not None else None)
+            for r in records]
+
+
+def prune_meaning(rows: Sequence[LegRow], *, spread: float | None,
+                  max_distance: float | None) -> list[LegRow]:
+    """Drop meaning rows of saves that only the meaning leg found when they are
+    farther than min(best distance + `spread`, `max_distance`) from the query.
+
+    The meaning leg ranks every save, so without this every query padded its
+    results with unrelated saves. Saves matched by keyword or fuzzy keep their
+    meaning row (it only adds to their score). None disables a bound."""
+    if spread is None and max_distance is None:
+        return list(rows)
+    dists = [r.distance for r in rows if r.leg == "meaning" and r.distance is not None]
+    if not dists:
+        return list(rows)
+    cutoff = min(min(dists) + (spread if spread is not None else float("inf")),
+                 max_distance if max_distance is not None else float("inf"))
+    lexical = {r.reel_id for r in rows if r.leg != "meaning"}
+    return [r for r in rows
+            if r.leg != "meaning" or r.distance is None or r.reel_id in lexical
+            or r.distance <= cutoff]
 
 
 async def lexical_rows(db: asyncpg.Pool, user_id: UUID, parsed: ParsedQuery, *,

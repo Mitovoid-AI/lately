@@ -49,6 +49,10 @@ class Settings(BaseSettings):
     embeddings_model: str = "text-embedding-3-small"
     embeddings_dimensions: int = 768
     search_embed_timeout_seconds: float = 2.0
+    # Meaning-only hits are kept within best distance + spread, never beyond the max
+    # (cosine distance; tuned on text-embedding-3-small, see tests/search/test_meaning_cutoff.py).
+    search_meaning_spread: float = 0.25
+    search_meaning_max_distance: float = 0.85
 
     # GET /admin/health requires header X-Admin-Key == this. Empty = endpoint disabled (404).
     admin_key: str = ""

@@ -1,0 +1,32 @@
+# query<TAB>shortcodes, any of which must be in the top 3 (scripts/e2e_live.py --queries)
+# keyword
+coconut shake	DL0A1zqzzLy
+pav bhaji recipe	DGf9Qi3sxVh
+biryani	DF5HqKENJsp
+reps in reserve	Dc_T_IZs3IG
+foldable phone	DeAYTbQArJe,DdFHJkpyy58
+robot	DdB_gwDzaT8,DcezzvJQRen
+trick shot	Dboa5RQz13D
+wolf documentary	DehZj9wggt0
+# Hinglish
+nariyal pani shake	DL0A1zqzzLy
+mumbai ka street food	DGf9Qi3sxVh
+# typos (fuzzy)
+biryni	DF5HqKENJsp
+pav bhajji	DGf9Qi3sxVh
+exoplanet	DeeUUHNAqQj
+# meaning (no shared keywords)
+drink for glowing skin	DJJrdawTUaV
+how to grow bigger calves	C9FQ-W1OJtc
+lifting slow vs fast reps	C2SYZAtOSBX
+low calorie foods	DdrIvcZscoY
+pull up progress	DcMBZmIsEPy
+fish that lives in an anemone	DefFZgggApb
+planets outside our solar system	DeeUUHNAqQj
+fish migration in florida	Dec1lmtgGYk
+tool for measuring things	DdRy_nDzZNS
+science toy for kids	DehE9l7E_68
+green chutney chicken	DK96n_QTa25
+# creators
+jeff nippard	C9FQ-W1OJtc,C2SYZAtOSBX,DdrIvcZscoY,Dc_T_IZs3IG,Dcv5u1rsr8W,DcMBZmIsEPy
+mkbhd	DeAYTbQArJe,DdRy_nDzZNS,DdFHJkpyy58,DdB_gwDzaT8,DcezzvJQRen,Dboa5RQz13D
