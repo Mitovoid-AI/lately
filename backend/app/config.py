@@ -29,6 +29,10 @@ class Settings(BaseSettings):
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
+    # Absolute base for URLs the API hands out (thumbnails kept in Postgres).
+    # Empty = the host each request came in on (a phone on the LAN gets the PC's IP).
+    public_base_url: str = ""
+
     # Catch-path limits (PIPELINE.md §3 step 3: Postgres count, no Redis at v1)
     rate_limit_per_hour: int = 30
 

@@ -344,19 +344,26 @@ class ThumbnailStore:
     """Copy a thumbnail into Supabase Storage (`thumbnails/{sc}.jpg`, upsert).
 
     Returns the `thumbnail_path` to store: the object path on success, else the
-    remote URL (saves_view passes absolute URLs through), else None."""
+    remote URL (saves_view passes absolute URLs through), else None.
+
+    Without a service-role key, `local` (app/services/thumbnails.py `writer`)
+    keeps the verified image in Postgres instead (`db:{sc}`), so the card keeps
+    its image after Instagram's signed URL expires. No key and no `local`: the
+    remote URL is kept as-is."""
 
     def __init__(self, client: httpx.AsyncClient, supabase_url: str, service_key: str,
-                 max_bytes: int = 2_000_000) -> None:
+                 max_bytes: int = 2_000_000,
+                 local: Callable[[str, bytes], Awaitable[str | None]] | None = None) -> None:
         self._client = client
         self._base = supabase_url.rstrip("/")
         self._key = service_key
         self._max = max_bytes
+        self._local = local
 
     async def store(self, shortcode: str, image_url: str | None) -> str | None:
         if not image_url:
             return None
-        if not self._key:
+        if not self._key and self._local is None:
             return image_url
         from .device import is_instagram_cdn_url, looks_like_image
 
@@ -367,7 +374,7 @@ class ThumbnailStore:
             return image_url
         if not looks_like_image(data):
             return None
-        return await self._upload(shortcode, data) or image_url
+        return await self._keep(shortcode, data) or image_url
 
     async def store_verified(self, shortcode: str, image_url: str | None) -> str | None:
         """Like `store`, for a thumbnail URL supplied by a device: it must be an
@@ -383,9 +390,15 @@ class ThumbnailStore:
         if not data or not looks_like_image(data):
             log.info("device thumbnail for %s not confirmed", shortcode)
             return None
-        if not self._key:
-            return image_url
-        return await self._upload(shortcode, data) or image_url
+        return await self._keep(shortcode, data) or image_url
+
+    async def _keep(self, shortcode: str, data: bytes) -> str | None:
+        """Storage with a key, else the local store, else nothing (None)."""
+        if self._key:
+            return await self._upload(shortcode, data)
+        if self._local is not None:
+            return await self._local(shortcode, data)
+        return None
 
     async def _upload(self, shortcode: str, data: bytes) -> str | None:
         """Upsert `thumbnails/{sc}.jpg`: the object path, or None on failure."""

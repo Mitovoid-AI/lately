@@ -18,6 +18,7 @@ import asyncpg
 from pydantic import BaseModel
 
 from ..config import settings
+from . import thumbnails
 
 CATEGORIES = ("Dev & Tools", "Food & Places", "Career & Jobs", "Fitness", "Style & Vibes",
               "Watch Later")
@@ -75,6 +76,8 @@ def thumbnail_url(path: str | None) -> str | None:
         return None
     if path.startswith(("http://", "https://")):
         return path
+    if thumbnails.is_local(path):
+        return thumbnails.local_url(path)
     return f"{settings().supabase_url.rstrip('/')}/storage/v1/object/public/thumbnails/{path}"
 
 

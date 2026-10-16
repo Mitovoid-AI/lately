@@ -12,10 +12,12 @@ from __future__ import annotations
 import base64
 from dataclasses import dataclass, field
 
+import asyncpg
 import httpx
 
 from ..config import Settings, settings
 from ..search.embed import Embedder, OpenAIEmbedder
+from ..services import thumbnails as local_thumbnails
 from ..services.saves_view import thumbnail_url
 from .fetch import (
     EmbedPageProvider,
@@ -44,9 +46,18 @@ class Runtime:
     groq_cost_per_hour_usd: float = 0.04
     extra: dict[str, object] = field(default_factory=dict)
 
-    async def image_data_url(self, thumbnail_path: str | None) -> str | None:
+    async def image_data_url(self, thumbnail_path: str | None,
+                             db: asyncpg.Pool | None = None) -> str | None:
         """The thumbnail as a data: URL for the LLM (providers can't always reach
-        Instagram's CDN), or None."""
+        Instagram's CDN), or None. `db:` thumbnails are read from Postgres."""
+        if local_thumbnails.is_local(thumbnail_path):
+            assert thumbnail_path is not None
+            found = await local_thumbnails.get(
+                db, thumbnail_path[len(local_thumbnails.PREFIX):]) if db is not None else None
+            if not found:
+                return None
+            data, kind = found
+            return f"data:{kind};base64," + base64.b64encode(data).decode("ascii")
         url = thumbnail_url(thumbnail_path)
         if not url:
             return None
@@ -69,7 +80,7 @@ def build_runtime(s: Settings | None = None) -> Runtime:
         http=http,
         fetchers=fetchers,
         thumbnails=ThumbnailStore(http, s.supabase_url, s.supabase_service_role_key,
-                                  s.thumbnail_max_bytes),
+                                  s.thumbnail_max_bytes, local=local_thumbnails.writer()),
         transcriber=GroqTranscriber(http, s.groq_api_key, s.groq_base_url,
                                     s.groq_transcribe_model, s.transcribe_max_bytes)
         if s.groq_api_key else None,

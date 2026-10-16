@@ -362,7 +362,7 @@ async def structure(db: asyncpg.Pool, job: dict[str, Any]) -> str:
     row = dict(row) if row else {}
     inp = StructureInput(caption=row.get("caption"), transcript=row.get("transcript"),
                          creator_handle=row.get("creator_handle"),
-                         image_url=await rt.image_data_url(row.get("thumbnail_path"))
+                         image_url=await rt.image_data_url(row.get("thumbnail_path"), db)
                          if rt.llm is not None else None)
     try:
         r = await structure_reel(rt.llm, inp, take=_taker(db))

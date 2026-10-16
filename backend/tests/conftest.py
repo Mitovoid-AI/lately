@@ -55,6 +55,7 @@ _TRUNCATE = (
 )
 _TRUNCATE += "; truncate public.provider_budget"  # 0007 (enrichment)
 _TRUNCATE += "; truncate public.exports"  # 0008
+_TRUNCATE += "; truncate public.thumbnails"  # 0011
 
 
 @pytest.fixture
