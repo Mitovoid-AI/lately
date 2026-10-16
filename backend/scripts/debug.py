@@ -4,9 +4,9 @@ Run from backend/ with the venv active:
 
     python scripts/debug.py                 # safe checks (no network, no DB writes)
     python scripts/debug.py --live          # + DB checks (read-only: tables, queue depth)
-    python scripts/debug.py --api http://localhost:8000   # + hit a running API
+    python scripts/debug.py --api http://localhost:8001   # + hit a running API
     python scripts/debug.py --log-level DEBUG
-    python scripts/debug.py --live --api http://localhost:8000
+    python scripts/debug.py --live --api http://localhost:8001
 
 Every run writes a timestamped log to logs/ so you can attach it to a bug
 report later. Exit code: 0 = all checks passed, 1 = at least one failed.
@@ -174,7 +174,10 @@ async def check_stage_graph() -> None:
     from app.worker import stages
 
     expected_chain = ["resolve", "fetch", "transcribe", "vision", "structure", "finalize"]
-    expect("stage registry", sorted(stages.STAGES), sorted(expected_chain))
+    single_stage_jobs = ["embed", "export"]  # job kinds of their own, one stage each
+    expect("stage registry", sorted(stages.STAGES), sorted(expected_chain + single_stage_jobs))
+    for name in single_stage_jobs:
+        expect(f"  {name} ends its job", stages.NEXT.get(name), None)
 
     # Chain must terminate: follow NEXT from resolve, no cycles, ends at None.
     node, seen = "resolve", set()
@@ -185,9 +188,6 @@ async def check_stage_graph() -> None:
         seen.add(node)
         node = stages.NEXT.get(node)
     log.info("  ✓ chain terminates after finalize")
-
-    log.info("  implemented now: resolve, finalize; stubs await Parts 2–3: %s",
-             sorted(set(stages.STAGES) - {"resolve", "finalize"}))
 
 
 @check("auth rejects missing token")
@@ -262,7 +262,7 @@ async def check_db() -> None:
 async def check_api() -> None:
     base = next((a for a in sys.argv[1:] if a.startswith("http")), None)
     if not base:
-        raise Skip("pass --api http://localhost:8000 to check a running server")
+        raise Skip("pass --api http://localhost:8001 to check a running server")
 
     import httpx
 

@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import contextlib
 import json
 import sys
 from pathlib import Path
@@ -57,6 +58,9 @@ async def _write(rt, out: dict) -> None:
 
 
 async def main() -> None:
+    # Captions carry emoji; a Windows console (cp1252) would crash printing them.
+    with contextlib.suppress(Exception):
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("url")
     ap.add_argument("--write", action="store_true", help="upsert the card into DATABASE_URL")
