@@ -1,8 +1,8 @@
 """Live end-to-end run: save real reels → worker builds cards → search them.
 
 Drives the real FastAPI app in-process (every route, query and RPC as the app
-calls them) and the real worker loop with the providers in backend/.env (IG
-embed page, Groq, the LLM_* model, embeddings). Identity is a dedicated dev
+calls them) and a real worker process (`python -m app.worker`) with the
+providers in backend/.env (IG embed page, Groq, the LLM_* model, embeddings). Identity is a dedicated dev
 user, `e2e@lately.local`; the Supabase token check in front of it is covered
 by the unit tests (tests/api, `jwt_for`).
 
@@ -27,6 +27,8 @@ import argparse
 import asyncio
 import contextlib
 import logging
+import os
+import subprocess
 import sys
 import time
 import uuid
@@ -146,6 +148,21 @@ async def run_queries(client: httpx.AsyncClient, path: str) -> int:
     return failures
 
 
+def start_worker(verbose: bool) -> subprocess.Popen[bytes]:
+    """`python -m app.worker` in its own process, as in production: sharing this
+    event loop with the in-process API made every stage several times slower."""
+    out = None if verbose else subprocess.DEVNULL
+    return subprocess.Popen([sys.executable, "-m", "app.worker"],
+                            cwd=Path(__file__).resolve().parents[1],
+                            env={**os.environ, "PYTHONIOENCODING": "utf-8"}, stdout=out, stderr=out)
+
+
+def stop_worker(worker: subprocess.Popen[bytes]) -> None:
+    worker.terminate()
+    with contextlib.suppress(subprocess.TimeoutExpired):
+        worker.wait(timeout=20)
+
+
 async def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--urls", help="file of reel URLs to save")
@@ -166,11 +183,9 @@ async def main() -> int:
         sys.exit("refusing: DATABASE_URL mentions 'prod'")
 
     from app.main import app
-    from app.worker.loop import run_forever
 
     db = await init_pool()
-    stop = asyncio.Event()
-    worker: asyncio.Task | None = None
+    worker: subprocess.Popen[bytes] | None = None
     app.dependency_overrides[get_current_user] = lambda: AuthUser(id=str(E2E_USER_ID),
                                                                   email=E2E_EMAIL)
     failures = 0
@@ -183,9 +198,7 @@ async def main() -> int:
             if args.urls:
                 urls = _lines(args.urls)
                 if not args.external_worker:
-                    worker = asyncio.create_task(run_forever(
-                        db, f"e2e-{uuid.uuid4().hex[:6]}", concurrency=s.worker_concurrency,
-                        poll_interval=s.worker_poll_interval_seconds, stop=stop))
+                    worker = start_worker(args.verbose)
                 ids, new = [], 0
                 for url in urls:
                     r = await client.post("/saves", json={"text": url, "channel": "app_share"})
@@ -212,10 +225,8 @@ async def main() -> int:
             if args.queries:
                 failures += await run_queries(client, args.queries)
     finally:
-        stop.set()
         if worker is not None:
-            with contextlib.suppress(Exception):
-                await asyncio.wait_for(worker, timeout=60)
+            stop_worker(worker)
         app.dependency_overrides.pop(get_current_user, None)
         await close_pool()
     print(f"\n{'PASS' if failures == 0 else f'FAIL ({failures})'}")

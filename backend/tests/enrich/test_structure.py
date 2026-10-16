@@ -72,6 +72,29 @@ async def test_valid_response_is_ok():
     assert "Majnu ka Tilla" in user[0]["text"]
 
 
+@pytest.mark.parametrize("setting,expected", [
+    ("", None),                                   # provider default: field not sent
+    ("off", {"enabled": False}),                  # no hidden reasoning: ~3x faster cards
+    ("low", {"effort": "low"}),
+    ("HIGH", {"effort": "high"}),
+])
+async def test_reasoning_setting_is_sent(setting, expected):
+    bodies = []
+
+    def handler(request):
+        bodies.append(json.loads(request.content))
+        return completion(json.dumps(GOOD))
+
+    await structure_reel(llm(handler, reasoning=setting), INPUT)
+    (body,) = bodies
+    assert body.get("reasoning") == expected
+
+
+def test_unknown_reasoning_setting_is_refused():
+    with pytest.raises(ValueError):
+        llm(lambda r: completion("{}"), reasoning="sometimes")
+
+
 async def test_invalid_then_repaired():
     calls = []
 

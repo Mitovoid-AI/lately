@@ -77,6 +77,10 @@ class Settings(BaseSettings):
     llm_model: str = ""
     llm_fallback_models: str = ""      # comma-separated, tried in order after LLM_MODEL
     llm_timeout_seconds: float = 60.0
+    # OpenRouter `reasoning`: "off" (default) skips hidden reasoning, which made
+    # free reasoning models ~3x slower per card for the same card; "" = provider
+    # default; or minimal | low | medium | high.
+    llm_reasoning: str = "off"
     llm_cost_per_mtok_in_usd: float = 0.0
     llm_cost_per_mtok_out_usd: float = 0.0
 

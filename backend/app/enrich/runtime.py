@@ -85,7 +85,8 @@ def build_runtime(s: Settings | None = None) -> Runtime:
                                     s.groq_transcribe_model, s.transcribe_max_bytes)
         if s.groq_api_key else None,
         llm=ChatLLM(http, s.llm_base_url, s.llm_api_key, s.llm_models, s.llm_timeout_seconds,
-                    s.llm_cost_per_mtok_in_usd, s.llm_cost_per_mtok_out_usd)
+                    s.llm_cost_per_mtok_in_usd, s.llm_cost_per_mtok_out_usd,
+                    reasoning=s.llm_reasoning)
         if s.llm_api_key and s.llm_models else None,
         embedder=OpenAIEmbedder(s.embeddings_api_key, s.embeddings_base_url, s.embeddings_model,
                                 s.embeddings_dimensions, client=http)

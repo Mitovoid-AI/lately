@@ -248,6 +248,51 @@ async def test_download_does_not_follow_redirects_off_the_cdn():
                                   "https://scontent.cdninstagram.com/t.jpg", 1000) is None
 
 
+async def test_download_follows_redirects_that_stay_on_the_cdn():
+    # Instagram's CDN 302s reel videos to video.xx.fbcdn.net (seen live 2026-10-17).
+    seen = []
+
+    def handler(request):
+        seen.append(request.url.host)
+        if request.url.host == "instagram.fdel3-4.fna.fbcdn.net":
+            return httpx.Response(302, headers={"location": "https://video.xx.fbcdn.net/v.mp4?x=1"})
+        return httpx.Response(200, content=b"mp4bytes")
+
+    data = await download_limited(client_for(handler),
+                                  "https://instagram.fdel3-4.fna.fbcdn.net/o1/v.mp4", 1000)
+    assert data == b"mp4bytes"
+    assert seen == ["instagram.fdel3-4.fna.fbcdn.net", "video.xx.fbcdn.net"]
+
+
+@pytest.mark.parametrize("location", [
+    "http://video.xx.fbcdn.net/v.mp4",          # downgrade to http
+    "https://10.0.0.5/v.mp4",                   # private network
+    "/relative/elsewhere",                      # resolves on the same CDN host: allowed below
+])
+async def test_download_refuses_redirects_off_https_cdn(location):
+    seen = []
+
+    def handler(request):
+        seen.append(str(request.url))
+        if len(seen) == 1:
+            return httpx.Response(302, headers={"location": location})
+        return httpx.Response(200, content=b"ok")
+
+    data = await download_limited(client_for(handler), "https://scontent.cdninstagram.com/t", 100)
+    if location.startswith("/"):
+        assert data == b"ok" and seen[1] == "https://scontent.cdninstagram.com/relative/elsewhere"
+    else:
+        assert data is None and len(seen) == 1
+
+
+async def test_download_gives_up_after_three_cdn_redirects():
+    def handler(request):
+        return httpx.Response(302, headers={"location": "https://scontent.cdninstagram.com/again"})
+
+    assert await download_limited(client_for(handler),
+                                  "https://scontent.cdninstagram.com/t", 100) is None
+
+
 async def test_thumbnail_from_untrusted_host_is_dropped():
     store = ThumbnailStore(client_for(lambda r: httpx.Response(500)), "https://p.supabase.co", "k")
     assert await store.store("SC1", "https://evil.example/t.jpg") is None

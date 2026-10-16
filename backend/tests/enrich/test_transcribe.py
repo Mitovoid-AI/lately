@@ -35,12 +35,17 @@ def groq(handler, max_bytes=25_000_000):
                            model="whisper-large-v3-turbo", max_bytes=max_bytes)
 
 
-async def test_transcribe_downloads_audio_and_posts_multipart():
+def url_mode(request) -> bool:
+    return b'name="url"' in request.content
+
+
+async def test_groq_fetches_the_media_url_itself():
+    # No video passes through the worker: 8 concurrent 5 MB uploads from a home
+    # connection timed out and starved every other stage (live run 2026-10-17).
     posted = []
 
     def handler(request):
-        if request.url.host == "scontent.cdninstagram.com":
-            return httpx.Response(200, content=b"AUDIO")
+        assert request.url.host != "scontent.cdninstagram.com", "must not download"
         posted.append(request)
         return httpx.Response(200, json={"text": " Aaj hum momos banayenge. ", "duration": 40.2})
 
@@ -49,23 +54,59 @@ async def test_transcribe_downloads_audio_and_posts_multipart():
     (req,) = posted
     assert str(req.url) == "https://api.groq.com/openai/v1/audio/transcriptions"
     assert req.headers["authorization"] == "Bearer gsk_test"
-    body = req.content
-    assert b"whisper-large-v3-turbo" in body and b"AUDIO" in body and b'filename="a.m4a"' in body
+    assert req.headers["content-type"].startswith("multipart/form-data")
+    assert url_mode(req) and b"https://scontent.cdninstagram.com/a.m4a" in req.content
+    assert b"whisper-large-v3-turbo" in req.content
 
 
-async def test_transcribe_audio_too_large_raises_skip():
+async def test_url_refused_falls_back_to_download_and_upload():
+    posted = []
+
     def handler(request):
-        return httpx.Response(200, content=b"x" * 50)
+        if request.url.host == "scontent.cdninstagram.com":
+            return httpx.Response(200, content=b"AUDIO")
+        posted.append(request)
+        if url_mode(request):
+            return httpx.Response(400, json={"error": {"message": "failed to retrieve media"}})
+        return httpx.Response(200, json={"text": "hello", "duration": 3.0})
+
+    t = await groq(handler).transcribe("https://scontent.cdninstagram.com/a.m4a")
+    assert t.text == "hello"
+    assert [url_mode(r) for r in posted] == [True, False]
+    assert b"AUDIO" in posted[1].content and b'filename="a.m4a"' in posted[1].content
+
+
+async def test_upload_fallback_audio_too_large_raises():
+    def handler(request):
+        if request.url.host == "scontent.cdninstagram.com":
+            return httpx.Response(200, content=b"x" * 50)
+        return httpx.Response(400, json={"error": {"message": "failed to retrieve media"}})
 
     with pytest.raises(TranscribeError, match="too large"):
         await groq(handler, max_bytes=10).transcribe("https://scontent.cdninstagram.com/a.m4a")
 
 
-async def test_transcribe_groq_error_raises():
+@pytest.mark.parametrize("status", [401, 429, 500])
+async def test_auth_rate_limit_and_server_errors_do_not_fall_back(status):
     def handler(request):
-        if request.url.host == "scontent.cdninstagram.com":
-            return httpx.Response(200, content=b"A")
-        return httpx.Response(429, json={"error": {"message": "rate limit"}})
+        assert request.url.host != "scontent.cdninstagram.com", "must not download"
+        return httpx.Response(status, json={"error": {"message": "nope"}})
 
-    with pytest.raises(TranscribeError, match="429"):
+    with pytest.raises(TranscribeError, match=str(status)):
         await groq(handler).transcribe("https://scontent.cdninstagram.com/a.m4a")
+
+
+async def test_timeout_error_names_the_exception():
+    def handler(request):
+        raise httpx.ReadTimeout("", request=request)
+
+    with pytest.raises(TranscribeError, match="ReadTimeout"):
+        await groq(handler).transcribe("https://scontent.cdninstagram.com/a.m4a")
+
+
+async def test_non_cdn_media_url_is_refused_without_a_request():
+    def handler(request):
+        raise AssertionError(f"unexpected {request.url}")
+
+    with pytest.raises(TranscribeError, match="not an Instagram CDN"):
+        await groq(handler).transcribe("https://evil.example/a.m4a")

@@ -309,35 +309,46 @@ class ScraperApiProvider:
 
 # -------------------------------------------------------------- thumbnail --
 
+MAX_CDN_REDIRECTS = 3
+
+
 async def download_limited(client: httpx.AsyncClient, url: str, max_bytes: int,
-                           timeout: float = 15.0, follow_redirects: bool = False) -> bytes | None:
+                           timeout: float = 15.0) -> bytes | None:
     """GET `url` into memory, or None if it fails or exceeds `max_bytes`.
 
     Media URLs come from Instagram pages, yt-dlp, a scraper or a device, so the
-    worker only downloads from Instagram/Facebook CDN hosts over https and never
-    follows redirects: no SSRF into the private network (backend review M4)."""
+    worker only downloads from Instagram/Facebook CDN hosts over https: no SSRF
+    into the private network (backend review M4). Redirects are followed by
+    hand, at most MAX_CDN_REDIRECTS hops and only when the target passes the same
+    check (Instagram's CDN 302s reel videos to video.xx.fbcdn.net)."""
     from .device import is_instagram_cdn_url
 
-    if not is_instagram_cdn_url(url):
-        log.info("download refused, not an Instagram CDN URL: %s", url[:80])
-        return None
-    try:
-        async with client.stream("GET", url, timeout=timeout, follow_redirects=follow_redirects,
-                                 headers={"User-Agent": BROWSER_UA}) as resp:
-            if resp.status_code != 200:
-                return None
-            declared = resp.headers.get("content-length")
-            if declared and declared.isdigit() and int(declared) > max_bytes:
-                return None
-            buf = bytearray()
-            async for chunk in resp.aiter_bytes():
-                buf += chunk
-                if len(buf) > max_bytes:
+    for _ in range(MAX_CDN_REDIRECTS + 1):
+        if not is_instagram_cdn_url(url):
+            log.info("download refused, not an Instagram CDN URL: %s", url[:80])
+            return None
+        try:
+            async with client.stream("GET", url, timeout=timeout, follow_redirects=False,
+                                     headers={"User-Agent": BROWSER_UA}) as resp:
+                if resp.is_redirect:
+                    url = str(resp.url.join(resp.headers.get("location", "")))
+                    continue
+                if resp.status_code != 200:
                     return None
-            return bytes(buf)
-    except httpx.HTTPError as exc:
-        log.info("download %s failed: %s", url[:80], exc)
-        return None
+                declared = resp.headers.get("content-length")
+                if declared and declared.isdigit() and int(declared) > max_bytes:
+                    return None
+                buf = bytearray()
+                async for chunk in resp.aiter_bytes():
+                    buf += chunk
+                    if len(buf) > max_bytes:
+                        return None
+                return bytes(buf)
+        except httpx.HTTPError as exc:
+            log.info("download %s failed: %s", url[:80], exc)
+            return None
+    log.info("download gave up after %d redirects: %s", MAX_CDN_REDIRECTS, url[:80])
+    return None
 
 
 class ThumbnailStore:
@@ -385,8 +396,7 @@ class ThumbnailStore:
 
         if image_url is None or not is_instagram_cdn_url(image_url):
             return None
-        data = await download_limited(self._client, image_url, self._max,
-                                      follow_redirects=False)
+        data = await download_limited(self._client, image_url, self._max)
         if not data or not looks_like_image(data):
             log.info("device thumbnail for %s not confirmed", shortcode)
             return None

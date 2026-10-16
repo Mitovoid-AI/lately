@@ -204,12 +204,29 @@ class Completion:
     cost_usd: float
 
 
+_EFFORTS = ("minimal", "low", "medium", "high")
+
+
+def reasoning_param(setting: str) -> dict[str, Any] | None:
+    """LLM_REASONING → the OpenRouter `reasoning` field: "" = provider default
+    (not sent), "off" = no hidden reasoning, or an effort level."""
+    s = setting.strip().lower()
+    if not s:
+        return None
+    if s == "off":
+        return {"enabled": False}
+    if s in _EFFORTS:
+        return {"effort": s}
+    raise ValueError(f"LLM_REASONING must be empty, off or one of {_EFFORTS}, not {setting!r}")
+
+
 class ChatLLM:
     def __init__(self, client: httpx.AsyncClient, base_url: str, api_key: str,
                  models: list[str], timeout: float = 60.0, cost_per_mtok_in: float = 0.0,
-                 cost_per_mtok_out: float = 0.0) -> None:
+                 cost_per_mtok_out: float = 0.0, reasoning: str = "") -> None:
         if not models:
             raise ValueError("ChatLLM needs at least one model")
+        self._reasoning = reasoning_param(reasoning)
         self._client = client
         self._url = base_url.rstrip("/") + "/chat/completions"
         self._headers = {"Authorization": f"Bearer {api_key}",
@@ -222,6 +239,8 @@ class ChatLLM:
         body = {"model": model, "messages": messages, "temperature": 0.2,
                 "response_format": {"type": "json_schema", "json_schema": {
                     "name": "reel_card", "strict": True, "schema": JSON_SCHEMA}}}
+        if self._reasoning is not None:
+            body["reasoning"] = self._reasoning
         return await self._client.post(self._url, json=body, headers=self._headers,
                                        timeout=self._timeout)
 
