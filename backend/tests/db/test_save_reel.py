@@ -83,6 +83,18 @@ async def test_save_reel_quota_exceeded(db, make_user):
         await save(db, uid, reel_url("Q3"))
 
 
+@pytest.mark.parametrize("plan", ["pro", "lifetime"])
+async def test_paid_plans_have_no_monthly_cap(db, make_user, plan):
+    uid = await make_user()
+    await db.execute("insert into public.profiles (id, plan, saves_free_limit) values ($1, $2, 1) "
+                     "on conflict (id) do update set plan = excluded.plan, "
+                     "saves_free_limit = excluded.saves_free_limit", uid, plan)
+    for code in ("P1", "P2", "P3"):
+        row = await save(db, uid, reel_url(code))
+        assert row["deduped"] is False
+    assert await db.fetchval("select count(*) from public.reels where auth_user_id = $1", uid) == 3
+
+
 async def test_save_reel_duplicate_at_quota_returns_deduped(db, make_user):
     uid = await make_user()
     await db.execute("insert into public.profiles (id, saves_free_limit) values ($1, 1) "
