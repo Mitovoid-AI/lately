@@ -18,31 +18,30 @@ No folders to maintain. No scrolling through hundreds of saves. Just search.
 
 ## Repo layout
 
-Two independent projects, each with its own `package.json` and install step:
-
 | Folder | What it is | Stack |
 |---|---|---|
-| `website/` | Web app + Telegram bot. Save a link, browse and search your cards in a browser. | Next.js 15, React 19, Supabase |
-| `app/` | Android app. Saves reels straight from Instagram's share sheet. | React Native, Expo, expo-share-intent |
-| `supabase/` | Shared database — migrations and seed data. Both projects point at the same Postgres. | Postgres |
+| `frontend/` | The app: Android (saves reels from Instagram's share sheet) and web. | Expo, React Native, expo-share-intent |
+| `backend/` | API + worker: saves, the enrichment pipeline (fetch → transcribe → card → embed), search. | FastAPI, asyncpg, OpenRouter, Groq, OpenAI embeddings |
+| `supabase/` | Database migrations `0001`–`0012`. | Postgres + pgvector + pg_trgm |
 
-Getting started:
+Design docs: `PIPELINE.md`, `BACKEND.md`, `SEARCH.md`, `INFRASTRUCTURE.md`.
+
+Getting started (local):
 
 ```bash
-# website + Telegram bot
-cd website && npm install
-cp .env.example .env.local   # fill in your keys
-npm run verify               # checks DB, tables, bot token, search
-npm run dev
+# backend: copy backend/.env.example to backend/.env and fill it in
+cd backend
+.venv/Scripts/python.exe scripts/dev.py        # API on :8001 + worker
+.venv/Scripts/python.exe scripts/e2e_live.py --urls scripts/e2e/reels.txt \
+    --queries scripts/e2e/queries.tsv --external-worker   # real reels → cards → search
 
-# Android app
-cd app && npm install
-cp .env.example .env
-npm start
+# app: copy frontend/.env.example to frontend/.env
+cd frontend && npm install
+npx expo start                                   # phone (same Wi-Fi) or press w for web
 ```
 
-Run the migrations in `supabase/migrations/` in order (`0001`, then `0002`) from
-the Supabase SQL editor before either project will work.
+Phone setup, the share-sheet build and sign-in: `frontend/README.md`, `docs/auth-setup.md`.
+Deploying: `docs/deploy.md`; launch steps: `docs/launch-checklist.md`.
 
 ## Status
 
