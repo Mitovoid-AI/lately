@@ -1,0 +1,38 @@
+{
+  "tool": "mobile-redesign-app",
+  "version": 1,
+  "date": "2026-10-17",
+  "mode": "preserve (Warm Editorial palette, Newsreader + Inter)",
+  "dials": { "expression": 5, "motion": 4, "density": 5 },
+  "measured": {
+    "viewport": "375x812 (Expo web, phone emulation)",
+    "library_first_card_top": { "before": 233, "after": 201 },
+    "library_card_media": { "before": "164x206 (4:5)", "after": "164x164 (1:1)" },
+    "header_height": { "before": 64, "after": 52 },
+    "search_field_height": { "before": 48, "after": 40 },
+    "tab_bar_height": { "before": 64, "after": 56 },
+    "sign_in_google_button_top": { "before": "below the fold", "after": 615 }
+  },
+  "findings": [
+    { "id": "FINDING-001", "impact": "high", "category": "screen-anatomy", "summary": "Library showed ~1.5 cards per phone screen (oversized chrome, 4:5 media)", "status": "fixed" },
+    { "id": "FINDING-002", "impact": "high", "category": "screen-anatomy", "summary": "Sign-in buttons below the fold on 375x812", "status": "fixed" },
+    { "id": "FINDING-003", "impact": "medium", "category": "interaction", "summary": "Filled Material icons read as basic; no outline/filled active states", "status": "fixed" },
+    { "id": "FINDING-004", "impact": "medium", "category": "color", "summary": "21 inline hex + 11 rgba values outside the theme", "status": "fixed" },
+    { "id": "FINDING-005", "impact": "medium", "category": "surfaces", "summary": "shadowColor without elevation: shadows invisible on Android (tell 5)", "status": "fixed" },
+    { "id": "FINDING-006", "impact": "medium", "category": "performance", "summary": "Search result rows re-rendered on every keystroke", "status": "fixed" },
+    { "id": "FINDING-007", "impact": "medium", "category": "screen-anatomy", "summary": "Card detail: 64 pt bar + 48 pt status row above a 4:5 hero", "status": "fixed" },
+    { "id": "FINDING-008", "impact": "medium", "category": "color", "summary": "Marigold text on cream ~2.6:1 for action labels", "status": "fixed" },
+    { "id": "FINDING-009", "impact": "polish", "category": "interaction", "summary": "Haptic on every tab switch (tell 39)", "status": "fixed" },
+    { "id": "FINDING-010", "impact": "polish", "category": "copy", "summary": "Em-dashes in visible strings", "status": "fixed" },
+    { "id": "FINDING-011", "impact": "polish", "category": "navigation", "summary": "/save deep link rendered a blank screen", "status": "fixed" },
+    { "id": "FINDING-012", "impact": "polish", "category": "interaction", "summary": "Dead mic affordance in the library search field", "status": "fixed" },
+    { "id": "FINDING-013", "impact": "medium", "category": "color", "summary": "No dark mode (the theme setting says 'coming soon')", "status": "open" },
+    { "id": "FINDING-014", "impact": "polish", "category": "navigation", "summary": "Header bookmark duplicates the Stacks tab on Library and Curated", "status": "open" }
+  ],
+  "unverified": [
+    "scroll performance and touch latency on a real Android device (release build)",
+    "1.3x system font scale on the tab bar and cards",
+    "Android edge-to-edge insets",
+    "boxShadow rendering on the user's Android version"
+  ]
+}
