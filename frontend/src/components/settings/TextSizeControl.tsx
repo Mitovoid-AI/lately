@@ -5,7 +5,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-na
 import type { Preferences } from "../../api/contract";
 import { haptic } from "../../lib/haptics";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "../../theme/motion";
-import { colors, shadows } from "../../theme/tokens";
+import { useTheme } from "../../theme/ThemeProvider";
 
 type Size = Preferences["text_size"];
 
@@ -25,6 +25,7 @@ export function TextSizeControl({
   value: Size;
   onChange: (size: Size) => void;
 }) {
+  const { colors, shadows } = useTheme();
   const [width, setWidth] = useState(0);
   const x = useSharedValue(0);
   const shown = useSharedValue(0);
@@ -60,7 +61,7 @@ export function TextSizeControl({
         </Text>
         <View className="mx-3 h-8 flex-1 justify-center" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
           <View className="h-1.5 rounded-full bg-raised" />
-          <Animated.View style={[styles.thumb, thumbStyle]} />
+          <Animated.View style={[styles.thumb, { backgroundColor: colors.accentText, boxShadow: shadows.raised }, thumbStyle]} />
           <View className="absolute inset-0 flex-row items-center justify-between">
             {sizes.map((s) => (
               <Pressable
@@ -103,7 +104,5 @@ const styles = StyleSheet.create({
     width: THUMB,
     height: THUMB,
     borderRadius: THUMB / 2,
-    backgroundColor: colors.accentText,
-    boxShadow: shadows.raised,
   },
 });

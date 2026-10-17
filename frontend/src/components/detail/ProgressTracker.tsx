@@ -1,12 +1,13 @@
 import { ActivityIndicator, Text, View } from "react-native";
 
-import { colors } from "../../theme/tokens";
+import { useTheme } from "../../theme/ThemeProvider";
 import { Icon } from "../Icon";
 
 const STEPS = ["Saved", "Getting the preview", "Writing the summary"];
 
 /** Processing card: Saved ✓ → Getting the preview (spinner) → Writing the summary. */
 export function ProgressTracker({ current = 1 }: { current?: number }) {
+  const { colors } = useTheme();
   return (
     <View className="rounded-2xl border border-hairline bg-card p-4">
       {STEPS.map((label, i) => {

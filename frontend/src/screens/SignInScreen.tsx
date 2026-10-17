@@ -27,7 +27,7 @@ import { Thumb } from "../components/Thumb";
 import { useToast } from "../components/Toast";
 import { haptic } from "../lib/haptics";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "../theme/motion";
-import { colors, shadows } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { usePendingShare } from "../share/ShareRouter";
 
 const IMG = {
@@ -43,7 +43,7 @@ const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
 type Provider = "google" | "email";
 
-function Pill({ icon, label, iconColor = colors.ink2 }: { icon: IconName; label: string; iconColor?: string }) {
+function Pill({ icon, label, iconColor }: { icon: IconName; label: string; iconColor?: string }) {
   return (
     <View className="h-8 flex-row items-center rounded-full bg-raised px-3">
       <Icon name={icon} size={16} color={iconColor} />
@@ -65,6 +65,7 @@ function ProviderButton({
   tone?: "accent" | "plain" | "soft";
   className?: string;
 }) {
+  const { colors, shadows } = useTheme();
   const box = tone === "accent" ? "bg-accent" : tone === "soft" ? "bg-raised" : "bg-card border border-hairline";
   const text = tone === "accent" ? "text-on-accent" : "text-ink";
   const icon =
@@ -91,13 +92,14 @@ function ProviderButton({
 }
 
 function Tag({ icon, text, dark = true }: { icon?: IconName; text: string; dark?: boolean }) {
+  const { colors } = useTheme();
   return (
     <View
       className="flex-row items-center rounded-full px-2 py-1"
       style={{ backgroundColor: dark ? colors.scrim : colors.scrimLight }}
     >
       {icon ? <Icon name={icon} size={12} color={dark ? colors.onMedia : colors.ink} /> : null}
-      <Text className={`ml-1 font-sans-semibold text-caption ${dark ? "text-on-accent" : "text-ink"}`}>{text}</Text>
+      <Text className={`ml-1 font-sans-semibold text-caption ${dark ? "text-on-media" : "text-ink"}`}>{text}</Text>
     </View>
   );
 }
@@ -137,6 +139,7 @@ function LeadCard({ children }: { children: ReactNode }) {
 
 /** The tilted three-reel stack from "01 Sign in — light". */
 function ReelStack() {
+  const { colors, shadows } = useTheme();
   return (
     <View className="mt-3 h-[272px] w-full items-center justify-center">
       <FanCard side={-1} style={{ position: "absolute", left: "7%", top: 22, width: 118 }}>
@@ -145,8 +148,8 @@ function ReelStack() {
           <View className="absolute left-2 top-2">
             <Tag icon="play-circle-outline" text="Reels" />
           </View>
-          <Text className="absolute bottom-8 left-3 font-sans-semibold text-meta text-on-accent">@alpine.days</Text>
-          <Text className="absolute bottom-3 left-3 font-sans text-caption text-on-accent">♪ Original audio</Text>
+          <Text className="absolute bottom-8 left-3 font-sans-semibold text-meta text-on-media">@alpine.days</Text>
+          <Text className="absolute bottom-3 left-3 font-sans text-caption text-on-media">♪ Original audio</Text>
         </Thumb>
       </FanCard>
       <FanCard side={1} style={{ position: "absolute", right: "7%", top: 22, width: 118 }}>
@@ -157,7 +160,7 @@ function ReelStack() {
           </View>
           <View className="absolute bottom-12 right-2 items-center">
             <Icon name="favorite-border" size={20} color={colors.onMedia} />
-            <Text className="font-sans-semibold text-caption text-on-accent">42.1k</Text>
+            <Text className="font-sans-semibold text-caption text-on-media">42.1k</Text>
           </View>
         </Thumb>
       </FanCard>
@@ -178,15 +181,15 @@ function ReelStack() {
           </View>
           <View className="absolute right-2 items-center" style={{ top: "44%" }}>
             <Icon name="favorite" size={22} color={colors.onMedia} />
-            <Text className="mb-2 font-sans-semibold text-caption text-on-accent">64.2k</Text>
+            <Text className="mb-2 font-sans-semibold text-caption text-on-media">64.2k</Text>
             <Icon name="chat-bubble-outline" size={20} color={colors.onMedia} />
-            <Text className="font-sans-semibold text-caption text-on-accent">328</Text>
+            <Text className="font-sans-semibold text-caption text-on-media">328</Text>
           </View>
           <View className="absolute bottom-[64px] left-2 flex-row items-center">
             <View className="h-5 w-5 items-center justify-center rounded-full bg-accent">
-              <Icon name="local-cafe" size={12} color={colors.onMedia} />
+              <Icon name="local-cafe" size={12} color={colors.onAccent} />
             </View>
-            <Text className="ml-1.5 font-sans-semibold text-meta text-on-accent">@cafestory</Text>
+            <Text className="ml-1.5 font-sans-semibold text-meta text-on-media">@cafestory</Text>
           </View>
           <View className="absolute bottom-2 left-2 right-2 rounded-xl bg-card px-2.5 py-2">
             <View className="flex-row items-center justify-between">
@@ -246,6 +249,7 @@ type Mode = "sign-in" | "sign-up";
  * each tab switching its own background.
  */
 function ModeToggle({ value, onChange, wide }: { value: Mode; onChange: (m: Mode) => void; wide: boolean }) {
+  const { colors, shadows } = useTheme();
   const [layouts, setLayouts] = useState<Partial<Record<Mode, { x: number; width: number }>>>({});
   const x = useSharedValue(0);
   const w = useSharedValue(0);
@@ -268,7 +272,7 @@ function ModeToggle({ value, onChange, wide }: { value: Mode; onChange: (m: Mode
 
   return (
     <View className={`mt-6 flex-row rounded-full bg-raised p-1 ${wide ? "w-full" : "w-[240px]"}`}>
-      <Animated.View style={[styles.modePill, pill]} />
+      <Animated.View style={[styles.modePill, { backgroundColor: colors.card, boxShadow: shadows.card }, pill]} />
       {(["sign-in", "sign-up"] as const).map((t) => (
         <Pressable
           key={t}
@@ -296,6 +300,7 @@ function ModeToggle({ value, onChange, wide }: { value: Mode; onChange: (m: Mode
 const SWAP_IN = FadeIn.duration(DURATION.enter).easing(EASE_OUT);
 
 export function SignInScreen() {
+  const { colors } = useTheme();
   const auth = useAuth();
   const router = useRouter();
   const toast = useToast();
@@ -480,7 +485,5 @@ const styles = StyleSheet.create({
     bottom: 4,
     left: 0,
     borderRadius: 999,
-    backgroundColor: colors.card,
-    boxShadow: shadows.card,
   },
 });

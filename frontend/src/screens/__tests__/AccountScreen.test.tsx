@@ -1,10 +1,14 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { Text } from "react-native";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import { queueKey } from "../../lib/saveQueue";
 import { PENDING_SHARE_KEY } from "../../share/ShareRouter";
+import { THEME_KEY } from "../../theme/preference";
+import { useTheme } from "../../theme/ThemeProvider";
+import { ThemeSync } from "../../theme/ThemeSync";
 import { demoApi, renderWithProviders } from "../../test/render";
 import { AccountScreen } from "../AccountScreen";
 
@@ -51,10 +55,32 @@ test("reading font and text size are saved", async () => {
   await settled(client);
 });
 
-test("dark theme says it is coming", async () => {
-  const { client } = await open();
+function SchemeProbe() {
+  return <Text>{`scheme:${useTheme().scheme}`}</Text>;
+}
+
+test("picking Dark saves it, switches the app to Espresso and remembers it on the phone", async () => {
+  const api = demoApi();
+  const updatePreferences = jest.spyOn(api, "updatePreferences");
+  const { client } = await renderWithProviders(
+    <>
+      <ThemeSync />
+      <AccountScreen />
+      <SchemeProbe />
+    </>,
+    { api },
+  );
+  await screen.findByText("Aanya Sharma");
+  expect(screen.getByText("scheme:light")).toBeTruthy();
+
   await fireEvent.press(screen.getByText("Dark"));
-  expect(await screen.findByText("Dark theme is coming soon. Lately stays light for now.")).toBeTruthy();
+  expect(updatePreferences).toHaveBeenCalledWith({ theme: "dark" });
+  expect(await screen.findByText("scheme:dark")).toBeTruthy();
+  expect(screen.queryByText(/coming soon\. Lately stays light/)).toBeNull();
+  await waitFor(async () => expect(await AsyncStorage.getItem(THEME_KEY)).toBe("dark"));
+
+  await fireEvent.press(screen.getByText("Light"));
+  expect(await screen.findByText("scheme:light")).toBeTruthy();
   await settled(client);
 });
 

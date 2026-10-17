@@ -2,7 +2,7 @@ import Ionicons from "@expo/vector-icons/Ionicons";
 import type { ComponentProps } from "react";
 import { Platform } from "react-native";
 
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 
 type Glyph = ComponentProps<typeof Ionicons>["name"];
 
@@ -97,6 +97,7 @@ const GLYPHS = {
 
 export type IconName = keyof typeof GLYPHS;
 
-export function Icon({ name, size = 22, color = colors.ink2 }: { name: IconName; size?: number; color?: string }) {
-  return <Ionicons name={GLYPHS[name]} size={size} color={color} />;
+export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color?: string }) {
+  const { colors } = useTheme();
+  return <Ionicons name={GLYPHS[name]} size={size} color={color ?? colors.ink2} />;
 }

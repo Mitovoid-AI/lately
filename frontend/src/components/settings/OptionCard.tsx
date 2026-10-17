@@ -10,7 +10,7 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { DURATION, EASE_OUT } from "../../theme/motion";
-import { colors } from "../../theme/tokens";
+import { useTheme } from "../../theme/ThemeProvider";
 import { Icon } from "../Icon";
 import { PressableScale } from "../motion/PressableScale";
 
@@ -34,6 +34,7 @@ export function OptionCard({
   label: string;
   check?: boolean;
 }) {
+  const { colors } = useTheme();
   const on = useSharedValue(selected ? 1 : 0);
   useEffect(() => {
     on.set(withTiming(selected ? 1 : 0, { duration: DURATION.state, easing: EASE_OUT }));

@@ -3,7 +3,7 @@ import { StyleSheet, Text, View, type TextStyle } from "react-native";
 import Animated, { FadeIn, LinearTransition } from "react-native-reanimated";
 
 import { DURATION, EASE_OUT } from "../../theme/motion";
-import { colors } from "../../theme/tokens";
+import { useTheme } from "../../theme/ThemeProvider";
 import { Button } from "../Button";
 import { IconButton } from "../motion/IconButton";
 import { PressableScale } from "../motion/PressableScale";
@@ -25,6 +25,7 @@ export function NoteBlock({
   onSave: (note: string) => Promise<void>;
   textStyle?: TextStyle;
 }) {
+  const { colors } = useTheme();
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note ?? "");
   const [saving, setSaving] = useState(false);
@@ -58,7 +59,7 @@ export function NoteBlock({
   const entering = touched ? MODE_IN : undefined;
 
   return (
-    <Animated.View layout={RESIZE} style={styles.card}>
+    <Animated.View layout={RESIZE} style={[styles.card, { borderColor: colors.hairline, backgroundColor: colors.card }]}>
       <View className="flex-row items-center justify-between">
         <Text className="font-sans-semibold text-label text-ink">YOUR NOTE</Text>
         {editing ? null : (
@@ -102,8 +103,6 @@ const styles = StyleSheet.create({
   card: {
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: colors.hairline,
-    backgroundColor: colors.card,
     padding: 16,
     overflow: "hidden",
   },

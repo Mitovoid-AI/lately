@@ -6,7 +6,7 @@ import type { Save } from "../api/contract";
 import { relativeShort } from "../lib/dates";
 import { displayLink } from "../lib/instagram";
 import { CATEGORY } from "../theme/categories";
-import { colors, shadows } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { CategoryDot } from "./CategoryDot";
 import { Icon } from "./Icon";
 import { PressableScale } from "./motion/PressableScale";
@@ -49,6 +49,7 @@ export const ReelCard = memo(function ReelCard({
   href?: string;
   onPress?: () => void;
 }) {
+  const { colors, shadows } = useTheme();
   const pending = save.status === "pending";
   const partial = save.status === "partial";
   const category = pending ? null : save.category;

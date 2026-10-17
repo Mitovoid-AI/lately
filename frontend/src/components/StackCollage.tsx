@@ -1,17 +1,19 @@
 import { Image } from "expo-image";
 import { View, type ViewStyle } from "react-native";
 
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { Icon } from "./Icon";
 
 const GAP = 2;
 
 function Cell({ uri, flex = 1 }: { uri: string; flex?: number }) {
+  const { colors } = useTheme();
   return <Image source={{ uri }} contentFit="cover" style={{ flex, backgroundColor: colors.raised }} />;
 }
 
 /** Stack cover: 0–4 thumbnails arranged in one rounded square frame (Stitch "07 Stacks"). */
 export function StackCollage({ covers, radius = 14, size }: { covers: string[]; radius?: number; size?: number }) {
+  const { colors } = useTheme();
   const frame: ViewStyle = {
     width: size ?? "100%",
     aspectRatio: 1,

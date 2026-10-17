@@ -8,7 +8,7 @@ import { HEADER_HEIGHT, ScrollHairline } from "../components/Header";
 import { IconButton } from "../components/motion/IconButton";
 import { Reveal } from "../components/motion/Reveal";
 import { goBack } from "../lib/navigation";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { LEGAL_DOCS, type LegalDoc } from "./documents";
 import { parseMarkdown, type Run } from "./markdown";
 
@@ -24,6 +24,7 @@ function Runs({ runs }: { runs: Run[] }) {
 
 /** Privacy Policy / Terms of Service, readable signed in or out (/legal/privacy, /legal/terms). */
 export function LegalScreen() {
+  const { colors } = useTheme();
   const { doc } = useLocalSearchParams<{ doc?: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();

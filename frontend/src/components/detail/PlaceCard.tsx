@@ -1,7 +1,7 @@
 import { Linking, Text, View } from "react-native";
 
 import type { Place } from "../../api/contract";
-import { colors } from "../../theme/tokens";
+import { useTheme } from "../../theme/ThemeProvider";
 import { Icon } from "../Icon";
 import { PressableScale } from "../motion/PressableScale";
 
@@ -13,6 +13,7 @@ export function mapsUrl(place: Place): string {
 }
 
 export function PlaceCard({ place }: { place: Place }) {
+  const { colors } = useTheme();
   return (
     <View className="flex-row items-center rounded-2xl border border-hairline bg-card p-4">
       <View className="h-10 w-10 items-center justify-center rounded-full bg-raised">

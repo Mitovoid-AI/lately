@@ -3,9 +3,7 @@ import { Platform, StyleSheet, TextInput, View, type StyleProp, type TextInputPr
 import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withTiming } from "react-native-reanimated";
 
 import { DURATION, EASE_OUT } from "../theme/motion";
-import { colors } from "../theme/tokens";
-
-const RING = colors.focusRing;
+import { useTheme } from "../theme/ThemeProvider";
 
 /**
  * Text input with the design system's focus state: the hairline warms to marigold and a soft
@@ -36,6 +34,7 @@ export function TextField({
   trailing?: ReactNode;
   ref?: Ref<TextInput>;
 }) {
+  const { colors } = useTheme();
   const focus = useSharedValue(0);
   const to = useCallback(
     (v: number) => focus.set(withTiming(v, { duration: DURATION.state, easing: EASE_OUT })),
@@ -52,7 +51,7 @@ export function TextField({
 
   return (
     <View className={className}>
-      <Animated.View style={[styles.ring, ringStyle]} />
+      <Animated.View style={[styles.ring, { borderColor: colors.focusRing }, ringStyle]} />
       <Animated.View
         style={[
           styles.box,
@@ -102,7 +101,6 @@ const styles = StyleSheet.create({
     left: -3,
     borderRadius: 15,
     borderWidth: 3,
-    borderColor: RING,
   },
   // The field draws its own focus ring, so the browser's outline is switched off on web.
   input: { paddingVertical: 0, ...(Platform.OS === "web" ? { outlineWidth: 0, outlineColor: "transparent" } : null) },

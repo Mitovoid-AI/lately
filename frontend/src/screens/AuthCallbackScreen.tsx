@@ -7,7 +7,7 @@ import { useAuth, type AuthFailure } from "../auth/AuthProvider";
 import { Button } from "../components/Button";
 import { Icon } from "../components/Icon";
 import { Reveal } from "../components/motion/Reveal";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 
 const MESSAGES: Record<AuthFailure, string> = {
   cancelled: "Sign-in was cancelled.",
@@ -23,6 +23,7 @@ const MESSAGES: Record<AuthFailure, string> = {
  * URL into a session; this screen waits for it, then hands over to the app.
  */
 export function AuthCallbackScreen() {
+  const { colors } = useTheme();
   const { status, linkError } = useAuth();
   const router = useRouter();
   const insets = useSafeAreaInsets();

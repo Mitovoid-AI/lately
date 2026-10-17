@@ -9,11 +9,12 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { DURATION, EASE_OUT } from "../../theme/motion";
-import { colors } from "../../theme/tokens";
+import { useTheme } from "../../theme/ThemeProvider";
 import { Icon } from "../Icon";
 
 /** Marigold checkbox: the fill floods in and the tick springs up from 60%. */
 export function Checkbox({ checked, disabled = false, label }: { checked: boolean; disabled?: boolean; label?: string }) {
+  const { colors } = useTheme();
   const on = useSharedValue(checked ? 1 : 0);
   const tick = useSharedValue(checked ? 1 : 0);
   const first = useRef(true);

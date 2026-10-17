@@ -26,7 +26,7 @@
     { "id": "FINDING-010", "impact": "polish", "category": "copy", "summary": "Em-dashes in visible strings", "status": "fixed" },
     { "id": "FINDING-011", "impact": "polish", "category": "navigation", "summary": "/save deep link rendered a blank screen", "status": "fixed" },
     { "id": "FINDING-012", "impact": "polish", "category": "interaction", "summary": "Dead mic affordance in the library search field", "status": "fixed" },
-    { "id": "FINDING-013", "impact": "medium", "category": "color", "summary": "No dark mode (the theme setting says 'coming soon')", "status": "open" },
+    { "id": "FINDING-013", "impact": "medium", "category": "color", "summary": "No dark mode (the theme setting says 'coming soon')", "status": "fixed", "note": "Espresso dark theme; Theme & Appearance applies light / dark / system" },
     { "id": "FINDING-014", "impact": "polish", "category": "navigation", "summary": "Header bookmark duplicates the Stacks tab on Library and Curated", "status": "open" }
   ],
   "unverified": [

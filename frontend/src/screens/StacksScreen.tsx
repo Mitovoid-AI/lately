@@ -18,7 +18,7 @@ import { useNow } from "../hooks/useNow";
 import { useMe } from "../hooks/useSaves";
 import { relativeShort } from "../lib/dates";
 import { haptic } from "../lib/haptics";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { NewStackSheet } from "./NewStackSheet";
 import { ErrorState } from "../components/ErrorState";
 
@@ -31,6 +31,7 @@ export const reelsCount = (n: number) => (n === 1 ? "1 reel" : `${n} reels`);
 type Item = Stack | { id: typeof NEW };
 
 export function StacksScreen() {
+  const { colors } = useTheme();
   const router = useRouter();
   const api = useApi();
   const insets = useSafeAreaInsets();
@@ -89,7 +90,7 @@ export function StacksScreen() {
         )}
       </Reveal>
     ),
-    [entrance, itemWidth, now, router],
+    [entrance, itemWidth, now, router, colors],
   );
 
   return (

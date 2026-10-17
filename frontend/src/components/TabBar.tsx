@@ -10,7 +10,7 @@ import Animated, {
 
 import { haptic } from "../lib/haptics";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "../theme/motion";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import type { IconName } from "./Icon";
 import { AnimatedIcon } from "./motion/AnimatedIcon";
 import { PressableScale } from "./motion/PressableScale";
@@ -40,6 +40,7 @@ function TabItem({
   onPress: () => void;
   onLayout: (x: number, width: number) => void;
 }) {
+  const { colors } = useTheme();
   const on = useSharedValue(focused ? 1 : 0);
   useEffect(() => {
     on.set(withTiming(focused ? 1 : 0, { duration: DURATION.state, easing: EASE_OUT }));
@@ -75,6 +76,7 @@ function TabItem({
  * the icon dips, its colour dissolves to marigold and a short marker glides to it.
  */
 export function TabBar({ state, descriptors, navigation, insets }: TabBarProps) {
+  const { colors } = useTheme();
   const [layouts, setLayouts] = useState<Record<string, { x: number; width: number }>>({});
   const markX = useSharedValue(0);
   const markOn = useSharedValue(0);
@@ -104,7 +106,7 @@ export function TabBar({ state, descriptors, navigation, insets }: TabBarProps) 
       className="flex-row items-center justify-around border-t border-hairline bg-canvas"
       style={{ paddingBottom: insets.bottom, height: TAB_BAR_HEIGHT + insets.bottom }}
     >
-      <Animated.View style={[styles.mark, markStyle]} />
+      <Animated.View style={[styles.mark, { backgroundColor: colors.accent }, markStyle]} />
       {state.routes.map((route, index) => {
         const focused = state.index === index;
         const label = descriptors[route.key].options.title ?? route.name;
@@ -142,7 +144,6 @@ const styles = StyleSheet.create({
     width: MARK_W,
     height: 2,
     borderRadius: 1,
-    backgroundColor: colors.accent,
   },
   label: { marginTop: 3, fontFamily: "Inter_500Medium", fontSize: 11, lineHeight: 13 },
   labelOn: { fontFamily: "Inter_600SemiBold" },

@@ -22,7 +22,7 @@ import { relativeShort } from "../lib/dates";
 import { loadRecent, pushRecent } from "../lib/recent";
 import { deviceStore } from "../lib/storage";
 import { DURATION } from "../theme/motion";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { goBack } from "../lib/navigation";
 import { ErrorState } from "../components/ErrorState";
 import { pollWhilePending } from "../hooks/useSaves";
@@ -57,6 +57,7 @@ const ResultRow = memo(function ResultRow({
   now: number;
   onOpen: (hit: SearchHit) => void;
 }) {
+  const { colors } = useTheme();
   const s = hit.save;
   return (
     <PressableScale
@@ -91,6 +92,7 @@ const ResultRow = memo(function ResultRow({
 });
 
 export function SearchScreen() {
+  const { colors } = useTheme();
   const { q: initial = "" } = useLocalSearchParams<{ q?: string }>();
   const router = useRouter();
   const api = useApi();

@@ -6,7 +6,7 @@
     "scheme": "lately",
     "orientation": "portrait",
     "icon": "./assets/brand/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "app.lately.ios",
@@ -52,7 +52,11 @@
           "image": "./assets/brand/splash-icon.png",
           "imageWidth": 160,
           "resizeMode": "contain",
-          "backgroundColor": "#FAF8F5"
+          "backgroundColor": "#FAF8F5",
+          "dark": {
+            "image": "./assets/brand/splash-icon.png",
+            "backgroundColor": "#15120F"
+          }
         }
       ],
       [

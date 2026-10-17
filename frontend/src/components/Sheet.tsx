@@ -15,12 +15,10 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { scheduleOnRN } from "react-native-worklets";
 
 import { haptic } from "../lib/haptics";
-import { colors } from "../theme/tokens";
 import { DURATION, EASE_OUT, EASE_SHEET, SPRING } from "../theme/motion";
+import { useTheme } from "../theme/ThemeProvider";
 import { project, rubberband } from "./motion/physics";
 import { usePresence } from "./motion/usePresence";
-
-export const BACKDROP = colors.backdrop;
 
 export type SheetMotion = {
   /** 0 = off screen, 1 = presented. */
@@ -70,6 +68,7 @@ export function SheetPanel({
   /** A layout transition, so the sheet eases to a new height when its content changes. */
   layout?: ComponentProps<typeof Animated.View>["layout"];
 }) {
+  const { colors } = useTheme();
   const insets = useSafeAreaInsets();
   const own = useSheetValues();
   const { progress, drag, height } = motion ?? own;
@@ -118,7 +117,7 @@ export function SheetPanel({
         style={[styles.panel, panelStyle]}
       >
         {/* Card-coloured skirt below the sheet: no gap shows while it resizes or is pulled up. */}
-        <View style={styles.skirt} />
+        <View style={[styles.skirt, { backgroundColor: colors.card }]} />
         <View
           className="w-full rounded-t-sheet border-t border-hairline bg-card px-4"
           style={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
@@ -144,6 +143,7 @@ export function Sheet({
   fluid?: boolean;
   children: ReactNode;
 }) {
+  const { colors } = useTheme();
   const { motion, backdropStyle } = useSheetMotion();
   const mounted = usePresence(visible, motion.progress);
   if (!visible && !mounted) return null;
@@ -153,7 +153,7 @@ export function Sheet({
       {/* Gestures need their own root inside a Modal on Android. */}
       <GestureHandlerRootView style={styles.fill}>
         <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.end}>
-          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: BACKDROP }, backdropStyle]}>
+          <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.backdrop }, backdropStyle]}>
             <Pressable accessibilityLabel="Close" onPress={onClose} style={styles.fill} />
           </Animated.View>
           <SheetPanel motion={motion} onDismiss={onClose} layout={fluid ? SHEET_RESIZE : undefined}>
@@ -169,5 +169,5 @@ const styles = StyleSheet.create({
   fill: { flex: 1 },
   end: { flex: 1, justifyContent: "flex-end" },
   panel: { width: "100%", maxWidth: 560, alignSelf: "center" },
-  skirt: { pointerEvents: "none", position: "absolute", left: 0, right: 0, top: "50%", height: 1200, backgroundColor: colors.card },
+  skirt: { pointerEvents: "none", position: "absolute", left: 0, right: 0, top: "50%", height: 1200 },
 });

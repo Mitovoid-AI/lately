@@ -11,6 +11,7 @@ import { ToastProvider } from "../components/Toast";
 import { NOW } from "./fixtures";
 import { createMemoryStore } from "./memoryStore";
 import { SaveQueueProvider } from "../hooks/useSaveQueue";
+import { ThemeProvider } from "../theme/ThemeProvider";
 import type { KeyValueStore } from "../lib/storage";
 
 const METRICS = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };
@@ -53,15 +54,17 @@ export async function renderWithProviders(
   const queueStore = o.queueStore ?? createMemoryStore();
   const view = await render(
     <SafeAreaProvider initialMetrics={METRICS}>
-      <QueryClientProvider client={client}>
-        <ApiProvider api={api}>
-          <AuthContext.Provider value={auth}>
-            <ToastProvider>
-              <SaveQueueProvider store={queueStore}>{ui}</SaveQueueProvider>
-            </ToastProvider>
-          </AuthContext.Provider>
-        </ApiProvider>
-      </QueryClientProvider>
+      <ThemeProvider>
+        <QueryClientProvider client={client}>
+          <ApiProvider api={api}>
+            <AuthContext.Provider value={auth}>
+              <ToastProvider>
+                <SaveQueueProvider store={queueStore}>{ui}</SaveQueueProvider>
+              </ToastProvider>
+            </AuthContext.Provider>
+          </ApiProvider>
+        </QueryClientProvider>
+      </ThemeProvider>
     </SafeAreaProvider>,
   );
   return { ...view, api, auth, client, queueStore };

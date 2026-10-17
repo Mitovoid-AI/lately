@@ -4,11 +4,11 @@ import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withTimin
 
 import type { HapticKind } from "../lib/haptics";
 import { DURATION, EASE_OUT } from "../theme/motion";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { PressableScale } from "./motion/PressableScale";
 
 /**
- * Pill chip: 32 high, raised fill; active = marigold with white text. Selecting it dissolves
+ * Pill chip: 32 high, raised fill; active = marigold with on-accent text. Selecting it dissolves
  * fill, border, text and dot together in 180 ms. The label keeps the width of its bold form,
  * so switching weight never nudges the chips beside it.
  */
@@ -27,6 +27,7 @@ export function Chip({
   haptic?: HapticKind;
   className?: string;
 }) {
+  const { colors } = useTheme();
   const on = useSharedValue(active ? 1 : 0);
   useEffect(() => {
     on.set(withTiming(active ? 1 : 0, { duration: DURATION.state, easing: EASE_OUT }));

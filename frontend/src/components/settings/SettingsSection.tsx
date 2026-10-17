@@ -1,12 +1,13 @@
 import type { ReactNode } from "react";
 import { Text, View } from "react-native";
 
-import { colors } from "../../theme/tokens";
+import { useTheme } from "../../theme/ThemeProvider";
 import { Icon, type IconName } from "../Icon";
 import { PressableScale } from "../motion/PressableScale";
 
 /** Section heading (Newsreader + accent icon) and its white card. */
 export function SettingsSection({ icon, title, children }: { icon: IconName; title: string; children: ReactNode }) {
+  const { colors } = useTheme();
   return (
     <View className="mt-8">
       <View className="mb-3 flex-row items-center">
@@ -42,6 +43,7 @@ export function SettingsRow({
   children?: ReactNode;
   divider?: boolean;
 }) {
+  const { colors } = useTheme();
   return (
     <View className={divider ? "mt-4 border-t border-hairline pt-4" : ""}>
       <PressableScale

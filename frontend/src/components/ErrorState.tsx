@@ -1,6 +1,6 @@
 import { Text, View } from "react-native";
 
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { Button } from "./Button";
 import { Icon, type IconName } from "./Icon";
 import { Reveal } from "./motion/Reveal";
@@ -19,6 +19,7 @@ export function ErrorState({
   onRetry?: () => void;
   retrying?: boolean;
 }) {
+  const { colors } = useTheme();
   return (
     <Reveal>
       <View className="items-center px-6 pt-16">

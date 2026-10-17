@@ -2,9 +2,8 @@ import type { ReactNode } from "react";
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import Animated, { FadeIn, useReducedMotion, type CSSAnimationKeyframes, type CSSStyle } from "react-native-reanimated";
 
-import { colors, sheen } from "../theme/tokens";
-
-const SHEEN = sheen;
+import { useTheme, type Scheme } from "../theme/ThemeProvider";
+import { sheens } from "../theme/tokens";
 
 // A light band sweeping left → right on a 1.2 s loop (the design system's skeleton spec).
 // A Reanimated CSS animation: it runs on the UI thread and never touches React.
@@ -13,25 +12,29 @@ const SWEEP: CSSAnimationKeyframes = {
   to: { transform: [{ translateX: "170%" }] },
 };
 
-const band = {
-  position: "absolute",
-  top: 0,
-  bottom: 0,
-  left: 0,
-  width: "60%",
-  ...(Platform.OS === "web" ? { backgroundImage: SHEEN } : { experimental_backgroundImage: SHEEN }),
-  animationName: SWEEP,
-  animationDuration: "1.2s",
-  animationIterationCount: "infinite",
-  animationTimingFunction: "linear",
-} as CSSStyle<ViewStyle>;
+function bandFor(sheen: string) {
+  return {
+    position: "absolute",
+    top: 0,
+    bottom: 0,
+    left: 0,
+    width: "60%",
+    ...(Platform.OS === "web" ? { backgroundImage: sheen } : { experimental_backgroundImage: sheen }),
+    animationName: SWEEP,
+    animationDuration: "1.2s",
+    animationIterationCount: "infinite",
+    animationTimingFunction: "linear",
+  } as CSSStyle<ViewStyle>;
+}
+const BAND: Record<Scheme, CSSStyle<ViewStyle>> = { light: bandFor(sheens.light), dark: bandFor(sheens.dark) };
 
 /** Loading placeholder: a raised block with a soft shimmer (still when Reduce Motion is on). */
 export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
   const reduced = useReducedMotion();
+  const { colors, scheme } = useTheme();
   return (
-    <View style={[styles.block, style]}>
-      {reduced ? null : <Animated.View style={band} />}
+    <View style={[styles.block, { backgroundColor: colors.raised }, style]}>
+      {reduced ? null : <Animated.View style={BAND[scheme]} />}
     </View>
   );
 }
@@ -103,7 +106,7 @@ export function SkeletonGrid({
 }
 
 const styles = StyleSheet.create({
-  block: { backgroundColor: colors.raised, overflow: "hidden" },
+  block: { overflow: "hidden" },
   line: { height: 14, borderRadius: 7 },
   meta: { height: 11, borderRadius: 6 },
 });

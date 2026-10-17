@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 
 import type { HapticKind } from "../../lib/haptics";
-import { colors } from "../../theme/tokens";
+import { useTheme } from "../../theme/ThemeProvider";
 import { Icon, type IconName } from "../Icon";
 import { PressableScale } from "./PressableScale";
 
@@ -10,7 +10,7 @@ export function IconButton({
   icon,
   label,
   onPress,
-  color = colors.ink2,
+  color,
   size = 22,
   haptic,
   className,
@@ -27,6 +27,7 @@ export function IconButton({
   /** Custom content (an avatar, an AnimatedIcon) instead of `icon`. */
   children?: ReactNode;
 }) {
+  const { colors } = useTheme();
   return (
     <PressableScale
       accessibilityRole="button"
@@ -39,7 +40,7 @@ export function IconButton({
       containerClassName={className}
       className="h-12 w-12 items-center justify-center rounded-full"
     >
-      {children ?? (icon ? <Icon name={icon} size={size} color={color} /> : null)}
+      {children ?? (icon ? <Icon name={icon} size={size} color={color ?? colors.ink2} /> : null)}
     </PressableScale>
   );
 }

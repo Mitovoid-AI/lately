@@ -7,7 +7,7 @@ import type { Stack } from "../../api/contract";
 import { useApi } from "../../api/index";
 import { haptic } from "../../lib/haptics";
 import { DURATION } from "../../theme/motion";
-import { colors } from "../../theme/tokens";
+import { useTheme } from "../../theme/ThemeProvider";
 import { Icon } from "../Icon";
 import { PressableScale } from "../motion/PressableScale";
 import { Reveal } from "../motion/Reveal";
@@ -32,6 +32,7 @@ export function StackPicker({
   /** Called after the save lands in a stack (the bookmark answers with a pop). */
   onAdded?: (stack: Stack) => void;
 }) {
+  const { colors } = useTheme();
   const api = useApi();
   const queryClient = useQueryClient();
   const toast = useToast();

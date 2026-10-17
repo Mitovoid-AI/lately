@@ -8,7 +8,7 @@ import Animated, {
   type SharedValue,
 } from "react-native-reanimated";
 
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { Icon } from "./Icon";
 import { IconButton } from "./motion/IconButton";
 import { IMAGE_FADE } from "./Thumb";
@@ -23,12 +23,13 @@ export const HEADER_HEIGHT = 52;
  * content slides beneath the bar; without one it is always drawn.
  */
 export function ScrollHairline({ scrollY }: { scrollY?: SharedValue<number> }) {
+  const { colors } = useTheme();
   const resting = useSharedValue(12);
   const y = scrollY ?? resting;
   const style = useAnimatedStyle(() => ({
     opacity: interpolate(y.get(), [0, 12], [0, 1], Extrapolation.CLAMP),
   }));
-  return <Animated.View style={[styles.hairline, style]} />;
+  return <Animated.View style={[styles.hairline, { backgroundColor: colors.hairline }, style]} />;
 }
 
 /** The Library-style app bar: logo + wordmark, bookmark (a shortcut to Stacks, left out on Stacks itself), avatar. */
@@ -45,6 +46,7 @@ export function Header({
   onBookmark?: () => void;
   scrollY?: SharedValue<number>;
 }) {
+  const { colors } = useTheme();
   return (
     <View className="flex-row items-center justify-between bg-canvas px-4" style={{ height: HEADER_HEIGHT }}>
       <View className="flex-row items-center">
@@ -84,6 +86,5 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: 1,
-    backgroundColor: colors.hairline,
   },
 });

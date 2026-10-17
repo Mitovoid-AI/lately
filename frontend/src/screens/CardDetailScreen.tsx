@@ -46,7 +46,7 @@ import { haptic } from "../lib/haptics";
 import { displayLink } from "../lib/instagram";
 import { shareOrCopy } from "../lib/share";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "../theme/motion";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { goBack } from "../lib/navigation";
 import { refreshSaveViews } from "../lib/queryClient";
 
@@ -85,6 +85,7 @@ function TopBar({
   scrollY: SharedValue<number>;
   children?: ReactNode;
 }) {
+  const { colors } = useTheme();
   const titleStyle = useAnimatedStyle(() => {
     const p = interpolate(scrollY.get(), [titleFrom, titleFrom + 40], [0, 1], Extrapolation.CLAMP);
     return { opacity: p, transform: [{ translateY: 6 * (1 - p) }] };
@@ -108,10 +109,11 @@ function TopBar({
 }
 
 function Overlay({ icon, text, className }: { icon: IconName; text: string; className: string }) {
+  const { colors } = useTheme();
   return (
     <View className={`absolute flex-row items-center rounded-full px-2.5 py-1 ${className}`} style={{ backgroundColor: colors.scrim }}>
       <Icon name={icon} size={14} color={colors.onMedia} />
-      <Text className="ml-1 font-sans-semibold text-caption text-on-accent">{text}</Text>
+      <Text className="ml-1 font-sans-semibold text-caption text-on-media">{text}</Text>
     </View>
   );
 }
@@ -135,6 +137,7 @@ function useHeroParallax(scrollY: SharedValue<number>) {
 }
 
 function Hero({ card, mediaStyle }: { card: Save; mediaStyle?: ReturnType<typeof useHeroParallax> }) {
+  const { colors } = useTheme();
   const openIg = (
     <PressableScale
       accessibilityRole="link"
@@ -144,7 +147,7 @@ function Hero({ card, mediaStyle }: { card: Save; mediaStyle?: ReturnType<typeof
       className="h-10 flex-row items-center rounded-full border px-4"
       style={{ backgroundColor: colors.scrim, borderColor: colors.mediaHairline }}
     >
-      <Text className="font-sans-semibold text-meta text-on-accent">Open in Instagram</Text>
+      <Text className="font-sans-semibold text-meta text-on-media">Open in Instagram</Text>
       <Icon name="north-east" size={16} color={colors.onMedia} />
     </PressableScale>
   );
@@ -193,6 +196,7 @@ function useCachedSave(id: string): Save | undefined {
 }
 
 function CaptionToggle({ open, onPress }: { open: boolean; onPress: () => void }) {
+  const { colors } = useTheme();
   const turn = useSharedValue(open ? 1 : 0);
   useEffect(() => {
     turn.set(withTiming(open ? 1 : 0, { duration: 220, easing: EASE_IN_OUT }));
@@ -216,6 +220,7 @@ function CaptionToggle({ open, onPress }: { open: boolean; onPress: () => void }
 }
 
 export function CardDetailScreen() {
+  const { colors } = useTheme();
   const { id = "" } = useLocalSearchParams<{ id?: string }>();
   const router = useRouter();
   const api = useApi();

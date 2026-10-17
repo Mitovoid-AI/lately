@@ -24,8 +24,8 @@ import { useNow } from "../hooks/useNow";
 import { useMe, useSaves } from "../hooks/useSaves";
 import { haptic } from "../lib/haptics";
 import { DURATION, EASE_OUT } from "../theme/motion";
-import { CATEGORY, CATEGORY_ORDER } from "../theme/categories";
-import { colors, shadows } from "../theme/tokens";
+import { CATEGORY_ORDER, categoryColor } from "../theme/categories";
+import { useTheme } from "../theme/ThemeProvider";
 import { ErrorState } from "../components/ErrorState";
 import { useSaveQueue } from "../hooks/useSaveQueue";
 
@@ -34,6 +34,7 @@ const GAP = 12;
 const SIDE = 16;
 
 function SearchField({ onPress }: { onPress: () => void }) {
+  const { colors } = useTheme();
   return (
     <PressableScale
       accessibilityRole="search"
@@ -52,6 +53,7 @@ function SearchField({ onPress }: { onPress: () => void }) {
 
 /** Saves made offline, waiting on the device for a connection. */
 function QueuedBanner({ count, busy, onRetry }: { count: number; busy: boolean; onRetry: () => void }) {
+  const { colors } = useTheme();
   return (
     <Reveal>
       <View className="mt-3 flex-row items-center rounded-2xl border border-hairline bg-card py-2 pl-4 pr-2">
@@ -69,6 +71,7 @@ function QueuedBanner({ count, busy, onRetry }: { count: number; busy: boolean; 
 }
 
 function EmptyState({ onPaste }: { onPaste: () => void }) {
+  const { colors } = useTheme();
   const steps: { icon: IconName; text: string }[] = [
     { icon: "play-circle-outline", text: "Open a reel in Instagram" },
     { icon: "ios-share", text: "Tap Share → Lately" },
@@ -103,6 +106,7 @@ function EmptyState({ onPaste }: { onPaste: () => void }) {
 }
 
 export function LibraryScreen() {
+  const { colors, scheme, shadows } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -198,7 +202,7 @@ export function LibraryScreen() {
                 <Chip
                   key={c}
                   label={c}
-                  dotColor={CATEGORY[c].color}
+                  dotColor={categoryColor(c, scheme)}
                   active={active === c}
                   haptic="selection"
                   onPress={() => pick(c)}
@@ -273,7 +277,7 @@ export function LibraryScreen() {
             scaleTo={0.94}
             highlightColor={colors.accentPressed}
             className="h-12 flex-row items-center rounded-full bg-accent pl-3.5 pr-4"
-            containerStyle={styles.fabShadow}
+            containerStyle={[styles.fabShadow, { boxShadow: shadows.accent }]}
           >
             <Icon name="add" size={22} color={colors.onAccent} />
             <Text className="ml-1.5 font-sans-semibold text-meta text-on-accent">Paste link</Text>
@@ -287,5 +291,5 @@ export function LibraryScreen() {
 
 const styles = StyleSheet.create({
   fab: { position: "absolute", right: 16, bottom: 16 },
-  fabShadow: { borderRadius: 999, boxShadow: shadows.accent },
+  fabShadow: { borderRadius: 999 },
 });

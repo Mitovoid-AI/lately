@@ -1,33 +1,26 @@
-const { colors } = require("./src/theme/tokens");
+const { cssName, cssVariables, palettes } = require("./src/theme/tokens");
+
+// Every token is a CSS variable: light values on :root, Espresso on .dark:root. NativeWind
+// resolves them per colour scheme on native; on web the "dark" class on <html> switches them.
+// Hex tokens keep Tailwind's opacity modifiers (rgb channels); rgba tokens are used as-is.
+const colors = Object.fromEntries(
+  Object.entries(palettes.light).map(([token, value]) => {
+    const name = cssName(token);
+    return [name, value.startsWith("#") ? `rgb(var(--color-${name}) / <alpha-value>)` : `var(--color-${name})`];
+  }),
+);
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: ["./src/**/*.{js,jsx,ts,tsx}"],
+  // No className says "dark", so Tailwind would drop the .dark:root block below without this.
+  safelist: ["dark"],
   presets: [require("nativewind/preset")],
-  // Light-only app; "class" lets the navigator set the color scheme without NativeWind throwing.
+  // "class": the app's Theme setting picks the scheme (ThemeProvider), not only the OS.
   darkMode: "class",
   theme: {
     extend: {
-      colors: {
-        canvas: colors.canvas,
-        card: colors.card,
-        raised: colors.raised,
-        hairline: colors.hairline,
-        ink: colors.ink,
-        "ink-2": colors.ink2,
-        "ink-3": colors.ink3,
-        accent: colors.accent,
-        "on-accent": colors.onAccent,
-        "accent-pressed": colors.accentPressed,
-        success: colors.success,
-        danger: colors.danger,
-        "danger-soft": colors.dangerSoft,
-        "accent-text": colors.accentText,
-        warm: colors.warm,
-        "on-media": colors.onMedia,
-        scrim: colors.scrim,
-        "scrim-light": colors.scrimLight,
-      },
+      colors,
       fontFamily: {
         display: ["Newsreader_600SemiBold"],
         "display-medium": ["Newsreader_500Medium"],
@@ -57,5 +50,11 @@ module.exports = {
       },
     },
   },
-  plugins: [],
+  plugins: [
+    ({ addBase }) =>
+      addBase({
+        ":root": cssVariables(palettes.light),
+        ".dark:root": cssVariables(palettes.dark),
+      }),
+  ],
 };

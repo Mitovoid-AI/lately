@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "../auth/AuthProvider";
 import { DURATION } from "../theme/motion";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { Icon } from "./Icon";
 
 /**
@@ -12,6 +12,7 @@ import { Icon } from "./Icon";
  * offline). Everything cached still shows; it disappears once the session refreshes.
  */
 export function OfflineBanner() {
+  const { colors } = useTheme();
   const { offline, status } = useAuth();
   const insets = useSafeAreaInsets();
   if (!offline || status !== "signed-in") return null;

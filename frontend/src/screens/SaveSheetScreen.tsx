@@ -19,7 +19,7 @@ import { LOGO } from "../components/Header";
 import { Icon, type IconName } from "../components/Icon";
 import { PopIn, Reveal } from "../components/motion/Reveal";
 import { usePresence } from "../components/motion/usePresence";
-import { BACKDROP, SHEET_RESIZE, SheetPanel, useSheetMotion } from "../components/Sheet";
+import { SHEET_RESIZE, SheetPanel, useSheetMotion } from "../components/Sheet";
 import { TextField } from "../components/TextField";
 import { useNow } from "../hooks/useNow";
 import { savedAgo, shortDate } from "../lib/dates";
@@ -27,7 +27,7 @@ import { haptic } from "../lib/haptics";
 import { displayLink, extractReelUrl } from "../lib/instagram";
 import { outcomeFromError, outcomeFromResult, QUEUE_REASON, QUEUED_BODY, type SaveOutcome } from "../lib/saveOutcome";
 import { DURATION, EASE_OUT } from "../theme/motion";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { useToast } from "../components/Toast";
 import { refreshSaveViews } from "../lib/queryClient";
 import { useSaveQueue } from "../hooks/useSaveQueue";
@@ -67,10 +67,11 @@ function Message({ icon, title, body, children }: { icon: ReactNode; title: stri
 
 /** The success mark: the logo settles while the green tick springs onto its corner. */
 function SavedMark() {
+  const { colors } = useTheme();
   return (
     <View>
       <Image source={LOGO} style={{ width: 56, height: 56, borderRadius: 14 }} />
-      <PopIn style={styles.badge}>
+      <PopIn style={[styles.badge, { borderColor: colors.card, backgroundColor: colors.success }]}>
         <Icon name="check" size={14} color={colors.onAccent} />
       </PopIn>
     </View>
@@ -79,6 +80,7 @@ function SavedMark() {
 
 /** A hairline that drains over the auto-close countdown; it fades away if the user starts a note. */
 function CountdownLine({ running }: { running: boolean }) {
+  const { colors } = useTheme();
   const left = useSharedValue(1);
   const shown = useSharedValue(1);
   useEffect(() => {
@@ -91,13 +93,14 @@ function CountdownLine({ running }: { running: boolean }) {
   }, [running, left, shown]);
   const style = useAnimatedStyle(() => ({ opacity: shown.get(), transform: [{ scaleX: left.get() }] }));
   return (
-    <View style={styles.track}>
-      <Animated.View style={[styles.fill, style]} />
+    <View style={[styles.track, { backgroundColor: colors.raised }]}>
+      <Animated.View style={[styles.fill, { backgroundColor: colors.ink3 }, style]} />
     </View>
   );
 }
 
 export function SaveSheetScreen() {
+  const { colors } = useTheme();
   const { text } = useLocalSearchParams<{ text?: string }>();
   const router = useRouter();
   const api = useApi();
@@ -393,7 +396,7 @@ export function SaveSheetScreen() {
         <Image source={SHARE_BACKDROP} contentFit="cover" blurRadius={8} style={StyleSheet.absoluteFill} />
       ) : null}
       <Animated.View
-        style={[StyleSheet.absoluteFill, { backgroundColor: shared ? colors.scrim : BACKDROP }, backdropStyle]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: shared ? colors.scrim : colors.backdrop }, backdropStyle]}
       >
         <Pressable accessibilityLabel="Close" onPress={close} style={StyleSheet.absoluteFill} />
       </Animated.View>
@@ -416,11 +419,9 @@ const styles = StyleSheet.create({
     height: 24,
     borderRadius: 12,
     borderWidth: 2,
-    borderColor: colors.card,
-    backgroundColor: colors.success,
     alignItems: "center",
     justifyContent: "center",
   },
-  track: { marginTop: 8, height: 2, width: 64, alignSelf: "center", borderRadius: 1, backgroundColor: colors.raised, overflow: "hidden" },
-  fill: { flex: 1, backgroundColor: colors.ink3, transformOrigin: "left" },
+  track: { marginTop: 8, height: 2, width: 64, alignSelf: "center", borderRadius: 1, overflow: "hidden" },
+  fill: { flex: 1, transformOrigin: "left" },
 });

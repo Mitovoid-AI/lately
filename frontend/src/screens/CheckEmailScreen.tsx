@@ -13,10 +13,11 @@ import { PopIn, Reveal } from "../components/motion/Reveal";
 import { useShake } from "../components/motion/feedback";
 import { TextField } from "../components/TextField";
 import { useToast } from "../components/Toast";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { goBack } from "../lib/navigation";
 
 export function CheckEmailScreen() {
+  const { colors } = useTheme();
   const { email = "" } = useLocalSearchParams<{ email?: string }>();
   const router = useRouter();
   const auth = useAuth();

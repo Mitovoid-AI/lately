@@ -3,7 +3,8 @@ import { ActivityIndicator, Text, View } from "react-native";
 import Animated, { FadeIn } from "react-native-reanimated";
 
 import type { HapticKind } from "../lib/haptics";
-import { colors } from "../theme/tokens";
+import type { Palette } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { Icon, type IconName } from "./Icon";
 import { PressableScale } from "./motion/PressableScale";
 
@@ -21,18 +22,18 @@ const LABEL: Record<Variant, string> = {
   ghost: "text-ink-2",
   danger: "text-danger",
 };
-const ICON_COLOR: Record<Variant, string> = {
-  primary: colors.onAccent,
-  secondary: colors.ink,
-  ghost: colors.ink2,
-  danger: colors.danger,
+const ICON_COLOR: Record<Variant, keyof Palette> = {
+  primary: "onAccent",
+  secondary: "ink",
+  ghost: "ink2",
+  danger: "danger",
 };
 /** The tone each variant deepens to while pressed. */
-const PRESSED: Record<Variant, string> = {
-  primary: colors.accentPressed,
-  secondary: colors.raised,
-  ghost: colors.raised,
-  danger: colors.dangerPressed,
+const PRESSED: Record<Variant, keyof Palette> = {
+  primary: "accentPressed",
+  secondary: "raised",
+  ghost: "raised",
+  danger: "dangerPressed",
 };
 
 // Label ↔ spinner swap: a quick dissolve instead of a hard cut.
@@ -60,6 +61,7 @@ export function Button({
   /** Layout classes (margins, width, flex). */
   className?: string;
 }) {
+  const { colors } = useTheme();
   const inactive = disabled || loading;
   // Dissolve only when loading flips, never on the button's first appearance.
   const [prevLoading, setPrevLoading] = useState(loading);
@@ -77,20 +79,20 @@ export function Button({
       onPress={onPress}
       haptic={haptic}
       dimmed={disabled && !loading}
-      highlightColor={PRESSED[variant]}
+      highlightColor={colors[PRESSED[variant]]}
       containerClassName={className}
       className={`${size === "lg" ? "h-14" : "h-12"} flex-row items-center justify-center rounded-ctl px-4 ${BOX[variant]}`}
     >
       {loading ? (
         <Animated.View key="busy" entering={entering}>
-          <ActivityIndicator color={ICON_COLOR[variant]} />
+          <ActivityIndicator color={colors[ICON_COLOR[variant]]} />
         </Animated.View>
       ) : (
         <Animated.View key="label" entering={entering}>
           <View className="flex-row items-center">
             {icon ? (
               <View className="mr-2">
-                <Icon name={icon} size={20} color={ICON_COLOR[variant]} />
+                <Icon name={icon} size={20} color={colors[ICON_COLOR[variant]]} />
               </View>
             ) : null}
             <Text className={`font-sans-semibold text-body ${LABEL[variant]}`}>{title}</Text>

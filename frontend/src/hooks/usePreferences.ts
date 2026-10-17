@@ -12,7 +12,10 @@ const FONTS: Record<Preferences["reading_font"], string> = {
   lora: "Lora_400Regular",
 };
 
-/** Reading/appearance preferences; updates apply immediately (optimistic). */
+/**
+ * Reading/appearance preferences; updates apply immediately (optimistic). `loaded` is false
+ * while `prefs` are still the defaults standing in for the account's own.
+ */
 export function usePreferences() {
   const api = useApi();
   const client = useQueryClient();
@@ -29,7 +32,7 @@ export function usePreferences() {
     },
     [client, mutate],
   );
-  return { prefs: query.data ?? DEFAULT_PREFERENCES, update };
+  return { prefs: query.data ?? DEFAULT_PREFERENCES, loaded: query.data !== undefined, update };
 }
 
 /** Text style for summaries, notes and captions (reading font + text size). */

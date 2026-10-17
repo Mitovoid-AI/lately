@@ -28,7 +28,7 @@ import { monthYear } from "../lib/dates";
 import { forgetDeviceData } from "../lib/deviceData";
 import { haptic } from "../lib/haptics";
 import { DURATION } from "../theme/motion";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { goBack } from "../lib/navigation";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 
@@ -48,6 +48,7 @@ const PROVIDER_NAME: Record<ConnectedAccount["provider"], string> = {
 };
 
 function InfoChip({ icon, text, tone = "plain" }: { icon: IconName; text: string; tone?: "plain" | "warm" }) {
+  const { colors } = useTheme();
   return (
     <View className={`h-8 flex-row items-center rounded-full px-3 ${tone === "warm" ? "bg-warm" : "bg-raised"}`}>
       <Icon name={icon} size={16} color={tone === "warm" ? colors.accent : colors.ink2} />
@@ -71,6 +72,7 @@ function ComingSoon({ label }: { label: string }) {
 }
 
 export function AccountScreen() {
+  const { colors } = useTheme();
   const router = useRouter();
   const api = useApi();
   const auth = useAuth();
@@ -242,13 +244,6 @@ export function AccountScreen() {
                   />
                 ))}
               </View>
-              {prefs.theme !== "light" ? (
-                <Animated.View entering={NOTE_IN}>
-                  <Text className="mt-3 font-sans text-meta text-ink-2">
-                    Dark theme is coming soon. Lately stays light for now.
-                  </Text>
-                </Animated.View>
-              ) : null}
             </SettingsSection>
           </Reveal>
 

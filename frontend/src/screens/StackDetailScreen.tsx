@@ -21,13 +21,14 @@ import { useNow } from "../hooks/useNow";
 import { pollWhilePending } from "../hooks/useSaves";
 import { haptic } from "../lib/haptics";
 import { goBack } from "../lib/navigation";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { reelsCount } from "./StacksScreen";
 
 const MAX_WIDTH = 1280;
 const GAP = 12;
 
 export function StackDetailScreen() {
+  const { colors } = useTheme();
   const { id = "" } = useLocalSearchParams<{ id?: string }>();
   const router = useRouter();
   const api = useApi();
@@ -111,7 +112,7 @@ export function StackDetailScreen() {
         ) : null}
       </Reveal>
     ),
-    [entrance, itemWidth, now, editing, remove],
+    [entrance, itemWidth, now, editing, remove, colors],
   );
 
   const gone = stack.error instanceof ApiError && stack.error.code === "NOT_FOUND";

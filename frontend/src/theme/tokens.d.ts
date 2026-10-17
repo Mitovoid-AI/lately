@@ -1,4 +1,4 @@
-export declare const colors: {
+export interface Palette {
   canvas: string;
   card: string;
   raised: string;
@@ -23,13 +23,17 @@ export declare const colors: {
   focusRing: string;
   onAccentDot: string;
   google: string;
-};
+}
 
-export declare const shadows: {
+export interface Shadows {
   card: string;
   raised: string;
   overlay: string;
   accent: string;
-};
+}
 
-export declare const sheen: string;
+export declare const palettes: { light: Palette; dark: Palette };
+export declare const shadowSets: { light: Shadows; dark: Shadows };
+export declare const sheens: { light: string; dark: string };
+export declare function cssName(token: string): string;
+export declare function cssVariables(palette: Palette): Record<string, string>;

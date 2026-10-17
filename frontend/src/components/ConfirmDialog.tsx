@@ -1,7 +1,7 @@
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { Button } from "./Button";
 import { usePresence } from "./motion/usePresence";
 
@@ -29,6 +29,7 @@ export function ConfirmDialog({
   /** An alternative to confirming, shown above the two buttons (e.g. "Download my archive first"). */
   aside?: { label: string; onPress: () => void };
 }) {
+  const { colors } = useTheme();
   const progress = useSharedValue(0);
   const mounted = usePresence(visible, progress, { enter: 240, exit: 160 });
   const backdropStyle = useAnimatedStyle(() => ({ opacity: progress.get() }));
@@ -45,7 +46,7 @@ export function ConfirmDialog({
   return (
     <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={cancel}>
       <View className="flex-1 items-center justify-center px-6">
-        <Animated.View style={[StyleSheet.absoluteFill, styles.backdrop, backdropStyle]}>
+        <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.backdrop }, backdropStyle]}>
           <Pressable accessibilityLabel="Dismiss" onPress={cancel} disabled={busy} style={StyleSheet.absoluteFill} />
         </Animated.View>
         <Animated.View style={[styles.cardWrap, cardStyle]}>
@@ -67,6 +68,5 @@ export function ConfirmDialog({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { backgroundColor: colors.backdrop },
   cardWrap: { width: "100%", maxWidth: 340 },
 });

@@ -16,7 +16,7 @@ import { useNow } from "../hooks/useNow";
 import { pollWhilePending, useMe } from "../hooks/useSaves";
 import { relativeShort } from "../lib/dates";
 import { haptic } from "../lib/haptics";
-import { colors } from "../theme/tokens";
+import { useTheme } from "../theme/ThemeProvider";
 import { ErrorState } from "../components/ErrorState";
 
 /** Width of a card in a horizontal row: narrow enough that the next one peeks in. */
@@ -25,6 +25,7 @@ const ROW_CARD = 136;
 const HERO_ASPECT = 16 / 9;
 
 function ListRow({ save, now }: { save: Save; now: number }) {
+  const { colors } = useTheme();
   return (
     <ZoomLink href={`/reel/${save.id}`}>
       <PressableScale
@@ -91,6 +92,7 @@ function Section({ section, now, index }: { section: CuratedSection; now: number
 
 /** Built to the "06 Curated — light" generation brief: picks resurfaced from your own saves. */
 export function CuratedScreen() {
+  const { colors } = useTheme();
   const router = useRouter();
   const api = useApi();
   const insets = useSafeAreaInsets();

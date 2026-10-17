@@ -14,7 +14,7 @@ import { Stack } from "expo-router";
 import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Platform, StyleSheet, Text, View } from "react-native";
+import { Platform, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useReducedMotion } from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -30,12 +30,16 @@ import { config } from "../config";
 import { apiBaseUrl } from "../lib/apiUrl";
 import { wireAppFocus } from "../lib/appFocus";
 import { createAppQueryClient } from "../lib/queryClient";
-import { colors } from "../theme/tokens";
+import { loadThemePreference, useThemeLoaded } from "../theme/preference";
+import { ThemeProvider, useTheme } from "../theme/ThemeProvider";
+import { ThemeSync } from "../theme/ThemeSync";
 import { ShareRouter } from "../share/ShareRouter";
 import { SaveQueueProvider } from "../hooks/useSaveQueue";
 
 // Queries (and their polling) pause while the app is in the background.
 wireAppFocus();
+// The theme this phone showed last, read while the fonts load.
+void loadThemePreference();
 
 /** Where the query client reports a dead session; AppProviders points it at the current sign-out. */
 const sessionExpired = { handler: () => {} };
@@ -68,6 +72,7 @@ function AppProviders({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <ApiProvider api={api}>
+        {status === "signed-in" ? <ThemeSync /> : null}
         <ToastProvider>
           <SaveQueueProvider>{children}</SaveQueueProvider>
         </ToastProvider>
@@ -90,6 +95,7 @@ function ShareIntake({ children }: { children: ReactNode }) {
 
 function RootStack() {
   const { status } = useAuth();
+  const { colors } = useTheme();
   // Navigation keeps the platform's own transitions (and the iOS back swipe); with Reduce
   // Motion every push becomes a cross-fade.
   const reduced = useReducedMotion();
@@ -128,11 +134,26 @@ function RootStack() {
 /** Last-resort screen when a route throws while rendering (expo-router picks this export up). */
 export function ErrorBoundary({ retry }: { error: Error; retry: () => Promise<void> }) {
   return (
-    <View style={styles.root} className="items-center justify-center px-6">
-      <Text className="text-center font-display text-display-md text-ink">Something went wrong</Text>
-      <Text className="mt-2 text-center font-sans text-body text-ink-2">Lately hit a snag showing this screen.</Text>
-      <Button title="Try again" onPress={() => void retry()} className="mt-6 w-full max-w-[320px]" />
-    </View>
+    <ThemeProvider>
+      <View className="flex-1 items-center justify-center bg-canvas px-6">
+        <Text className="text-center font-display text-display-md text-ink">Something went wrong</Text>
+        <Text className="mt-2 text-center font-sans text-body text-ink-2">Lately hit a snag showing this screen.</Text>
+        <Button title="Try again" onPress={() => void retry()} className="mt-6 w-full max-w-[320px]" />
+      </View>
+    </ThemeProvider>
+  );
+}
+
+/** The app's outer frame in the active theme: root background and status bar icons. */
+function ThemedRoot({ children }: { children: ReactNode }) {
+  const { colors, scheme } = useTheme();
+  return (
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: colors.canvas }}>
+      <SafeAreaProvider>
+        <StatusBar style={scheme === "dark" ? "light" : "dark"} />
+        {children}
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }
 
@@ -148,11 +169,11 @@ export default function RootLayout() {
     Inter_600SemiBold,
     Lora_400Regular,
   });
-  if (!loaded) return null;
+  const themeLoaded = useThemeLoaded();
+  if (!loaded || !themeLoaded) return null;
   return (
-    <GestureHandlerRootView style={styles.root}>
-      <SafeAreaProvider>
-        <StatusBar style="dark" />
+    <ThemeProvider>
+      <ThemedRoot>
         {/* Android only: iOS would need a share extension (disabled in the config plugin). */}
         <ShareIntentProvider options={{ disabled: Platform.OS !== "android", resetOnBackground: true }}>
           <AuthProvider>
@@ -164,9 +185,7 @@ export default function RootLayout() {
             </AppProviders>
           </AuthProvider>
         </ShareIntentProvider>
-      </SafeAreaProvider>
-    </GestureHandlerRootView>
+      </ThemedRoot>
+    </ThemeProvider>
   );
 }
-
-const styles = StyleSheet.create({ root: { flex: 1, backgroundColor: colors.canvas } });
