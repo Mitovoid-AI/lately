@@ -120,3 +120,26 @@ the dev Supabase project; nothing is pushed.
 3. Final harness run on the whole pool with `--expect`.
 4. `SETUP.md`: run-it-locally section (one command).
 5. Commit locally; do not push.
+
+## Outcome (2026-10-17)
+
+Done, committed on `qa` (not pushed), 4677061..HEAD.
+
+- **Pipeline, live:** 23 public reels saved through the API, all `enriched` with
+  thumbnails in Postgres and per-user embeddings. Rebuilt weak-caption reels get Groq
+  transcripts (3 s each). A card takes ~50–60 s on this PC with 6 in parallel (free LLM
+  ~24 s; each DB round trip ≈ 250 ms to the Mumbai pooler).
+- **Search, live:** 26/26 expectations in `backend/scripts/e2e/queries.tsv` (keyword,
+  Hinglish, typos, meaning-only, creators) have the right reel first.
+- **Found and fixed by the live run** (each with tests): thumbnails expiring without a
+  service key (0011); pro/lifetime capped at 20 saves (0012); free reasoning models 3x
+  slower (`LLM_REASONING=off`); CDN 302 blocked every transcript; video uploads to Groq
+  saturating the connection (Groq now fetches the URL); search padding with unrelated
+  meaning-only hits; 📍 on non-places; CORS refusing the live web dev server (:8083);
+  phones needing the PC's IP typed into `.env`.
+- **Changed from the plan:** Phase 2 step 7 (app resolves relative thumbnail URLs) was
+  not needed: the API returns absolute URLs on the host the app called.
+- **Not verifiable from here:** completing Google sign-in (needs a Google account in the
+  browser) and the Supabase redirect allow-list; `docs/auth-setup.md` has the checks and
+  the symptom → fix table. Sharing from Instagram on a phone needs the debug APK
+  (`frontend/README.md`).
