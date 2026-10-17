@@ -19,8 +19,27 @@ Set `EXPO_PUBLIC_API_MODE` in `frontend/.env` (copy `.env.example`).
 - **demo** (default): no backend or login needed. Any sign-in button signs you in as the
   demo user, and every screen runs on the Stitch sample content (in memory — changes reset
   on reload; reading preferences are kept on the device).
-- **live**: real Supabase sign-in, and the endpoints the FastAPI backend serves today go to
-  `EXPO_PUBLIC_API_URL`. Everything else still uses demo data.
+- **live**: real Supabase sign-in, and every call goes to the FastAPI backend at
+  `EXPO_PUBLIC_API_URL`. Leave it at `http://localhost:8001`: on a phone the app swaps
+  `localhost` for the PC that Metro serves it from (`src/lib/apiUrl.ts`).
+
+### Live on your phone (Expo Go or a dev build)
+
+1. Backend: `cd backend && .venv/Scripts/python.exe scripts/dev.py` (API on :8001 + worker).
+2. App: `npx expo start` here, open it on the phone (same Wi-Fi as the PC).
+3. Sign in, share a reel from Instagram (dev build) or use **Paste link**: the card shows
+   "processing", and the worker fills it in about 20–60 s. Then search for it.
+
+If saves don't load, allow Python through Windows Firewall on private networks (port
+8001). Sign-in problems: `docs/auth-setup.md` has a symptom → fix table.
+
+**Instagram's Share → Lately** needs the native build (Expo Go has no share target). The
+debug APK at `android/app/build/outputs/apk/debug/app-debug.apk` has it and loads its JS
+from Metro, so JS changes need no rebuild. Over USB: `adb install -r` that APK, then
+`adb reverse tcp:8081 tcp:8081` and `adb reverse tcp:8001 tcp:8001`, then `npx expo start`.
+Over Wi-Fi: shake → Settings → Debug server host → `<PC IP>:8081`; the app then finds the
+API on the same host by itself. Rebuild (`npx expo run:android`) only after adding a
+native module.
 
 Demo links that trigger each save-sheet state (paste them via **Paste link**):
 
@@ -37,9 +56,8 @@ Demo links that trigger each save-sheet state (paste them via **Paste link**):
 ## The API contract
 
 `src/api/contract.ts` lists every call the app makes, with its HTTP path and response
-shape. It is the backend's to-do list. `src/api/index.tsx` → `LIVE_ENDPOINTS` names the
-calls that go to FastAPI in live mode (today: `createSave`, `listSaves`, `setNote`); add a
-call there when the backend ships it.
+shape; the backend matches it. `src/api/index.tsx` → `LIVE_ENDPOINTS` names the calls
+that go to FastAPI in live mode (all of them).
 
 ## Layout
 
@@ -56,12 +74,6 @@ assets/stitch/   images exported from the Stitch project
 
 ## Live-mode setup (Supabase dashboard)
 
-1. Authentication → URL Configuration: Site URL `http://localhost:8081`; redirect URLs
-   `http://localhost:8081/**` and `lately://**`.
-2. Authentication → Email templates → Magic Link: include `{{ .Token }}` so the email has a
-   6-digit code as well as the link.
-3. Google: create a Google Cloud OAuth client (web) with redirect
-   `https://jsvgezmgvwnldcnrjdzg.supabase.co/auth/v1/callback`, then paste its id/secret into
-   Authentication → Providers → Google.
-4. The FastAPI backend must allow the app's origin (CORS) — the first item of the backend
-   round.
+See `docs/auth-setup.md`: redirect URLs (`exp://**`, `lately://**`,
+`http://localhost:8081/**` … `8083/**`), the email code template, SMTP, and Google. The API
+already allows the web dev origins :8081–:8083 (CORS).

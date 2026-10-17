@@ -32,7 +32,23 @@ function devServerHost(): string | null {
   if (Platform.OS === "web") {
     return typeof window !== "undefined" ? window.location.hostname : null;
   }
-  return Constants.expoConfig?.hostUri ?? Constants.expoGoConfig?.debuggerHost ?? null;
+  return Constants.expoConfig?.hostUri ?? Constants.expoGoConfig?.debuggerHost ?? bundleHost();
+}
+
+/**
+ * A plain debug build (no Expo dev client) may have no Metro host in expo-constants, but
+ * its JS bundle URL names it. Development only; release bundles are embedded.
+ */
+function bundleHost(): string | null {
+  if (!__DEV__) return null;
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require("react-native/Libraries/Core/Devtools/getDevServer");
+    const server = (mod.default ?? mod)() as { url: string; bundleLoadedFromServer: boolean };
+    return server.bundleLoadedFromServer ? new URL(server.url).host : null;
+  } catch {
+    return null;
+  }
 }
 
 /** The API base URL this app instance calls. */
