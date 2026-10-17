@@ -4,7 +4,7 @@ import { Text, View } from "react-native";
 import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ScrollHairline } from "../components/Header";
+import { HEADER_HEIGHT, ScrollHairline } from "../components/Header";
 import { IconButton } from "../components/motion/IconButton";
 import { Reveal } from "../components/motion/Reveal";
 import { goBack } from "../lib/navigation";
@@ -34,7 +34,7 @@ export function LegalScreen() {
 
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
-      <View className="h-16 flex-row items-center px-2">
+      <View className="flex-row items-center px-1" style={{ height: HEADER_HEIGHT }}>
         <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={() => goBack(router)} />
         <Text className="font-sans-semibold text-body text-ink">Legal</Text>
         <ScrollHairline scrollY={scrollY} />

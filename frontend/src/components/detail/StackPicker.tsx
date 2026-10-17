@@ -117,7 +117,7 @@ export function StackPicker({
             <View className="h-10 w-10 items-center justify-center rounded-lg border border-dashed border-ink-3">
               <Icon name="add" size={20} color={colors.ink2} />
             </View>
-            <Text className="ml-3 font-sans-semibold text-body text-accent">New stack</Text>
+            <Text className="ml-3 font-sans-semibold text-body text-accent-text">New stack</Text>
           </PressableScale>
         </View>
       )}

@@ -28,7 +28,7 @@ export function PlaceCard({ place }: { place: Place }) {
         highlightColor={colors.raised}
         className="h-10 items-center justify-center rounded-ctl border border-accent px-3"
       >
-        <Text className="font-sans-semibold text-meta text-accent">Open in Maps</Text>
+        <Text className="font-sans-semibold text-meta text-accent-text">Open in Maps</Text>
       </PressableScale>
     </View>
   );

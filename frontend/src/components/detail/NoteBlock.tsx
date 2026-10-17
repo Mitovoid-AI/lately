@@ -89,7 +89,7 @@ export function NoteBlock({
       ) : (
         <Animated.View key="empty" entering={entering}>
           <PressableScale accessibilityRole="button" onPress={edit} scaleTo={0.98} containerClassName="mt-2 self-start">
-            <Text className="font-sans-semibold text-body text-accent">Add a note</Text>
+            <Text className="font-sans-semibold text-body text-accent-text">Add a note</Text>
             <Text className="mt-0.5 font-sans text-meta text-ink-2">A note makes this easy to find later.</Text>
           </PressableScale>
         </Animated.View>

@@ -284,7 +284,7 @@ export function AccountScreen() {
                   archive.phase === "preparing" || archive.phase === "sharing" ? (
                     <ActivityIndicator color={colors.ink2} accessibilityLabel="Preparing your archive" />
                   ) : archive.phase === "ready" ? (
-                    <Text className="font-sans-semibold text-meta text-accent">Download</Text>
+                    <Text className="font-sans-semibold text-meta text-accent-text">Download</Text>
                   ) : (
                     <Icon name="chevron-right" size={20} color={colors.ink2} />
                   )

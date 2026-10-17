@@ -9,7 +9,7 @@ import { ApiError, type Save, type StackDetail } from "../api/contract";
 import { useApi } from "../api/index";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ErrorState } from "../components/ErrorState";
-import { ScrollHairline } from "../components/Header";
+import { HEADER_HEIGHT, ScrollHairline } from "../components/Header";
 import { Icon } from "../components/Icon";
 import { IconButton } from "../components/motion/IconButton";
 import { PressableScale } from "../components/motion/PressableScale";
@@ -119,7 +119,7 @@ export function StackDetailScreen() {
 
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
-      <View className="h-16 flex-row items-center px-2">
+      <View className="flex-row items-center px-1" style={{ height: HEADER_HEIGHT }}>
         <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={() => goBack(router, "/stacks")} />
         <Text className="flex-1 font-sans-semibold text-body text-ink">Stacks</Text>
         {data ? (
@@ -132,7 +132,7 @@ export function StackDetailScreen() {
                 highlightColor={colors.raised}
                 className="h-10 justify-center rounded-full px-3"
               >
-                <Text className="font-sans-semibold text-body text-accent">{editing ? "Done" : "Edit"}</Text>
+                <Text className="font-sans-semibold text-body text-accent-text">{editing ? "Done" : "Edit"}</Text>
               </PressableScale>
             ) : null}
             <IconButton icon="delete-outline" label="Delete stack" onPress={() => setConfirmOpen(true)} />
