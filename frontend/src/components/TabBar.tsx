@@ -24,6 +24,8 @@ const ICONS: Record<string, { name: IconName; active?: IconName }> = {
   stacks: { name: "folder-special" },
 };
 const MARK_W = 20;
+/** Bar height above the home indicator (native tab bars are 49-56 pt). */
+export const TAB_BAR_HEIGHT = 56;
 
 function TabItem({
   label,
@@ -100,7 +102,7 @@ export function TabBar({ state, descriptors, navigation, insets }: TabBarProps) 
   return (
     <View
       className="flex-row items-center justify-around border-t border-hairline bg-canvas"
-      style={{ paddingBottom: insets.bottom, height: 64 + insets.bottom }}
+      style={{ paddingBottom: insets.bottom, height: TAB_BAR_HEIGHT + insets.bottom }}
     >
       <Animated.View style={[styles.mark, markStyle]} />
       {state.routes.map((route, index) => {
@@ -142,6 +144,6 @@ const styles = StyleSheet.create({
     borderRadius: 1,
     backgroundColor: colors.accent,
   },
-  label: { marginTop: 4, fontFamily: "Inter_400Regular", fontSize: 11, lineHeight: 14 },
+  label: { marginTop: 3, fontFamily: "Inter_500Medium", fontSize: 11, lineHeight: 13 },
   labelOn: { fontFamily: "Inter_600SemiBold" },
 });

@@ -15,6 +15,9 @@ import { Thumb } from "./Thumb";
 
 const firstLine = (text: string | null) => text?.split("\n")[0]?.trim() || null;
 
+/** Card media shape. Square keeps the grid dense on a phone (three rows per screen). */
+export const CARD_ASPECT = 1;
+
 /** The title a card shows: real title → caption's first line → the link. */
 export function cardTitle(save: Save): string {
   if (save.status === "pending") return displayLink(save.source_url);
@@ -52,7 +55,7 @@ export const ReelCard = memo(function ReelCard({
   const meta = category ? `${category} · ${relativeShort(save.created_at, now)}` : relativeShort(save.created_at, now);
 
   const media = (
-    <Thumb uri={pending || partial ? null : save.thumbnail_url} className="border border-hairline">
+    <Thumb uri={pending || partial ? null : save.thumbnail_url} aspect={CARD_ASPECT} radius={12} className="border border-hairline">
       {pending ? (
         <View className="absolute inset-0">
           <Skeleton style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />

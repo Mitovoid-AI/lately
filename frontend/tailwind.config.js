@@ -35,13 +35,14 @@ module.exports = {
         lora: ["Lora_400Regular"],
       },
       fontSize: {
-        "display-lg": ["28px", { lineHeight: "34px" }],
-        "display-md": ["24px", { lineHeight: "30px" }],
-        "display-sm": ["22px", { lineHeight: "28px" }],
-        title: ["15px", { lineHeight: "20px" }],
+        // Phone scale: screen titles 26, sheet/section titles 22/20, card titles 14.
+        "display-lg": ["26px", { lineHeight: "32px", letterSpacing: "-0.26px" }],
+        "display-md": ["22px", { lineHeight: "28px", letterSpacing: "-0.11px" }],
+        "display-sm": ["19px", { lineHeight: "25px" }],
+        title: ["14px", { lineHeight: "19px" }],
         body: ["15px", { lineHeight: "22px" }],
         meta: ["13px", { lineHeight: "18px" }],
-        label: ["12px", { lineHeight: "16px", letterSpacing: "0.48px" }],
+        label: ["11px", { lineHeight: "14px", letterSpacing: "0.6px" }],
         caption: ["11px", { lineHeight: "14px" }],
       },
       borderRadius: {

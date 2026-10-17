@@ -40,11 +40,12 @@ function SearchField({ onPress }: { onPress: () => void }) {
       onPress={onPress}
       scaleTo={0.985}
       highlightColor={colors.raised}
-      className="h-12 flex-row items-center rounded-xl border border-hairline bg-card px-3"
+      className="h-10 flex-row items-center rounded-ctl border border-hairline bg-card px-3"
     >
-      <Icon name="search" size={22} color={colors.ink2} />
-      <Text className="ml-2 flex-1 font-sans text-body text-ink-2">Search what you remember...</Text>
-      <Icon name="mic" size={22} color={colors.ink3} />
+      <Icon name="search" size={18} color={colors.ink3} />
+      <Text numberOfLines={1} className="ml-2 flex-1 font-sans text-body text-ink-3">
+        Search what you remember…
+      </Text>
     </PressableScale>
   );
 }
@@ -177,7 +178,7 @@ export function LibraryScreen() {
 
   const listHeader = (
     <View className="w-full self-center" style={{ maxWidth: MAX_WIDTH }}>
-      <View className="px-4 pt-2">
+      <View className="px-4 pt-1">
         <SearchField onPress={() => router.push("/search")} />
         {queue.queued.length > 0 ? (
           <QueuedBanner count={queue.queued.length} busy={queue.flushing} onRetry={() => queue.flush()} />
@@ -205,7 +206,7 @@ export function LibraryScreen() {
               ))}
             </ScrollView>
           ) : null}
-          <View className="mt-5 flex-row items-center justify-between px-4">
+          <View className="mt-4 flex-row items-center justify-between px-4">
             <Text className="font-sans-semibold text-label text-ink-2">RECENTLY SAVED</Text>
             {me ? <Text className="font-sans text-meta text-ink-2">{`${me.total_saves} reels`}</Text> : null}
           </View>
@@ -229,7 +230,7 @@ export function LibraryScreen() {
         keyExtractor={(s: Save) => `${active}:${s.id}`}
         numColumns={columns}
         columnWrapperStyle={{ gap: GAP, paddingHorizontal: SIDE, alignSelf: "center", width: "100%", maxWidth: MAX_WIDTH }}
-        contentContainerStyle={{ paddingBottom: 120, gap: 20 }}
+        contentContainerStyle={{ paddingBottom: 96, gap: 16 }}
         ListHeaderComponent={listHeader}
         ListEmptyComponent={
           isLoading ? (

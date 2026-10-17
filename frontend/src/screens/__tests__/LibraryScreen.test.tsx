@@ -67,7 +67,7 @@ test("header, search, cards and the paste button navigate", async () => {
   await renderWithProviders(<LibraryScreen />);
   await fireEvent.press(await screen.findByText(MOMO));
   expect(mockRouter.push).toHaveBeenCalledWith("/reel/s-momo");
-  await fireEvent.press(screen.getByText("Search what you remember..."));
+  await fireEvent.press(screen.getByText("Search what you remember…"));
   expect(mockRouter.push).toHaveBeenCalledWith("/search");
   await fireEvent.press(screen.getByLabelText("Account"));
   expect(mockRouter.push).toHaveBeenCalledWith("/account");

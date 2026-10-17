@@ -49,11 +49,11 @@ export function SkeletonGroup({ children, style }: { children: ReactNode; style?
 }
 const GROUP_IN = FadeIn.duration(220).delay(150);
 
-/** A ReelCard-shaped placeholder: 4:5 media, two title lines, a meta line. */
+/** A ReelCard-shaped placeholder: square media, two title lines, a meta line. */
 function SkeletonCard({ width }: { width: number }) {
   return (
     <View style={{ width }}>
-      <Skeleton style={{ aspectRatio: 4 / 5, borderRadius: 14 }} />
+      <Skeleton style={{ aspectRatio: 1, borderRadius: 12 }} />
       <Skeleton style={[styles.line, { marginTop: 10, width: "92%" }]} />
       <Skeleton style={[styles.line, { marginTop: 6, width: "64%" }]} />
       <Skeleton style={[styles.meta, { marginTop: 8, width: "48%" }]} />
