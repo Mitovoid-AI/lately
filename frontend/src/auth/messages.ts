@@ -8,12 +8,20 @@ const FALLBACK: Record<Step, string> = {
   code: "That code didn't work. Try again or resend.",
 };
 
-/** What to tell someone when a sign-in step fails; "" means say nothing (they cancelled). */
-export function authErrorMessage(error: unknown, step: Step): string {
+/**
+ * What to tell someone when a sign-in step fails; "" means say nothing (they cancelled).
+ * In development builds a Google window that closed without coming back names the redirect
+ * URL to allow in Supabase: a missing allow-list entry looks exactly like a cancel.
+ */
+export function authErrorMessage(error: unknown, step: Step, dev: boolean = __DEV__): string {
   const reason: AuthFailure = error instanceof AuthFlowError ? error.reason : "failed";
   switch (reason) {
-    case "cancelled":
-      return "";
+    case "cancelled": {
+      const url = error instanceof AuthFlowError ? error.redirectUrl : undefined;
+      return dev && step === "google" && url
+        ? `Didn't come back from Google? Add ${url} to Supabase → Authentication → URL Configuration → Redirect URLs.`
+        : "";
+    }
     case "provider_disabled":
       return "Google sign-in isn't switched on yet.";
     case "rate_limited":

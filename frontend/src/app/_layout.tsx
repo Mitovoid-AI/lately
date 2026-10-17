@@ -27,6 +27,7 @@ import { ToastProvider } from "../components/Toast";
 import { Button } from "../components/Button";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { config } from "../config";
+import { apiBaseUrl } from "../lib/apiUrl";
 import { wireAppFocus } from "../lib/appFocus";
 import { createAppQueryClient } from "../lib/queryClient";
 import { colors } from "../theme/tokens";
@@ -56,7 +57,7 @@ function AppProviders({ children }: { children: ReactNode }) {
       createApi({
         mode: config.apiMode,
         demo,
-        http: createHttpApi({ baseUrl: config.apiUrl, getToken: getAccessToken, refreshToken: refreshAccessToken }),
+        http: createHttpApi({ baseUrl: apiBaseUrl(), getToken: getAccessToken, refreshToken: refreshAccessToken }),
       }),
     [demo, getAccessToken, refreshAccessToken],
   );

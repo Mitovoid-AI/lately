@@ -60,9 +60,26 @@ done it says "Google sign-in isn't switched on yet."
 
 ## 5. Database
 
-Apply `supabase/migrations/0005_auth_profiles.sql` (SQL Editor → paste → Run). It is
-idempotent and backfills a profile for every existing user. Then restart the API
-(port 8001) so `GET /me` is served.
+The dev project already carries every migration (0001–0012, checked 2026-10-17). For a new
+project, apply `supabase/migrations/*.sql` in order (SQL Editor, or `supabase db push`);
+0005 creates `public.profiles` rows for sign-ups and backfills existing users.
+
+## Google sign-in: what was checked, and what to do when it fails
+
+Checked from this repo on 2026-10-17: Google is enabled in Supabase Auth, the Google OAuth
+client is valid, and the web app's "Continue with Google" lands on Google's sign-in page
+with `redirect_uri = https://jsvgezmgvwnldcnrjdzg.supabase.co/auth/v1/callback`. What can't
+be checked from outside is the Supabase **Redirect URLs** allow-list (§1): Supabase only
+applies it after Google, at the callback.
+
+| What you see | Cause | Fix |
+|---|---|---|
+| You pick a Google account, then a `localhost:3000` / "site can't be reached" page, or the window just closes | The app's redirect URL isn't on the allow-list, so Supabase sends you to the Site URL | Add `exp://**`, `lately://**` and `http://localhost:8083/**` under Auth → URL Configuration → Redirect URLs (§1) |
+| Development build toast: "Didn't come back from Google? Add `exp://…` to …" | Same as above; the toast names the exact URL | Add that URL (or the `exp://**` pattern) |
+| Google: "Error 400: redirect_uri_mismatch" | The Google OAuth client lacks Supabase's callback | Google Cloud → Credentials → the Web client → Authorized redirect URIs: `https://jsvgezmgvwnldcnrjdzg.supabase.co/auth/v1/callback` |
+| Google: "Access blocked: … has not completed the Google verification process" | OAuth consent screen is in Testing and your account isn't a test user | OAuth consent screen → Test users → add your Google account (or publish the app) |
+| "Google sign-in isn't switched on yet." | Google provider is off in Supabase | §4 step 3 |
+| Signed in, but saves don't load on the phone | The phone can't reach the API | Run `python scripts/dev.py` in `backend/`; phone and PC on the same Wi-Fi; allow Python through Windows Firewall for private networks (port 8001) |
 
 ## Instagram
 

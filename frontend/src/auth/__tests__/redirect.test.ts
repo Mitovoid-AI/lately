@@ -39,3 +39,12 @@ test("Supabase Auth errors map to what the screens say", () => {
   expect(authErrorMessage(new AuthFlowError("invalid_code"), "code")).toBe("That code has expired or isn't right. Try again or resend.");
   expect(authErrorMessage(new Error("boom"), "email")).toBe("Couldn't send the link. Try again.");
 });
+
+test("a Google window that never came back explains the fix in development builds only", () => {
+  const closed = new AuthFlowError("cancelled", undefined, "exp://192.168.1.5:8081/--/auth-callback");
+  expect(authErrorMessage(closed, "google", true)).toBe(
+    "Didn't come back from Google? Add exp://192.168.1.5:8081/--/auth-callback to Supabase → Authentication → URL Configuration → Redirect URLs.",
+  );
+  expect(authErrorMessage(closed, "google", false)).toBe("");
+  expect(authErrorMessage(new AuthFlowError("cancelled"), "google", true)).toBe("");
+});

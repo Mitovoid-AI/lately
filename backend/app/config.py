@@ -23,7 +23,8 @@ class Settings(BaseSettings):
     supabase_jwt_audience: str = ""
 
     # Browser origins allowed to call the API (comma-separated). Native apps need none.
-    cors_origins: str = "http://localhost:8081,http://localhost:8082"
+    # Expo web dev servers: 8081 web, 8082 demo, 8083 live (.claude/launch.json).
+    cors_origins: str = "http://localhost:8081,http://localhost:8082,http://localhost:8083"
 
     @property
     def cors_origin_list(self) -> list[str]:

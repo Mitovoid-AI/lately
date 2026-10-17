@@ -34,6 +34,8 @@ export class AuthFlowError extends Error {
   constructor(
     readonly reason: AuthFailure,
     message?: string,
+    /** For a Google window that closed without returning: the redirect URL it should have used. */
+    readonly redirectUrl?: string,
   ) {
     super(message ?? reason);
     this.name = "AuthFlowError";
@@ -307,7 +309,9 @@ export function AuthProvider({
     if (Platform.OS === "web" || !data?.url) return;
 
     const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
-    if (result.type !== "success") throw new AuthFlowError("cancelled");
+    // Not "success": closed by the person, or Supabase sent the window somewhere else because
+    // redirectTo isn't on its allow list (then the window never comes back on its own).
+    if (result.type !== "success") throw new AuthFlowError("cancelled", undefined, redirectTo);
     await completeRedirect(result.url);
   }, [completeRedirect]);
 
