@@ -2,7 +2,7 @@ import { useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-que
 import { Image } from "expo-image";
 import { Link, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Linking, Text, View } from "react-native";
+import { Linking, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   Extrapolation,
   FadeIn,
@@ -27,7 +27,7 @@ import { NoteBlock } from "../components/detail/NoteBlock";
 import { PlaceCard } from "../components/detail/PlaceCard";
 import { ProgressTracker } from "../components/detail/ProgressTracker";
 import { StackPicker } from "../components/detail/StackPicker";
-import { LOGO, ScrollHairline } from "../components/Header";
+import { HEADER_HEIGHT, LOGO, ScrollHairline } from "../components/Header";
 import { Icon, type IconName } from "../components/Icon";
 import { IconButton } from "../components/motion/IconButton";
 import { PressableScale } from "../components/motion/PressableScale";
@@ -61,16 +61,47 @@ function Label({ children }: { children: string }) {
   return <Text className="font-sans-semibold text-label text-ink">{children}</Text>;
 }
 
-function TopBar({ onBack, onShare, scrollY }: { onBack: () => void; onShare?: () => void; scrollY: SharedValue<number> }) {
+/** Hero media shape: a little shorter than 4:5 so the title shows on the first screen. */
+const HERO_ASPECT = 9 / 10;
+
+/** Content column: full width minus 16 pt sides, at most 560 wide (tablets, web). */
+const COLUMN_MAX = 560;
+
+/**
+ * Back on the left, the card's actions on the right. Once the hero and title scroll away the
+ * title fades into the bar, so the reader always knows which card this is.
+ */
+function TopBar({
+  onBack,
+  title,
+  titleFrom,
+  scrollY,
+  children,
+}: {
+  onBack: () => void;
+  title?: string;
+  /** Scroll offset at which the page title has slid under the bar. */
+  titleFrom: number;
+  scrollY: SharedValue<number>;
+  children?: ReactNode;
+}) {
+  const titleStyle = useAnimatedStyle(() => {
+    const p = interpolate(scrollY.get(), [titleFrom, titleFrom + 40], [0, 1], Extrapolation.CLAMP);
+    return { opacity: p, transform: [{ translateY: 6 * (1 - p) }] };
+  });
   return (
-    <View className="h-16 flex-row items-center bg-canvas px-2">
+    <View className="flex-row items-center bg-canvas px-1" style={{ height: HEADER_HEIGHT }}>
       <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={onBack} />
-      <Text className="font-sans-semibold text-body text-ink">Reel Detail</Text>
-      <Text className="mx-1.5 font-sans text-body text-ink-3">•</Text>
-      <Text className="font-display-italic text-body text-accent">Lately</Text>
-      <View className="flex-1" />
-      {onShare ? <IconButton icon="share" label="Share" onPress={onShare} /> : null}
-      <Image source={LOGO} style={{ width: 36, height: 36, borderRadius: 10, marginRight: 8 }} />
+      <Animated.Text
+        numberOfLines={1}
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        className="mx-1 flex-1 font-sans-semibold text-body text-ink"
+        style={titleStyle}
+      >
+        {title ?? ""}
+      </Animated.Text>
+      {children}
       <ScrollHairline scrollY={scrollY} />
     </View>
   );
@@ -119,7 +150,7 @@ function Hero({ card, mediaStyle }: { card: Save; mediaStyle?: ReturnType<typeof
   );
   if (card.status === "pending") {
     return (
-      <Thumb uri={null} className="border border-hairline">
+      <Thumb uri={null} aspect={HERO_ASPECT} className="border border-hairline">
         <Skeleton style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
         <View className="flex-1 items-center justify-center">
           <Icon name="movie" size={40} color={colors.ink3} />
@@ -131,7 +162,7 @@ function Hero({ card, mediaStyle }: { card: Save; mediaStyle?: ReturnType<typeof
   }
   if (card.status === "partial" || !card.thumbnail_url) {
     return (
-      <Thumb uri={null} className="border border-hairline">
+      <Thumb uri={null} aspect={HERO_ASPECT} className="border border-hairline">
         <View className="flex-1 items-center justify-center bg-raised">
           <Icon name="image-not-supported" size={40} color={colors.ink3} />
           <Text className="mt-2 font-sans-medium text-body text-ink-2">Preview unavailable</Text>
@@ -141,7 +172,7 @@ function Hero({ card, mediaStyle }: { card: Save; mediaStyle?: ReturnType<typeof
     );
   }
   return (
-    <Thumb uri={card.thumbnail_url} mediaStyle={mediaStyle} className="border border-hairline">
+    <Thumb uri={card.thumbnail_url} aspect={HERO_ASPECT} mediaStyle={mediaStyle} className="border border-hairline">
       <Overlay icon="smart-display" text="Reel" className="right-3 top-3" />
       {openIg}
     </Thumb>
@@ -204,6 +235,11 @@ export function CardDetailScreen() {
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({ onScroll: (e) => scrollY.set(e.contentOffset.y) });
   const parallax = useHeroParallax(scrollY);
+  // The page title sits under the hero (creator row above it); once its last line passes the
+  // bar, the bar shows it. Two lines of display type ≈ 64 pt.
+  const { width } = useWindowDimensions();
+  const heroHeight = (Math.min(width, COLUMN_MAX) - 32) / HERO_ASPECT;
+  const titleFrom = heroHeight + 4 + 12 + 18 + 4 + 40;
 
   const query = useQuery({
     queryKey: ["save", id],
@@ -281,7 +317,7 @@ export function CardDetailScreen() {
             </View>
           </Link.AppleZoomTarget>
         ) : (
-          <Skeleton style={{ aspectRatio: 4 / 5, borderRadius: 14 }} />
+          <Skeleton style={{ aspectRatio: HERO_ASPECT, borderRadius: 14 }} />
         )}
         <SkeletonGroup>
           {preview ? (
@@ -315,7 +351,7 @@ export function CardDetailScreen() {
         ? { text: "GETTING DETAILS", color: colors.accent }
         : card.status === "partial"
           ? { text: "PREVIEW UNAVAILABLE", color: colors.ink3 }
-          : { text: "READY • SYNCED", color: colors.success };
+          : null;
     const title = card.title ?? (card.status === "pending" ? displayLink(card.source_url) : card.caption?.split("\n")[0] ?? displayLink(card.source_url));
     const showCaption = card.status === "partial" || captionOpen;
     const stale = isStalePending(card, now);
@@ -325,18 +361,7 @@ export function CardDetailScreen() {
     const next = () => i++;
 
     body = (
-      <View className="w-full max-w-[560px] self-center px-4 pb-10">
-        <View className="h-12 flex-row items-center">
-          <View className="h-2 w-2 rounded-full" style={{ backgroundColor: status.color }} />
-          <Text className="ml-2 flex-1 font-sans-semibold text-label text-ink-2">{status.text}</Text>
-          <IconButton label="Add to stack" onPress={() => setPickerOpen(true)}>
-            <Animated.View style={bookmark.style}>
-              <Icon name="bookmark" size={22} color={colors.accent} />
-            </Animated.View>
-          </IconButton>
-          <IconButton icon="more-vert" label="More" onPress={() => setMenuOpen(true)} />
-        </View>
-
+      <View className="w-full max-w-[560px] self-center px-4 pb-10 pt-1">
         <Link.AppleZoomTarget>
           <View>
             <Hero card={card} mediaStyle={parallax} />
@@ -359,11 +384,17 @@ export function CardDetailScreen() {
               </View>
             ) : null}
             <Text className="font-sans text-meta text-ink-2">{savedAgo(card.created_at, now)}</Text>
+            {status ? (
+              <View className="ml-3 flex-row items-center">
+                <View className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.color }} />
+                <Text className="ml-1.5 font-sans-semibold text-label text-ink-2">{status.text}</Text>
+              </View>
+            ) : null}
           </View>
         </Reveal>
 
         <Reveal index={next()}>
-          <View className="my-5 h-px bg-hairline" />
+          <View className="my-4 h-px bg-hairline" />
           <NoteBlock
             note={card.note}
             onSave={saveNote}
@@ -479,7 +510,19 @@ export function CardDetailScreen() {
 
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
-      <TopBar onBack={back} onShare={card ? share : undefined} scrollY={scrollY} />
+      <TopBar onBack={back} title={card ? cardTitle(card) : undefined} titleFrom={titleFrom} scrollY={scrollY}>
+        {card ? (
+          <>
+            <IconButton icon="share" label="Share" onPress={share} />
+            <IconButton label="Add to stack" onPress={() => setPickerOpen(true)}>
+              <Animated.View style={bookmark.style}>
+                <Icon name="bookmark" size={22} color={colors.accent} />
+              </Animated.View>
+            </IconButton>
+            <IconButton icon="more-vert" label="More" onPress={() => setMenuOpen(true)} />
+          </>
+        ) : null}
+      </TopBar>
       <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
         {body}
       </Animated.ScrollView>

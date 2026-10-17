@@ -31,7 +31,7 @@ async function open(id: string, api = demoApi()) {
 test("a ready card shows everything the reel has", async () => {
   await open("s-momo");
   expect(await screen.findByText(MOMO)).toBeTruthy();
-  expect(screen.getByText("READY • SYNCED")).toBeTruthy();
+  expect(screen.queryByText("READY • SYNCED")).toBeNull(); // ready cards carry no status label
   expect(screen.getByText("@bangalorefoodie")).toBeTruthy();
   expect(screen.getByText("Saved 5 days ago")).toBeTruthy();
   expect(screen.getByText("Cash only")).toBeTruthy();
