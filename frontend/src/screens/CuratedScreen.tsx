@@ -19,6 +19,11 @@ import { haptic } from "../lib/haptics";
 import { colors } from "../theme/tokens";
 import { ErrorState } from "../components/ErrorState";
 
+/** Width of a card in a horizontal row: narrow enough that the next one peeks in. */
+const ROW_CARD = 136;
+/** The hero picture: a wide 16:9 band, not half the screen. */
+const HERO_ASPECT = 16 / 9;
+
 function ListRow({ save, now }: { save: Save; now: number }) {
   return (
     <ZoomLink href={`/reel/${save.id}`}>
@@ -50,8 +55,8 @@ function ListRow({ save, now }: { save: Save; now: number }) {
 function Section({ section, now, index }: { section: CuratedSection; now: number; index: number }) {
   if (section.saves.length === 0) return null;
   return (
-    <Reveal index={index} style={{ marginTop: 32 }}>
-      <Text className="px-4 font-display text-ink" style={{ fontSize: 20, lineHeight: 26 }}>
+    <Reveal index={index} style={{ marginTop: 28 }}>
+      <Text className="px-4 font-display text-display-sm text-ink">
         {section.title}
       </Text>
       {section.subtitle ? <Text className="mt-0.5 px-4 font-sans text-meta text-ink-2">{section.subtitle}</Text> : null}
@@ -60,13 +65,13 @@ function Section({ section, now, index }: { section: CuratedSection; now: number
           horizontal
           showsHorizontalScrollIndicator={false}
           decelerationRate="fast"
-          snapToInterval={162}
+          snapToInterval={ROW_CARD + 12}
           snapToAlignment="start"
           className="mt-3"
           contentContainerStyle={{ paddingHorizontal: 16, gap: 12 }}
         >
           {section.saves.map((s) => (
-            <View key={s.id} style={{ width: 150 }}>
+            <View key={s.id} style={{ width: ROW_CARD }}>
               <ReelCard save={s} now={now} href={`/reel/${s.id}`} />
             </View>
           ))}
@@ -127,13 +132,11 @@ export function CuratedScreen() {
         }
       >
         <View className="w-full max-w-[720px] self-center">
-          <View className="px-4 pt-5">
-            <Text className="font-display-regular text-ink" style={{ fontSize: 32, lineHeight: 38 }}>
-              Curated for you
-            </Text>
+          <View className="px-4 pt-3">
+            <Text className="font-display-regular text-display-lg text-ink">Curated for you</Text>
             {feed.data ? (
               <Reveal>
-                <Text className="mt-1 font-sans text-body text-ink-2">{`${feed.data.date_label} · picked from your saves`}</Text>
+                <Text className="mt-0.5 font-sans text-meta text-ink-2">{`${feed.data.date_label} · picked from your saves`}</Text>
               </Reveal>
             ) : null}
           </View>
@@ -141,7 +144,7 @@ export function CuratedScreen() {
           {feed.isLoading ? (
             <SkeletonGroup style={{ paddingHorizontal: 16, marginTop: 24 }}>
               <Skeleton style={{ height: 12, width: 110, borderRadius: 6 }} />
-              <Skeleton style={{ marginTop: 12, aspectRatio: 16 / 11, borderRadius: 14 }} />
+              <Skeleton style={{ marginTop: 12, aspectRatio: HERO_ASPECT, borderRadius: 14 }} />
               <Skeleton style={{ marginTop: 12, height: 22, width: "70%", borderRadius: 8 }} />
               <Skeleton style={{ marginTop: 8, height: 12, width: "45%", borderRadius: 6 }} />
               <View className="mt-8">
@@ -164,18 +167,16 @@ export function CuratedScreen() {
           ) : null}
 
           {hero && hero.save_ids.length > 0 ? (
-            <Reveal index={1} style={{ marginTop: 24, paddingHorizontal: 16 }}>
+            <Reveal index={1} style={{ marginTop: 20, paddingHorizontal: 16 }}>
               <Text className="font-sans-semibold text-label text-ink-2">{hero.label}</Text>
               <ZoomLink href={`/reel/${hero.save_ids[0]}`}>
                 <PressableScale accessibilityRole="button" scaleTo={0.98} containerClassName="mt-3">
                   <Link.AppleZoom>
-                    <Thumb uri={hero.image_url} aspect={16 / 11} className="border border-hairline" />
+                    <Thumb uri={hero.image_url} aspect={HERO_ASPECT} className="border border-hairline" />
                   </Link.AppleZoom>
                 </PressableScale>
               </ZoomLink>
-              <Text className="mt-3 font-display text-ink" style={{ fontSize: 22, lineHeight: 28 }}>
-                {hero.title}
-              </Text>
+              <Text className="mt-3 font-display text-display-md text-ink">{hero.title}</Text>
               <Text className="mt-1 font-sans text-meta text-ink-2">{hero.subtitle}</Text>
               <PressableScale
                 accessibilityRole="button"
@@ -184,7 +185,7 @@ export function CuratedScreen() {
                 containerClassName="mt-2 self-start"
                 className="h-10 justify-center"
               >
-                <Text className="font-sans-semibold text-body text-accent">{`See all ${hero.save_ids.length}`}</Text>
+                <Text className="font-sans-semibold text-body text-accent-text">{`See all ${hero.save_ids.length}`}</Text>
               </PressableScale>
             </Reveal>
           ) : null}
