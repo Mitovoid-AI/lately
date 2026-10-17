@@ -18,10 +18,10 @@ import { PressableScale } from "./motion/PressableScale";
 type TabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>["tabBar"]>>[0];
 
 const ICONS: Record<string, { name: IconName; active?: IconName }> = {
-  curated: { name: "auto-stories" },
-  index: { name: "grid-view" },
+  curated: { name: "auto-stories", active: "auto-stories-filled" },
+  index: { name: "grid-view", active: "grid-view-filled" },
   save: { name: "add-circle-outline", active: "add-circle" },
-  stacks: { name: "folder-special" },
+  stacks: { name: "folder-special", active: "folder-special-filled" },
 };
 const MARK_W = 20;
 /** Bar height above the home indicator (native tab bars are 49-56 pt). */
@@ -62,7 +62,7 @@ function TabItem({
         activeName={icon.active ?? icon.name}
         color={colors.ink2}
         activeColor={colors.accent}
-        size={24}
+        size={23}
       />
       <Animated.Text style={[styles.label, focused ? styles.labelOn : null, labelStyle]}>{label}</Animated.Text>
     </PressableScale>
