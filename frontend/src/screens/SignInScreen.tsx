@@ -81,7 +81,7 @@ function ProviderButton({
       onPress={onPress}
       highlightColor={tone === "accent" ? colors.accentPressed : colors.raised}
       containerClassName={className}
-      className={`h-14 flex-row items-center justify-center rounded-ctl px-4 ${box}`}
+      className={`h-12 flex-row items-center justify-center rounded-ctl px-4 ${box}`}
       style={tone === "plain" ? { boxShadow: shadows.card } : undefined}
     >
       {icon}
@@ -138,8 +138,8 @@ function LeadCard({ children }: { children: ReactNode }) {
 /** The tilted three-reel stack from "01 Sign in — light". */
 function ReelStack() {
   return (
-    <View className="mt-4 h-[330px] w-full items-center justify-center">
-      <FanCard side={-1} style={{ position: "absolute", left: "8%", top: 24, width: 150 }}>
+    <View className="mt-3 h-[272px] w-full items-center justify-center">
+      <FanCard side={-1} style={{ position: "absolute", left: "7%", top: 22, width: 118 }}>
         <Thumb uri={null} aspect={9 / 16} radius={18}>
           <Image source={IMG.trail} contentFit="cover" style={{ position: "absolute", width: "100%", height: "100%" }} />
           <View className="absolute left-2 top-2">
@@ -149,7 +149,7 @@ function ReelStack() {
           <Text className="absolute bottom-3 left-3 font-sans text-caption text-on-accent">♪ Original audio</Text>
         </Thumb>
       </FanCard>
-      <FanCard side={1} style={{ position: "absolute", right: "8%", top: 24, width: 150 }}>
+      <FanCard side={1} style={{ position: "absolute", right: "7%", top: 22, width: 118 }}>
         <Thumb uri={null} aspect={9 / 16} radius={18}>
           <Image source={IMG.desk} contentFit="cover" style={{ position: "absolute", width: "100%", height: "100%" }} />
           <View className="absolute right-2 top-2">
@@ -164,7 +164,7 @@ function ReelStack() {
       <LeadCard>
       <View
         style={{
-          width: 178,
+          width: 144,
           boxShadow: shadows.overlay,
         }}
       >
@@ -182,22 +182,19 @@ function ReelStack() {
             <Icon name="chat-bubble-outline" size={20} color={colors.onMedia} />
             <Text className="font-sans-semibold text-caption text-on-accent">328</Text>
           </View>
-          <View className="absolute bottom-[86px] left-2 flex-row items-center">
+          <View className="absolute bottom-[64px] left-2 flex-row items-center">
             <View className="h-5 w-5 items-center justify-center rounded-full bg-accent">
               <Icon name="local-cafe" size={12} color={colors.onMedia} />
             </View>
             <Text className="ml-1.5 font-sans-semibold text-meta text-on-accent">@cafestory</Text>
           </View>
-          <Text numberOfLines={1} className="absolute bottom-[66px] left-2 right-2 font-sans text-caption text-on-accent">
-            ♪ Sunday morning jazz • cafestory
-          </Text>
           <View className="absolute bottom-2 left-2 right-2 rounded-xl bg-card px-2.5 py-2">
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center">
                 <Icon name="edit-note" size={14} color={colors.accent} />
                 <Text className="ml-1 font-sans-semibold text-caption text-accent">Your Note</Text>
               </View>
-              <Text className="font-sans text-caption text-ink-3">2m ago</Text>
+              <Text numberOfLines={1} className="font-sans text-caption text-ink-3">2m</Text>
             </View>
             <Text numberOfLines={1} className="mt-0.5 font-display-italic text-meta text-ink">
               “Quiet spot for Sunday…”
@@ -347,7 +344,7 @@ export function SignInScreen() {
   return (
     <View className="flex-1 bg-canvas">
       <ScrollView
-        contentContainerStyle={{ paddingTop: insets.top + 16, paddingBottom: insets.bottom + 24, alignItems: "center" }}
+        contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20, alignItems: "center" }}
       >
         <View className="w-full max-w-[440px] items-center px-4">
           <Reveal index={0}>
@@ -359,10 +356,10 @@ export function SignInScreen() {
           <Reveal index={1} style={{ alignItems: "center" }}>
             <Image
               source={LOGO}
-              style={{ width: 76, height: 76, borderRadius: 20, marginTop: 20 }}
+              style={{ width: 60, height: 60, borderRadius: 16, marginTop: 14 }}
               accessibilityLabel="Lately logo"
             />
-            <Text className="mt-3 font-display-regular text-ink" style={{ fontSize: 44, lineHeight: 52 }}>
+            <Text className="mt-2 font-display-regular text-ink" style={{ fontSize: 36, lineHeight: 42, letterSpacing: -0.5 }}>
               Lately
             </Text>
           </Reveal>
@@ -382,15 +379,6 @@ export function SignInScreen() {
 
           {signUp ? <ImageStrip /> : <ReelStack />}
 
-          {signUp ? null : (
-            <Reveal index={5}>
-              <View className="mt-2 flex-row gap-2">
-                <Pill icon="menu-book" label="Organized reading" />
-                <Pill icon="search" label="Instant recall" iconColor={colors.success} />
-              </View>
-            </Reveal>
-          )}
-
           {pendingShare ? (
             <Reveal index={6} style={{ width: "100%" }}>
               <View className="mt-6 w-full flex-row items-center rounded-2xl border border-hairline bg-card px-4 py-3">
@@ -403,7 +391,7 @@ export function SignInScreen() {
           ) : null}
 
           <Reveal index={6} style={{ width: "100%" }}>
-          <View className="mt-6 w-full gap-3">
+          <View className="mt-5 w-full gap-2.5">
             <ProviderButton
               tone="accent"
               brand="google"
