@@ -175,7 +175,7 @@ export function StackDetailScreen() {
           ListEmptyComponent={
             <Reveal index={1}>
               <Text className="px-6 pt-10 text-center font-sans text-body text-ink-2">
-                {"No reels here yet — add one from a card's bookmark."}
+                {"No reels here yet. Add one from a card's bookmark."}
               </Text>
             </Reveal>
           }

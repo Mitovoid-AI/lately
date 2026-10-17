@@ -110,8 +110,8 @@ export function TabBar({ state, descriptors, navigation, insets }: TabBarProps) 
         const label = descriptors[route.key].options.title ?? route.name;
         const onPress = () => {
           const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+          // Save is an action (light tap); switching tabs is navigation, which stays silent.
           if (route.name === "save") haptic.light();
-          else if (!focused) haptic.selection();
           if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
         };
         return (

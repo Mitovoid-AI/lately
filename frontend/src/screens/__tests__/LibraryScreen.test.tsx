@@ -80,7 +80,7 @@ test("header, search, cards and the paste button navigate", async () => {
 test("an empty library shows the first-run state", async () => {
   const api: LatelyApi = { ...demoApi(), listSaves: async () => [] };
   await renderWithProviders(<LibraryScreen />, { api });
-  expect(await screen.findByText("Your Lately is empty — for now")).toBeTruthy();
+  expect(await screen.findByText("Nothing saved yet")).toBeTruthy();
   await fireEvent.press(screen.getByText("Paste a link instead"));
   expect(mockRouter.push).toHaveBeenCalledWith("/save-sheet");
 });
@@ -89,7 +89,7 @@ test("a failed load says so instead of showing an empty library", async () => {
   const api: LatelyApi = { ...demoApi(), listSaves: async () => Promise.reject(new ApiError("NETWORK", 0)) };
   await renderWithProviders(<LibraryScreen />, { api });
   expect(await screen.findByText("Couldn't load your reels")).toBeTruthy();
-  expect(screen.queryByText("Your Lately is empty — for now")).toBeNull();
+  expect(screen.queryByText("Nothing saved yet")).toBeNull();
   expect(screen.getByText("Try again")).toBeTruthy();
 });
 

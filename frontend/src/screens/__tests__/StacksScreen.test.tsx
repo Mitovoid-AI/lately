@@ -60,7 +60,7 @@ test("an empty stack says how to add to it", async () => {
   const trip = await api.createStack("Trip");
   mockParams = { id: trip.id };
   await renderWithProviders(<StackDetailScreen />, { api });
-  expect(await screen.findByText("No reels here yet — add one from a card's bookmark.")).toBeTruthy();
+  expect(await screen.findByText("No reels here yet. Add one from a card's bookmark.")).toBeTruthy();
 });
 
 test("a failed stacks load shows an error with retry", async () => {

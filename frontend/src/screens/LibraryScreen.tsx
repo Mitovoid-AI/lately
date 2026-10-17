@@ -72,12 +72,12 @@ function EmptyState({ onPaste }: { onPaste: () => void }) {
   const steps: { icon: IconName; text: string }[] = [
     { icon: "play-circle-outline", text: "Open a reel in Instagram" },
     { icon: "ios-share", text: "Tap Share → Lately" },
-    { icon: "edit-note", text: "Add a reason — optional" },
+    { icon: "edit-note", text: "Add a reason (optional)" },
   ];
   return (
     <View className="items-center px-6 pt-12">
       <Reveal index={0}>
-        <Text className="text-center font-display text-display-lg text-ink">Your Lately is empty — for now</Text>
+        <Text className="text-center font-display text-display-lg text-ink">Nothing saved yet</Text>
         <Text className="mt-2 text-center font-sans text-body text-ink-2">
           Save a reel from Instagram and it shows up here.
         </Text>

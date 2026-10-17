@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { FlatList, Text, View } from "react-native";
 import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { SearchHit } from "../api/contract";
 import { useApi } from "../api/index";
 import { Chip } from "../components/Chip";
+import { HEADER_HEIGHT } from "../components/Header";
 import { Icon } from "../components/Icon";
 import { IconButton } from "../components/motion/IconButton";
 import { PressableScale } from "../components/motion/PressableScale";
@@ -46,12 +47,21 @@ function TryChips({ onPick, start = 0 }: { onPick: (q: string) => void; start?: 
   );
 }
 
-function ResultRow({ hit, now, onPress }: { hit: SearchHit; now: number; onPress: () => void }) {
+/** One result. Memoised: typing re-renders the screen, not every row (rows only change with data). */
+const ResultRow = memo(function ResultRow({
+  hit,
+  now,
+  onOpen,
+}: {
+  hit: SearchHit;
+  now: number;
+  onOpen: (hit: SearchHit) => void;
+}) {
   const s = hit.save;
   return (
     <PressableScale
       accessibilityRole="button"
-      onPress={onPress}
+      onPress={() => onOpen(hit)}
       scaleTo={1}
       highlightColor={colors.raised}
       className="-mx-2 flex-row rounded-xl px-2 py-3"
@@ -78,7 +88,7 @@ function ResultRow({ hit, now, onPress }: { hit: SearchHit; now: number; onPress
       </View>
     </PressableScale>
   );
-}
+});
 
 export function SearchScreen() {
   const { q: initial = "" } = useLocalSearchParams<{ q?: string }>();
@@ -106,6 +116,18 @@ export function SearchScreen() {
   });
 
   const remember = useCallback(async (q: string) => setRecent(await pushRecent(deviceStore, q)), []);
+  // Read at tap time, so the row callbacks (and every row) don't change on each keystroke.
+  const queryRef = useRef(query);
+  useEffect(() => {
+    queryRef.current = query;
+  }, [query]);
+  const open = useCallback(
+    (hit: SearchHit) => {
+      remember(queryRef.current);
+      router.push(`/reel/${hit.save.id}`);
+    },
+    [remember, router],
+  );
   const pick = (q: string) => setQuery(q);
   const hits = results.data ?? [];
   const blank = query.trim().length === 0;
@@ -116,22 +138,15 @@ export function SearchScreen() {
   const renderItem = useCallback(
     ({ item, index }: { item: SearchHit; index: number }) => (
       <Reveal index={index} enabled={entrance}>
-        <ResultRow
-          hit={item}
-          now={now}
-          onPress={() => {
-            remember(query);
-            router.push(`/reel/${item.save.id}`);
-          }}
-        />
+        <ResultRow hit={item} now={now} onOpen={open} />
       </Reveal>
     ),
-    [entrance, now, query, remember, router],
+    [entrance, now, open],
   );
 
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
-      <View className="h-16 flex-row items-center border-b border-hairline px-2">
+      <View className="flex-row items-center border-b border-hairline px-1" style={{ height: HEADER_HEIGHT }}>
         <IconButton
           icon="arrow-back"
           size={24}

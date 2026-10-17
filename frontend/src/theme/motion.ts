@@ -40,5 +40,5 @@ export const SPRING = {
 
 /** Gap between items in a staggered entrance. */
 export const STAGGER_MS = 40;
-/** Only the first screenful staggers; anything later appears with its list. */
-export const STAGGER_MAX = 8;
+/** Only the first screenful staggers (6 cards on a phone); anything later appears with its list. */
+export const STAGGER_MAX = 6;
