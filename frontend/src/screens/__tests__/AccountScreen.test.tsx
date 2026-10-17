@@ -54,7 +54,7 @@ test("reading font and text size are saved", async () => {
 test("dark theme says it is coming", async () => {
   const { client } = await open();
   await fireEvent.press(screen.getByText("Dark"));
-  expect(await screen.findByText("Dark theme is coming soon — Lately stays light for now.")).toBeTruthy();
+  expect(await screen.findByText("Dark theme is coming soon. Lately stays light for now.")).toBeTruthy();
   await settled(client);
 });
 

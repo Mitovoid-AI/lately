@@ -10,7 +10,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { ConnectedAccount, Preferences } from "../api/contract";
 import { useApi } from "../api/index";
 import { useAuth } from "../auth/AuthProvider";
-import { LOGO, ScrollHairline } from "../components/Header";
+import { HEADER_HEIGHT, LOGO, ScrollHairline } from "../components/Header";
 import { Icon, type IconName } from "../components/Icon";
 import { IconButton } from "../components/motion/IconButton";
 import { PressableScale } from "../components/motion/PressableScale";
@@ -124,31 +124,25 @@ export function AccountScreen() {
 
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
-      <View className="h-16 flex-row items-center px-2">
+      <View className="flex-row items-center px-1" style={{ height: HEADER_HEIGHT }}>
         <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={() => goBack(router)} />
-        <Image source={LOGO} style={{ width: 36, height: 36, borderRadius: 10 }} />
-        <View className="ml-2 flex-1">
-          <Text className="font-sans-semibold text-caption text-ink-2">LATELY</Text>
-          <Text className="font-display text-display-sm text-ink" style={{ lineHeight: 24 }}>
-            Account and Settings
-          </Text>
-        </View>
+        <Text className="ml-1 flex-1 font-display text-display-sm text-ink">Account and Settings</Text>
         <ScrollHairline scrollY={scrollY} />
       </View>
 
       <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ paddingBottom: insets.bottom + 32 }}>
         <View className="w-full max-w-[560px] self-center px-4">
           <Reveal index={0}>
-            <View className="items-center pt-6">
+            <View className="items-center pt-4">
               <View>
                 {avatar ? (
                   <Image
                     source={{ uri: avatar }}
                     transition={IMAGE_FADE}
-                    style={{ width: 112, height: 112, borderRadius: 56, borderWidth: 4, borderColor: colors.card }}
+                    style={{ width: 84, height: 84, borderRadius: 42, borderWidth: 3, borderColor: colors.card }}
                   />
                 ) : (
-                  <View className="h-28 w-28 items-center justify-center rounded-full bg-raised">
+                  <View className="items-center justify-center rounded-full bg-raised" style={{ width: 84, height: 84 }}>
                     <Text className="font-display text-display-lg text-ink">{name[0] ?? "?"}</Text>
                   </View>
                 )}
@@ -158,16 +152,16 @@ export function AccountScreen() {
                   onPress={() => toast.show("Photo upload is coming soon")}
                   scaleTo={0.88}
                   containerClassName="absolute bottom-0 right-0"
-                  className="h-9 w-9 items-center justify-center rounded-full border-2 border-canvas bg-accent"
+                  className="h-8 w-8 items-center justify-center rounded-full border-2 border-canvas bg-accent"
                 >
-                  <Icon name="photo-camera" size={18} color={colors.onAccent} />
+                  <Icon name="photo-camera" size={15} color={colors.onAccent} />
                 </PressableScale>
               </View>
-              <Text className="mt-4 font-display-medium text-display-lg text-ink">{name}</Text>
-              <Text className="mt-1 font-sans text-body text-ink-2">{`@${handle} · ${email}`}</Text>
+              <Text className="mt-3 font-display-medium text-display-md text-ink">{name}</Text>
+              <Text numberOfLines={1} className="mt-0.5 font-sans text-meta text-ink-2">{`@${handle} · ${email}`}</Text>
               {me ? (
                 <Animated.View entering={NOTE_IN} style={{ alignItems: "center" }}>
-                  <View className="mt-4 flex-row flex-wrap justify-center gap-2">
+                  <View className="mt-3 flex-row flex-wrap justify-center gap-2">
                     <InfoChip icon="bookmark-border" text={`${me.total_saves} Saved Reels`} />
                     <InfoChip icon="folder-open" text={`${me.stacks_count} Collections`} />
                   </View>
@@ -251,7 +245,7 @@ export function AccountScreen() {
               {prefs.theme !== "light" ? (
                 <Animated.View entering={NOTE_IN}>
                   <Text className="mt-3 font-sans text-meta text-ink-2">
-                    Dark theme is coming soon — Lately stays light for now.
+                    Dark theme is coming soon. Lately stays light for now.
                   </Text>
                 </Animated.View>
               ) : null}
