@@ -35,7 +35,11 @@ If saves don't load, allow Python through Windows Firewall on private networks (
 
 **Instagram's Share → Lately** needs the native build (Expo Go has no share target). The
 debug APK at `android/app/build/outputs/apk/debug/app-debug.apk` has it and loads its JS
-from Metro, so JS changes need no rebuild. Over USB: `adb install -r` that APK, then
+from Metro, so JS changes need no rebuild. No Android toolchain on this PC? GitHub Actions
+builds the same APK (`.github/workflows/android-apk.yml`, on native changes pushed to `qa`
+or *Run workflow*): download `lately-debug-apk` from the run's Artifacts, unzip, install.
+Sign in from the APK, not Expo Go: Supabase's `exp://**` redirect pattern doesn't match
+Expo Go's `exp://<ip>:8081` address, so Google and email links fall back to `localhost:3000`. Over USB: `adb install -r` that APK, then
 `adb reverse tcp:8081 tcp:8081` and `adb reverse tcp:8001 tcp:8001`, then `npx expo start`.
 Over Wi-Fi: shake → Settings → Debug server host → `<PC IP>:8081`; the app then finds the
 API on the same host by itself. Rebuild (`npx expo run:android`) only after adding a
