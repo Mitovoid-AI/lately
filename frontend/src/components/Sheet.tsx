@@ -20,7 +20,7 @@ import { DURATION, EASE_OUT, EASE_SHEET, SPRING } from "../theme/motion";
 import { project, rubberband } from "./motion/physics";
 import { usePresence } from "./motion/usePresence";
 
-export const BACKDROP = "rgba(28,26,23,0.35)";
+export const BACKDROP = colors.backdrop;
 
 export type SheetMotion = {
   /** 0 = off screen, 1 = presented. */

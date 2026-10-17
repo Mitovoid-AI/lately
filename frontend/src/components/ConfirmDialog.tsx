@@ -1,6 +1,7 @@
 import { Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { useAnimatedStyle, useSharedValue } from "react-native-reanimated";
 
+import { colors } from "../theme/tokens";
 import { Button } from "./Button";
 import { usePresence } from "./motion/usePresence";
 
@@ -66,6 +67,6 @@ export function ConfirmDialog({
 }
 
 const styles = StyleSheet.create({
-  backdrop: { backgroundColor: "rgba(28,26,23,0.35)" },
+  backdrop: { backgroundColor: colors.backdrop },
   cardWrap: { width: "100%", maxWidth: 340 },
 });

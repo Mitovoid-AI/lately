@@ -78,8 +78,8 @@ function TopBar({ onBack, onShare, scrollY }: { onBack: () => void; onShare?: ()
 
 function Overlay({ icon, text, className }: { icon: IconName; text: string; className: string }) {
   return (
-    <View className={`absolute flex-row items-center rounded-full px-2.5 py-1 ${className}`} style={{ backgroundColor: "rgba(28,26,23,0.55)" }}>
-      <Icon name={icon} size={14} color="#FFFFFF" />
+    <View className={`absolute flex-row items-center rounded-full px-2.5 py-1 ${className}`} style={{ backgroundColor: colors.scrim }}>
+      <Icon name={icon} size={14} color={colors.onMedia} />
       <Text className="ml-1 font-sans-semibold text-caption text-on-accent">{text}</Text>
     </View>
   );
@@ -111,10 +111,10 @@ function Hero({ card, mediaStyle }: { card: Save; mediaStyle?: ReturnType<typeof
       scaleTo={0.95}
       containerClassName="absolute bottom-3 left-3"
       className="h-10 flex-row items-center rounded-full border px-4"
-      style={{ backgroundColor: "rgba(28,26,23,0.55)", borderColor: "rgba(255,255,255,0.35)" }}
+      style={{ backgroundColor: colors.scrim, borderColor: colors.mediaHairline }}
     >
       <Text className="font-sans-semibold text-meta text-on-accent">Open in Instagram</Text>
-      <Icon name="north-east" size={16} color="#FFFFFF" />
+      <Icon name="north-east" size={16} color={colors.onMedia} />
     </PressableScale>
   );
   if (card.status === "pending") {

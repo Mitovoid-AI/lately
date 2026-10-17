@@ -2,9 +2,9 @@ import type { ReactNode } from "react";
 import { Platform, StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 import Animated, { FadeIn, useReducedMotion, type CSSAnimationKeyframes, type CSSStyle } from "react-native-reanimated";
 
-import { colors } from "../theme/tokens";
+import { colors, sheen } from "../theme/tokens";
 
-const SHEEN = "linear-gradient(90deg, rgba(255,254,251,0) 0%, rgba(255,254,251,0.75) 50%, rgba(255,254,251,0) 100%)";
+const SHEEN = sheen;
 
 // A light band sweeping left → right on a 1.2 s loop (the design system's skeleton spec).
 // A Reanimated CSS animation: it runs on the UI thread and never touches React.

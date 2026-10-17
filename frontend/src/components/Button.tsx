@@ -32,7 +32,7 @@ const PRESSED: Record<Variant, string> = {
   primary: colors.accentPressed,
   secondary: colors.raised,
   ghost: colors.raised,
-  danger: "#F9CFCD",
+  danger: colors.dangerPressed,
 };
 
 // Label ↔ spinner swap: a quick dissolve instead of a hard cut.

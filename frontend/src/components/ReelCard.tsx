@@ -6,7 +6,7 @@ import type { Save } from "../api/contract";
 import { relativeShort } from "../lib/dates";
 import { displayLink } from "../lib/instagram";
 import { CATEGORY } from "../theme/categories";
-import { colors } from "../theme/tokens";
+import { colors, shadows } from "../theme/tokens";
 import { CategoryDot } from "./CategoryDot";
 import { Icon } from "./Icon";
 import { PressableScale } from "./motion/PressableScale";
@@ -75,8 +75,8 @@ export const ReelCard = memo(function ReelCard({
       ) : null}
       {category ? (
         <View
-          className="absolute right-2 top-2 h-7 w-7 items-center justify-center rounded-full"
-          style={{ backgroundColor: "rgba(255,254,251,0.9)" }}
+          className="absolute right-2 top-2 h-7 w-7 items-center justify-center rounded-full bg-scrim-light"
+          style={{ boxShadow: shadows.raised }}
         >
           <Icon name={CATEGORY[category].icon} size={16} color={colors.ink} />
         </View>

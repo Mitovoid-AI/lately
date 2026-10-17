@@ -45,7 +45,7 @@ export function Checkbox({ checked, disabled = false, label }: { checked: boolea
       style={[styles.box, boxStyle]}
     >
       <Animated.View style={tickStyle}>
-        <Icon name="check" size={16} color="#FFFFFF" />
+        <Icon name="check" size={16} color={colors.onAccent} />
       </Animated.View>
     </Animated.View>
   );

@@ -5,6 +5,7 @@ import Animated, { useAnimatedStyle, useSharedValue, withTiming } from "react-na
 import type { Preferences } from "../../api/contract";
 import { haptic } from "../../lib/haptics";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "../../theme/motion";
+import { colors, shadows } from "../../theme/tokens";
 
 type Size = Preferences["text_size"];
 
@@ -102,10 +103,7 @@ const styles = StyleSheet.create({
     width: THUMB,
     height: THUMB,
     borderRadius: THUMB / 2,
-    backgroundColor: "#7A4A00",
-    shadowColor: "#1C1A17",
-    shadowOpacity: 0.12,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
+    backgroundColor: colors.accentText,
+    boxShadow: shadows.raised,
   },
 });

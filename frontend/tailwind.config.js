@@ -22,6 +22,11 @@ module.exports = {
         success: colors.success,
         danger: colors.danger,
         "danger-soft": colors.dangerSoft,
+        "accent-text": colors.accentText,
+        warm: colors.warm,
+        "on-media": colors.onMedia,
+        scrim: colors.scrim,
+        "scrim-light": colors.scrimLight,
       },
       fontFamily: {
         display: ["Newsreader_600SemiBold"],

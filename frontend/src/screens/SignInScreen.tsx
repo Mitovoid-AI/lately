@@ -27,7 +27,7 @@ import { Thumb } from "../components/Thumb";
 import { useToast } from "../components/Toast";
 import { haptic } from "../lib/haptics";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "../theme/motion";
-import { colors } from "../theme/tokens";
+import { colors, shadows } from "../theme/tokens";
 import { usePendingShare } from "../share/ShareRouter";
 
 const IMG = {
@@ -70,7 +70,7 @@ function ProviderButton({
   const icon =
     brand === "google" ? (
       <View className="h-7 w-7 items-center justify-center rounded-full bg-card">
-        <FontAwesome name="google" size={16} color="#4285F4" />
+        <FontAwesome name="google" size={16} color={colors.google} />
       </View>
     ) : (
       <Icon name="mail-outline" size={22} color={colors.ink2} />
@@ -82,7 +82,7 @@ function ProviderButton({
       highlightColor={tone === "accent" ? colors.accentPressed : colors.raised}
       containerClassName={className}
       className={`h-14 flex-row items-center justify-center rounded-ctl px-4 ${box}`}
-      style={tone === "plain" ? { shadowColor: "#1C1A17", shadowOpacity: 0.04, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } } : undefined}
+      style={tone === "plain" ? { boxShadow: shadows.card } : undefined}
     >
       {icon}
       <Text className={`ml-3 font-sans-semibold text-body ${text}`}>{label}</Text>
@@ -94,9 +94,9 @@ function Tag({ icon, text, dark = true }: { icon?: IconName; text: string; dark?
   return (
     <View
       className="flex-row items-center rounded-full px-2 py-1"
-      style={{ backgroundColor: dark ? "rgba(28,26,23,0.55)" : "rgba(255,254,251,0.9)" }}
+      style={{ backgroundColor: dark ? colors.scrim : colors.scrimLight }}
     >
-      {icon ? <Icon name={icon} size={12} color={dark ? "#FFFFFF" : colors.ink} /> : null}
+      {icon ? <Icon name={icon} size={12} color={dark ? colors.onMedia : colors.ink} /> : null}
       <Text className={`ml-1 font-sans-semibold text-caption ${dark ? "text-on-accent" : "text-ink"}`}>{text}</Text>
     </View>
   );
@@ -156,7 +156,7 @@ function ReelStack() {
             <Tag icon="play-arrow" text="0:34" />
           </View>
           <View className="absolute bottom-12 right-2 items-center">
-            <Icon name="favorite-border" size={20} color="#FFFFFF" />
+            <Icon name="favorite-border" size={20} color={colors.onMedia} />
             <Text className="font-sans-semibold text-caption text-on-accent">42.1k</Text>
           </View>
         </Thumb>
@@ -165,10 +165,7 @@ function ReelStack() {
       <View
         style={{
           width: 178,
-          shadowColor: "#1C1A17",
-          shadowOpacity: 0.18,
-          shadowRadius: 18,
-          shadowOffset: { width: 0, height: 10 },
+          boxShadow: shadows.overlay,
         }}
       >
         <Thumb uri={null} aspect={9 / 16} radius={20}>
@@ -176,18 +173,18 @@ function ReelStack() {
           <View className="absolute left-2 top-2">
             <Tag icon="play-circle-outline" text="REELS" />
           </View>
-          <View className="absolute right-2 top-2 h-7 w-7 items-center justify-center rounded-full" style={{ backgroundColor: "rgba(28,26,23,0.55)" }}>
-            <Icon name="volume-up" size={14} color="#FFFFFF" />
+          <View className="absolute right-2 top-2 h-7 w-7 items-center justify-center rounded-full" style={{ backgroundColor: colors.scrim }}>
+            <Icon name="volume-up" size={14} color={colors.onMedia} />
           </View>
           <View className="absolute right-2 items-center" style={{ top: "44%" }}>
-            <Icon name="favorite" size={22} color="#FFFFFF" />
+            <Icon name="favorite" size={22} color={colors.onMedia} />
             <Text className="mb-2 font-sans-semibold text-caption text-on-accent">64.2k</Text>
-            <Icon name="chat-bubble-outline" size={20} color="#FFFFFF" />
+            <Icon name="chat-bubble-outline" size={20} color={colors.onMedia} />
             <Text className="font-sans-semibold text-caption text-on-accent">328</Text>
           </View>
           <View className="absolute bottom-[86px] left-2 flex-row items-center">
             <View className="h-5 w-5 items-center justify-center rounded-full bg-accent">
-              <Icon name="local-cafe" size={12} color="#FFFFFF" />
+              <Icon name="local-cafe" size={12} color={colors.onMedia} />
             </View>
             <Text className="ml-1.5 font-sans-semibold text-meta text-on-accent">@cafestory</Text>
           </View>
@@ -437,7 +434,7 @@ export function SignInScreen() {
               {signUp ? "Already have an account? " : "Don't have an account? "}
             </Text>
             <Pressable accessibilityRole="link" onPress={() => setTab(signUp ? "sign-in" : "sign-up")}>
-              <Text className="font-sans-semibold text-body underline" style={{ color: "#8A5300" }}>
+              <Text className="font-sans-semibold text-body underline" style={{ color: colors.accentText }}>
                 {signUp ? "Sign in" : "Sign up"}
               </Text>
             </Pressable>
@@ -496,10 +493,6 @@ const styles = StyleSheet.create({
     left: 0,
     borderRadius: 999,
     backgroundColor: colors.card,
-    shadowColor: "#1C1A17",
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    boxShadow: shadows.card,
   },
 });

@@ -5,7 +5,7 @@ import Animated, { interpolateColor, useAnimatedStyle, useSharedValue, withTimin
 import { DURATION, EASE_OUT } from "../theme/motion";
 import { colors } from "../theme/tokens";
 
-const RING = "rgba(217,138,11,0.2)";
+const RING = colors.focusRing;
 
 /**
  * Text input with the design system's focus state: the hairline warms to marigold and a soft

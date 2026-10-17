@@ -25,7 +25,7 @@ import { useMe, useSaves } from "../hooks/useSaves";
 import { haptic } from "../lib/haptics";
 import { DURATION, EASE_OUT } from "../theme/motion";
 import { CATEGORY, CATEGORY_ORDER } from "../theme/categories";
-import { colors } from "../theme/tokens";
+import { colors, shadows } from "../theme/tokens";
 import { ErrorState } from "../components/ErrorState";
 import { useSaveQueue } from "../hooks/useSaveQueue";
 
@@ -287,11 +287,5 @@ export function LibraryScreen() {
 
 const styles = StyleSheet.create({
   fab: { position: "absolute", right: 16, bottom: 16 },
-  fabShadow: {
-    borderRadius: 999,
-    shadowColor: colors.accent,
-    shadowOpacity: 0.3,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 4 },
-  },
+  fabShadow: { borderRadius: 999, boxShadow: shadows.accent },
 });

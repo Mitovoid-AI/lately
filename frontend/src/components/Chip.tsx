@@ -40,7 +40,7 @@ export function Chip({
     color: interpolateColor(on.get(), [0, 1], [colors.ink, colors.onAccent]),
   }));
   const dotStyle = useAnimatedStyle(() => ({
-    backgroundColor: interpolateColor(on.get(), [0, 1], [dotColor ?? colors.ink3, "rgba(255,255,255,0.85)"]),
+    backgroundColor: interpolateColor(on.get(), [0, 1], [dotColor ?? colors.ink3, colors.onAccentDot]),
   }));
 
   return (

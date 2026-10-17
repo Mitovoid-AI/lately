@@ -49,7 +49,7 @@ const PROVIDER_NAME: Record<ConnectedAccount["provider"], string> = {
 
 function InfoChip({ icon, text, tone = "plain" }: { icon: IconName; text: string; tone?: "plain" | "warm" }) {
   return (
-    <View className={`h-8 flex-row items-center rounded-full px-3 ${tone === "warm" ? "bg-[#EFE3D3]" : "bg-raised"}`}>
+    <View className={`h-8 flex-row items-center rounded-full px-3 ${tone === "warm" ? "bg-warm" : "bg-raised"}`}>
       <Icon name={icon} size={16} color={tone === "warm" ? colors.accent : colors.ink2} />
       <Text className="ml-1.5 font-sans-medium text-meta text-ink">{text}</Text>
     </View>
@@ -160,7 +160,7 @@ export function AccountScreen() {
                   containerClassName="absolute bottom-0 right-0"
                   className="h-9 w-9 items-center justify-center rounded-full border-2 border-canvas bg-accent"
                 >
-                  <Icon name="photo-camera" size={18} color="#FFFFFF" />
+                  <Icon name="photo-camera" size={18} color={colors.onAccent} />
                 </PressableScale>
               </View>
               <Text className="mt-4 font-display-medium text-display-lg text-ink">{name}</Text>
@@ -346,7 +346,7 @@ export function AccountScreen() {
                 await forgetDeviceData(auth.user?.id);
                 await auth.signOut();
               }}
-              highlightColor="#F9CFCD"
+              highlightColor={colors.dangerPressed}
               containerClassName="mt-8"
               className="flex-row items-center justify-center rounded-2xl bg-danger-soft px-4 py-5"
             >

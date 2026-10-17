@@ -12,4 +12,24 @@ export declare const colors: {
   success: string;
   danger: string;
   dangerSoft: string;
+  dangerPressed: string;
+  accentText: string;
+  warm: string;
+  onMedia: string;
+  scrim: string;
+  scrimLight: string;
+  mediaHairline: string;
+  backdrop: string;
+  focusRing: string;
+  onAccentDot: string;
+  google: string;
 };
+
+export declare const shadows: {
+  card: string;
+  raised: string;
+  overlay: string;
+  accent: string;
+};
+
+export declare const sheen: string;

@@ -71,7 +71,7 @@ function SavedMark() {
     <View>
       <Image source={LOGO} style={{ width: 56, height: 56, borderRadius: 14 }} />
       <PopIn style={styles.badge}>
-        <Icon name="check" size={14} color="#FFFFFF" />
+        <Icon name="check" size={14} color={colors.onAccent} />
       </PopIn>
     </View>
   );
@@ -393,7 +393,7 @@ export function SaveSheetScreen() {
         <Image source={SHARE_BACKDROP} contentFit="cover" blurRadius={8} style={StyleSheet.absoluteFill} />
       ) : null}
       <Animated.View
-        style={[StyleSheet.absoluteFill, { backgroundColor: shared ? "rgba(28,26,23,0.55)" : BACKDROP }, backdropStyle]}
+        style={[StyleSheet.absoluteFill, { backgroundColor: shared ? colors.scrim : BACKDROP }, backdropStyle]}
       >
         <Pressable accessibilityLabel="Close" onPress={close} style={StyleSheet.absoluteFill} />
       </Animated.View>
