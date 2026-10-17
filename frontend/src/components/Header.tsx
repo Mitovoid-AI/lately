@@ -31,7 +31,7 @@ export function ScrollHairline({ scrollY }: { scrollY?: SharedValue<number> }) {
   return <Animated.View style={[styles.hairline, style]} />;
 }
 
-/** The Library-style app bar: logo + wordmark, bookmark, avatar. */
+/** The Library-style app bar: logo + wordmark, bookmark (a shortcut to Stacks, left out on Stacks itself), avatar. */
 export function Header({
   avatarUrl,
   initial = "A",
@@ -52,9 +52,11 @@ export function Header({
         <Text className="ml-2 font-display-medium text-display-sm text-ink">Lately</Text>
       </View>
       <View className="-mr-2 flex-row items-center">
-        <IconButton label="Stacks" onPress={onBookmark}>
-          <Icon name="bookmark-border" size={22} color={colors.ink2} />
-        </IconButton>
+        {onBookmark ? (
+          <IconButton label="Stacks" onPress={onBookmark}>
+            <Icon name="bookmark-border" size={22} color={colors.ink2} />
+          </IconButton>
+        ) : null}
         <IconButton label="Account" onPress={onAvatar}>
           {avatarUrl ? (
             <Image

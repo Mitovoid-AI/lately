@@ -33,7 +33,7 @@ test("lists every stack with its count", async () => {
 test("a new stack can be created", async () => {
   await renderWithProviders(<StacksScreen />);
   await screen.findByText("Cafes to try");
-  await fireEvent.press(screen.getByText("+ New stack"));
+  await fireEvent.press(screen.getByLabelText("Create a new stack"));
   const create = screen.getByRole("button", { name: "Create" });
   expect(create).toBeDisabled();
   await fireEvent.changeText(screen.getByPlaceholderText("e.g. Cafes to try"), "Trip");
@@ -75,7 +75,7 @@ test("pressing Enter twice creates one stack", async () => {
   const createStack = jest.spyOn(api, "createStack");
   await renderWithProviders(<StacksScreen />, { api });
   await screen.findByText("Cafes to try");
-  await fireEvent.press(screen.getByText("+ New stack"));
+  await fireEvent.press(screen.getByLabelText("Create a new stack"));
   const input = screen.getByPlaceholderText("e.g. Cafes to try");
   await fireEvent.changeText(input, "Trip");
   await fireEvent(input, "submitEditing");

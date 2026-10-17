@@ -98,7 +98,6 @@ export function StacksScreen() {
         avatarUrl={me?.avatar_url}
         initial={me?.name?.[0]}
         onAvatar={() => router.push("/account")}
-        onBookmark={() => router.push("/stacks")}
         scrollY={scrollY}
       />
       <Animated.FlatList
@@ -107,25 +106,25 @@ export function StacksScreen() {
         keyExtractor={(s: Item) => s.id}
         numColumns={columns}
         columnWrapperStyle={{ gap: GAP, paddingHorizontal: 16, alignSelf: "center", width: "100%", maxWidth: MAX_WIDTH }}
-        contentContainerStyle={{ paddingBottom: 48, gap: 20 }}
+        contentContainerStyle={{ paddingBottom: 48, gap: 16 }}
         onScroll={onScroll}
         scrollEventThrottle={16}
         ListHeaderComponent={
-          <View className="w-full flex-row items-start self-center px-4 pt-5" style={{ maxWidth: MAX_WIDTH }}>
+          <View className="w-full flex-row items-center self-center px-4 pt-3" style={{ maxWidth: MAX_WIDTH }}>
             <View className="flex-1">
-              <Text className="font-display-regular text-ink" style={{ fontSize: 32, lineHeight: 38 }}>
-                Stacks
-              </Text>
-              <Text className="mt-1 font-sans text-body text-ink-2">Your saves, grouped your way.</Text>
+              <Text className="font-display-regular text-display-lg text-ink">Stacks</Text>
+              <Text className="mt-0.5 font-sans text-meta text-ink-2">Your saves, grouped your way.</Text>
             </View>
             <PressableScale
               accessibilityRole="button"
+              accessibilityLabel="Create a new stack"
               onPress={() => setNewOpen(true)}
               scaleTo={0.95}
               highlightColor={colors.raised}
-              className="h-11 items-center justify-center rounded-full border border-accent px-4"
+              className="h-9 flex-row items-center justify-center rounded-full border border-hairline bg-card pl-2.5 pr-3.5"
             >
-              <Text className="font-sans-semibold text-body text-accent">+ New stack</Text>
+              <Icon name="add" size={18} color={colors.accentText} />
+              <Text className="ml-1 font-sans-semibold text-meta text-accent-text">New stack</Text>
             </PressableScale>
           </View>
         }
