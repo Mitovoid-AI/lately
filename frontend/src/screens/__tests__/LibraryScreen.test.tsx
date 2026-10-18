@@ -115,3 +115,14 @@ test("saves waiting offline show as queued and can be retried", async () => {
   await waitFor(() => expect(screen.queryByText("1 reel waiting to save")).toBeNull());
   expect(createSave).toHaveBeenCalledTimes(2);
 });
+
+test("several queued saves read as plural", async () => {
+  const queueStore = createMemoryStore();
+  await enqueueSave(queueStore, queueKey("demo-user"), "https://www.instagram.com/reel/OFF1/");
+  await enqueueSave(queueStore, queueKey("demo-user"), "https://www.instagram.com/reel/OFF2/");
+  const api = demoApi();
+  jest.spyOn(api, "createSave").mockRejectedValue(new ApiError("NETWORK", 0));
+  await renderWithProviders(<LibraryScreen />, { api, queueStore });
+  expect(await screen.findByText("2 reels waiting to save")).toBeTruthy();
+  expect(screen.getByText("Lately saves them when you're back online.")).toBeTruthy();
+});

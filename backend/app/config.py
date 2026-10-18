@@ -52,8 +52,10 @@ class Settings(BaseSettings):
     search_embed_timeout_seconds: float = 2.0
     # Meaning-only hits are kept within best distance + spread, never beyond the max
     # (cosine distance; tuned on text-embedding-3-small, see tests/search/test_meaning_cutoff.py).
+    # 0.78: every expected reel in scripts/e2e/queries.tsv is within 0.77, while a small
+    # library's nearest unrelated reel ("cafe" -> an AI video editor) sits at 0.80-0.91.
     search_meaning_spread: float = 0.25
-    search_meaning_max_distance: float = 0.85
+    search_meaning_max_distance: float = 0.78
 
     # GET /admin/health requires header X-Admin-Key == this. Empty = endpoint disabled (404).
     admin_key: str = ""

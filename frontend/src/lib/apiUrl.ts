@@ -1,5 +1,5 @@
 import Constants from "expo-constants";
-import { Platform } from "react-native";
+import { Platform, TurboModuleRegistry, type TurboModule } from "react-native";
 
 import { config } from "../config";
 
@@ -35,17 +35,21 @@ function devServerHost(): string | null {
   return Constants.expoConfig?.hostUri ?? Constants.expoGoConfig?.debuggerHost ?? bundleHost();
 }
 
+interface SourceCodeModule extends TurboModule {
+  getConstants(): { scriptURL?: string | null };
+}
+
 /**
  * A plain debug build (no Expo dev client) may have no Metro host in expo-constants, but
- * its JS bundle URL names it. Development only; release bundles are embedded.
+ * its JS bundle URL names it. Read through the public TurboModuleRegistry: the old
+ * `react-native/Libraries/Core/Devtools/getDevServer` deep import raised a dev warning bar
+ * that sat over the bottom of every sheet. Development only; release bundles are embedded.
  */
 function bundleHost(): string | null {
   if (!__DEV__) return null;
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const mod = require("react-native/Libraries/Core/Devtools/getDevServer");
-    const server = (mod.default ?? mod)() as { url: string; bundleLoadedFromServer: boolean };
-    return server.bundleLoadedFromServer ? new URL(server.url).host : null;
+    const scriptURL = TurboModuleRegistry.get<SourceCodeModule>("SourceCode")?.getConstants().scriptURL;
+    return scriptURL && /^https?:\/\//.test(scriptURL) ? new URL(scriptURL).host : null;
   } catch {
     return null;
   }

@@ -3,7 +3,10 @@
 The meaning leg ranks every save by distance, so without a cutoff every query
 returned 10 results, the tail unrelated ("exoplanet" → a folding phone). Live
 distances on 23 real reels (text-embedding-3-small): the expected reel was at
-0.26–0.77, unrelated reels at a median of 0.82–0.93.
+0.26–0.77, unrelated reels at a median of 0.82–0.93. In a library of one or two reels
+the best match is itself unrelated, so the ceiling does the work there: re-measured
+2026-10-18, "cafe" was 0.82 from an AI video editor reel and "car repair", "learn
+spanish", "stock market tips" 0.79–0.84 from their nearest reel; settings use 0.78.
 """
 
 from datetime import UTC, datetime
@@ -44,3 +47,22 @@ def test_lexical_rows_and_rows_without_distance_pass_through():
 def test_disabled_when_settings_are_none():
     rows = [row("meaning", 1, 0.2), row("meaning", 2, 0.99)]
     assert prune_meaning(rows, spread=None, max_distance=None) == rows
+
+
+def test_a_lone_unrelated_reel_is_not_offered_as_similar_meaning():
+    # Library of one: "cafe" against an AI video editor reel (measured 0.823).
+    from app.config import settings
+
+    lone = row("meaning", 1, 0.823)
+    kept = prune_meaning([lone], spread=settings().search_meaning_spread,
+                         max_distance=settings().search_meaning_max_distance)
+    assert kept == []
+
+
+def test_the_weakest_expected_match_still_passes_the_default_ceiling():
+    # "biryni" (a typo) was the farthest expected reel in queries.tsv, at 0.769.
+    from app.config import settings
+
+    weakest = row("meaning", 1, 0.769)
+    assert prune_meaning([weakest], spread=settings().search_meaning_spread,
+                         max_distance=settings().search_meaning_max_distance) == [weakest]

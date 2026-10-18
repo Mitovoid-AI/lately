@@ -24,6 +24,7 @@ import { useToast } from "../components/Toast";
 import { useExport, type ExportPhase } from "../hooks/useExport";
 import { usePreferences } from "../hooks/usePreferences";
 import { useMe } from "../hooks/useSaves";
+import { countOf } from "../lib/counts";
 import { monthYear } from "../lib/dates";
 import { forgetDeviceData } from "../lib/deviceData";
 import { haptic } from "../lib/haptics";
@@ -164,8 +165,8 @@ export function AccountScreen() {
               {me ? (
                 <Animated.View entering={NOTE_IN} style={{ alignItems: "center" }}>
                   <View className="mt-3 flex-row flex-wrap justify-center gap-2">
-                    <InfoChip icon="bookmark-border" text={`${me.total_saves} Saved Reels`} />
-                    <InfoChip icon="folder-open" text={`${me.stacks_count} Collections`} />
+                    <InfoChip icon="bookmark-border" text={countOf(me.total_saves, "Saved Reel")} />
+                    <InfoChip icon="folder-open" text={countOf(me.stacks_count, "Collection")} />
                   </View>
                   <View className="mt-2">
                     <InfoChip icon="verified" text={`Vault Member (${monthYear(me.member_since)})`} tone="warm" />

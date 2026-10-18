@@ -1,6 +1,6 @@
 import { useRouter } from "expo-router";
 import { useCallback, useMemo, useState } from "react";
-import { Platform, RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
+import { RefreshControl, ScrollView, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   useAnimatedReaction,
   useAnimatedScrollHandler,
@@ -24,6 +24,7 @@ import { useNow } from "../hooks/useNow";
 import { useMe, useSaves } from "../hooks/useSaves";
 import { haptic } from "../lib/haptics";
 import { DURATION, EASE_OUT } from "../theme/motion";
+import { countOf } from "../lib/counts";
 import { CATEGORY_ORDER, categoryColor } from "../theme/categories";
 import { useTheme } from "../theme/ThemeProvider";
 import { ErrorState } from "../components/ErrorState";
@@ -60,9 +61,11 @@ function QueuedBanner({ count, busy, onRetry }: { count: number; busy: boolean; 
         <Icon name="cloud-upload" size={22} color={colors.accent} />
         <View className="ml-3 flex-1">
           <Text className="font-sans-semibold text-body text-ink">
-            {count === 1 ? "1 reel waiting to save" : `${count} reels waiting to save`}
+            {`${countOf(count, "reel")} waiting to save`}
           </Text>
-          <Text className="font-sans text-meta text-ink-2">{"Lately saves it when you're back online."}</Text>
+          <Text className="font-sans text-meta text-ink-2">
+            {`Lately saves ${count === 1 ? "it" : "them"} when you're back online.`}
+          </Text>
         </View>
         <Button title="Retry" variant="ghost" onPress={onRetry} loading={busy} />
       </View>
@@ -212,7 +215,7 @@ export function LibraryScreen() {
           ) : null}
           <View className="mt-4 flex-row items-center justify-between px-4">
             <Text className="font-sans-semibold text-label text-ink-2">RECENTLY SAVED</Text>
-            {me ? <Text className="font-sans text-meta text-ink-2">{`${me.total_saves} reels`}</Text> : null}
+            {me ? <Text className="font-sans text-meta text-ink-2">{countOf(me.total_saves, "reel")}</Text> : null}
           </View>
         </>
       )}
@@ -251,7 +254,9 @@ export function LibraryScreen() {
         initialNumToRender={6}
         maxToRenderPerBatch={6}
         windowSize={9}
-        removeClippedSubviews={Platform.OS === "android"}
+        // No removeClippedSubviews: on Android (new architecture) it left the grid blank
+        // when the header changed height (the "waiting to save" banner going away) until
+        // the list re-rendered. windowSize still virtualizes long libraries.
         onEndReached={fetchNextPage}
         onEndReachedThreshold={0.5}
         refreshControl={

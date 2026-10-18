@@ -14,7 +14,7 @@ import { Stack } from "expo-router";
 import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Platform, Text, View } from "react-native";
+import { LogBox, Platform, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useReducedMotion } from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -40,6 +40,10 @@ import { SaveQueueProvider } from "../hooks/useSaveQueue";
 wireAppFocus();
 // The theme this phone showed last, read while the fonts load.
 void loadThemePreference();
+// supabase-js warns once per Google sign-in that Hermes has no WebCrypto, so the PKCE
+// challenge is "plain" (which Supabase accepts). It still prints in Metro; on screen the
+// warning bar covered the bottom of the email sheet and its Send button.
+LogBox.ignoreLogs(["WebCrypto API is not supported"]);
 
 /** Where the query client reports a dead session; AppProviders points it at the current sign-out. */
 const sessionExpired = { handler: () => {} };
