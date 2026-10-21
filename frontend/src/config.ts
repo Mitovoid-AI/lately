@@ -6,4 +6,6 @@ export const config = {
   apiUrl: process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:8001",
   supabaseUrl: process.env.EXPO_PUBLIC_SUPABASE_URL ?? "",
   supabaseKey: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "",
+  // RevenueCat's public SDK key for Google Play ("goog_..."). Empty = no store billing (src/billing).
+  revenuecatAndroidKey: process.env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY ?? "",
 };

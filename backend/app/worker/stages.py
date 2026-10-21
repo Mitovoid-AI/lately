@@ -42,6 +42,7 @@ from ..enrich.structure import (
 from ..enrich.transcribe import TranscribeError, should_transcribe
 from ..search.embed import card_embedding_text, to_pgvector
 from ..search.seed import reel_url
+from ..services.billing import EFFECTIVE_EXPIRY_SQL, EFFECTIVE_PLAN_SQL
 from ..services.saves_view import SAVE_COLUMNS, SAVE_FROM, to_save_detail
 from ..services.text import clean, clean_text
 from ..urls import is_share_link, parse_shortcode
@@ -568,8 +569,9 @@ async def export(db: asyncpg.Pool, job: dict[str, Any]) -> None:
     started = time.monotonic()
     user_id = str(job["payload"]["user_id"])
     account = await db.fetchrow(
-        """select p.id, p.email, p.full_name, p.handle, p.plan, p.created_at
-           from public.profiles p where p.id = $1::uuid""", user_id)
+        f"""select p.id, p.email, p.full_name, p.handle, {EFFECTIVE_PLAN_SQL} as plan,
+                   {EFFECTIVE_EXPIRY_SQL} as plan_expires_at, p.created_at
+            from public.profiles p where p.id = $1::uuid""", user_id)
     if account is None:
         await _metric(db, "worker", "export", started, "skipped", {"reason": "user_gone"})
         return
@@ -595,7 +597,10 @@ async def export(db: asyncpg.Pool, job: dict[str, Any]) -> None:
         "format": "lately-export/1",
         "account": {"id": str(account["id"]), "email": account["email"],
                     "name": account["full_name"], "handle": account["handle"],
-                    "plan": account["plan"], "created_at": account["created_at"].isoformat()},
+                    "plan": account["plan"],
+                    "plan_expires_at": (account["plan_expires_at"].isoformat()
+                                        if account["plan_expires_at"] else None),
+                    "created_at": account["created_at"].isoformat()},
         "preferences": {k: v for k, v in dict(prefs).items() if k not in ("auth_user_id", "updated_at")} if prefs else None,
         "saves": saves,
         "stacks": stacks,

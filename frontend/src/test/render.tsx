@@ -4,9 +4,11 @@ import type { ReactElement } from "react";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import type { LatelyApi } from "../api/contract";
-import { createDemoApi } from "../api/demo";
+import { createDemoApi, type DemoApi } from "../api/demo";
 import { ApiProvider } from "../api/index";
 import { AuthContext, type AuthValue } from "../auth/AuthProvider";
+import { BillingProvider } from "../billing/BillingProvider";
+import type { BillingClient } from "../billing/types";
 import { ToastProvider } from "../components/Toast";
 import { NOW } from "./fixtures";
 import { createMemoryStore } from "./memoryStore";
@@ -16,7 +18,7 @@ import type { KeyValueStore } from "../lib/storage";
 
 const METRICS = { frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } };
 
-export function demoApi(now = () => NOW): LatelyApi {
+export function demoApi(now = () => NOW): DemoApi {
   return createDemoApi({ now, storage: createMemoryStore() });
 }
 
@@ -40,7 +42,7 @@ export function fakeAuth(overrides: Partial<AuthValue> = {}): AuthValue {
 /** Renders a screen with every provider the app root sets up. */
 export async function renderWithProviders(
   ui: ReactElement,
-  o: { api?: LatelyApi; auth?: Partial<AuthValue>; queueStore?: KeyValueStore } = {},
+  o: { api?: LatelyApi; auth?: Partial<AuthValue>; queueStore?: KeyValueStore; billing?: BillingClient } = {},
 ) {
   // gcTime Infinity: no garbage-collection timers left running after a test.
   const client = new QueryClient({
@@ -58,9 +60,11 @@ export async function renderWithProviders(
         <QueryClientProvider client={client}>
           <ApiProvider api={api}>
             <AuthContext.Provider value={auth}>
-              <ToastProvider>
-                <SaveQueueProvider store={queueStore}>{ui}</SaveQueueProvider>
-              </ToastProvider>
+              <BillingProvider client={o.billing}>
+                <ToastProvider>
+                  <SaveQueueProvider store={queueStore}>{ui}</SaveQueueProvider>
+                </ToastProvider>
+              </BillingProvider>
             </AuthContext.Provider>
           </ApiProvider>
         </QueryClientProvider>

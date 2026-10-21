@@ -88,7 +88,8 @@ class MeOut(BaseModel):
     name: str
     handle: str
     avatar_url: str | None = None
-    plan: str
+    plan: str  # effective: an expired pro reads as "free"
+    plan_expires_at: datetime | None = None  # end of the paid period; pro plans only
     saves_this_month: int
     saves_limit: int
     resets_on: date
@@ -96,6 +97,13 @@ class MeOut(BaseModel):
     stacks_count: int
     member_since: date
     connected_accounts: list[ConnectedAccount]
+
+
+class PlanOut(BaseModel):
+    """POST /billing/sync — the plan after syncing with RevenueCat (effective, like /me)."""
+
+    plan: Literal["free", "pro", "lifetime"]
+    plan_expires_at: datetime | None = None
 
 
 ReadingFont = Literal["newsreader", "inter", "lora"]

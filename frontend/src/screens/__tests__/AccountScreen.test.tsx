@@ -1,10 +1,16 @@
 import type { QueryClient } from "@tanstack/react-query";
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
-import { Text } from "react-native";
+import { Linking, Text } from "react-native";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import type { LatelyApi, Me } from "../../api/contract";
+import { createDemoBilling } from "../../billing/demo";
+import { PRO_CONFIRMING } from "../../billing/plans";
+import { PLAY_SUBSCRIPTIONS_URL } from "../../billing/types";
+import { createUnavailableBilling } from "../../billing/unavailable";
 import { queueKey } from "../../lib/saveQueue";
+import { fakeBilling } from "../../test/fakeBilling";
 import { PENDING_SHARE_KEY } from "../../share/ShareRouter";
 import { THEME_KEY } from "../../theme/preference";
 import { useTheme } from "../../theme/ThemeProvider";
@@ -222,4 +228,190 @@ test("privacy policy and terms open from Account", async () => {
   expect(mockRouter.push).toHaveBeenCalledWith("/legal/privacy");
   await fireEvent.press(screen.getByText("Terms of Service"));
   expect(mockRouter.push).toHaveBeenCalledWith("/legal/terms");
+});
+
+describe("the plan block", () => {
+  /** The demo API, with GET /me reporting these plan numbers. */
+  function withMe(over: Partial<Me>): LatelyApi {
+    const base = demoApi();
+    return { ...base, getMe: async () => ({ ...(await base.getMe()), ...over }) };
+  }
+
+  test("free: usage so far, when it resets, and an upgrade button", async () => {
+    const api = withMe({ plan: "free", saves_this_month: 12, saves_limit: 20, resets_on: "2026-11-01" });
+    await renderWithProviders(<AccountScreen />, { api });
+    expect(await screen.findByText("Free plan")).toBeTruthy();
+    expect(screen.getByText("12 of 20 saves this month")).toBeTruthy();
+    expect(screen.getByText("Resets 1 Nov")).toBeTruthy();
+    expect(screen.getByRole("progressbar").props.accessibilityValue).toEqual({ min: 0, max: 20, now: 12 });
+    expect(screen.queryByText("Manage subscription")).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Upgrade to Pro" }));
+    expect(mockRouter.push).toHaveBeenCalledWith("/pro");
+  });
+
+  test("free with one save allowed reads in the singular, and the bar never overflows", async () => {
+    const api = withMe({ plan: "free", saves_this_month: 3, saves_limit: 1 });
+    await renderWithProviders(<AccountScreen />, { api });
+    expect(await screen.findByText("3 of 1 save this month")).toBeTruthy();
+    expect(screen.getByRole("progressbar").props.accessibilityValue).toEqual({ min: 0, max: 1, now: 1 });
+  });
+
+  test("the plan block sits above the settings sections", async () => {
+    await open();
+    const titles = screen.getAllByText(/Free plan|Reading Experience & Appearance|Account & Security/).map((n) => n.props.children);
+    expect(titles).toEqual(["Free plan", "Reading Experience & Appearance", "Account & Security"]);
+  });
+
+  test("pro: unlimited saves, with rows to manage the subscription and to restore purchases", async () => {
+    const openUrl = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    const api = demoApi();
+    api.setPlan("pro", "2027-01-01T00:00:00.000Z");
+    await renderWithProviders(<AccountScreen />, { api, billing: createDemoBilling(api, { delayMs: 0 }) });
+    expect(await screen.findByText("Lately Pro")).toBeTruthy();
+    expect(screen.getByText("Unlimited saves")).toBeTruthy();
+    expect(screen.queryByText("Upgrade to Pro")).toBeNull();
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    await fireEvent.press(screen.getByText("Manage subscription"));
+    await waitFor(() => expect(openUrl).toHaveBeenCalledWith(PLAY_SUBSCRIPTIONS_URL));
+    openUrl.mockRestore();
+  });
+
+  test("pro: Restore purchases re-reads the store, syncs the server and says so", async () => {
+    const api = demoApi();
+    api.setPlan("pro");
+    const syncPlan = jest.spyOn(api, "syncPlan");
+    const fake = fakeBilling({ restore: jest.fn(async () => true) });
+    await renderWithProviders(<AccountScreen />, { api, billing: fake.client });
+    await fireEvent.press(await screen.findByText("Restore purchases"));
+    expect(await screen.findByText("Pro restored")).toBeTruthy();
+    expect(fake.client.restore).toHaveBeenCalledTimes(1);
+    expect(syncPlan).toHaveBeenCalledTimes(1);
+  });
+
+  test("free: Restore purchases sits under Upgrade to Pro, for a Pro that the server lost", async () => {
+    const api = demoApi();
+    const syncPlan = jest.spyOn(api, "syncPlan");
+    const fake = fakeBilling({
+      restore: jest.fn(async () => {
+        api.setPlan("pro");
+        return true;
+      }),
+    });
+    await renderWithProviders(<AccountScreen />, { api, billing: fake.client });
+    expect(await screen.findByText("Free plan")).toBeTruthy();
+    await fireEvent.press(screen.getByText("Restore purchases"));
+    expect(await screen.findByText("Pro restored")).toBeTruthy();
+    expect(fake.client.restore).toHaveBeenCalledTimes(1);
+    expect(syncPlan).toHaveBeenCalledTimes(1);
+  });
+
+  test("a restore the server hasn't heard about doesn't claim Pro is on", async () => {
+    const api = demoApi();
+    const fake = fakeBilling({ restore: jest.fn(async () => true) });
+    await renderWithProviders(<AccountScreen />, { api, billing: fake.client });
+    await fireEvent.press(await screen.findByText("Restore purchases"));
+    expect(await screen.findByText(PRO_CONFIRMING)).toBeTruthy();
+    expect(screen.queryByText("Pro restored")).toBeNull();
+  });
+
+  test("a build with no store has nothing to restore, free or Pro", async () => {
+    const free = await renderWithProviders(<AccountScreen />, { billing: createUnavailableBilling() });
+    expect(await screen.findByText("Free plan")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Upgrade to Pro" })).toBeTruthy();
+    expect(screen.queryByText("Restore purchases")).toBeNull();
+    await free.unmount();
+
+    const api = demoApi();
+    api.setPlan("pro");
+    await renderWithProviders(<AccountScreen />, { api, billing: createUnavailableBilling() });
+    expect(await screen.findByText("Lately Pro")).toBeTruthy();
+    expect(screen.queryByText("Restore purchases")).toBeNull();
+  });
+
+  test("pro: Restore purchases with nothing to restore, or a store error, says so", async () => {
+    const api = demoApi();
+    api.setPlan("pro");
+    const restore = jest.fn<Promise<boolean>, []>().mockResolvedValueOnce(false).mockRejectedValueOnce(new Error("offline"));
+    await renderWithProviders(<AccountScreen />, { api, billing: fakeBilling({ restore }).client });
+    await fireEvent.press(await screen.findByText("Restore purchases"));
+    expect(await screen.findByText("We couldn't find a Pro subscription to restore.")).toBeTruthy();
+    await fireEvent.press(screen.getByText("Restore purchases"));
+    expect(await screen.findByText("Couldn't restore purchases. Try again.")).toBeTruthy();
+  });
+
+  test("lifetime: unlimited saves and nothing to manage", async () => {
+    const api = demoApi();
+    api.setPlan("lifetime");
+    await renderWithProviders(<AccountScreen />, { api });
+    expect(await screen.findByText("Lifetime")).toBeTruthy();
+    expect(screen.getByText("Unlimited saves")).toBeTruthy();
+    expect(screen.queryByText("Manage subscription")).toBeNull();
+    expect(screen.queryByText("Restore purchases")).toBeNull();
+    expect(screen.queryByText("Upgrade to Pro")).toBeNull();
+  });
+});
+
+describe("deleting an account that has a subscription", () => {
+  const NOTE = "Deleting your account doesn't cancel your Google Play subscription. Cancel it in Google Play first.";
+
+  test("a Pro member is told to cancel in Google Play first, at both steps", async () => {
+    const api = demoApi();
+    api.setPlan("pro");
+    await renderWithProviders(<AccountScreen />, { api });
+    await screen.findByText("Lately Pro");
+    await fireEvent.press(screen.getByText("Delete account"));
+    expect(screen.getByText(new RegExp(NOTE))).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText(new RegExp(NOTE))).toBeTruthy();
+  });
+
+  const IF_NOTE = "If you subscribed to Lately Pro, deleting your account doesn't cancel it. Cancel it in Google Play first.";
+
+  test("the store says Pro but the server hasn't caught up: the plain note, at both steps", async () => {
+    const api = demoApi();
+    await renderWithProviders(<AccountScreen />, { api, billing: fakeBilling({ isProActive: jest.fn(async () => true) }).client });
+    await screen.findByText("Free plan");
+    await fireEvent.press(screen.getByText("Delete account"));
+    // The store's answer may land a moment after the screen: the dialog follows it.
+    expect(await screen.findByText(new RegExp(NOTE))).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText(new RegExp(NOTE))).toBeTruthy();
+  });
+
+  test("a free account on a build with a store gets the \"if you subscribed\" note, since a subscription on hold reads as free", async () => {
+    await renderWithProviders(<AccountScreen />, { billing: fakeBilling().client });
+    await screen.findByText("Free plan");
+    await fireEvent.press(screen.getByText("Delete account"));
+    expect(screen.getByText(new RegExp(IF_NOTE))).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    expect(screen.getByText(new RegExp(IF_NOTE))).toBeTruthy();
+  });
+
+  test("no note where nothing can have been bought: lifetime, or a build with no store", async () => {
+    const lifetime = demoApi();
+    lifetime.setPlan("lifetime");
+    const first = await renderWithProviders(<AccountScreen />, { api: lifetime, billing: fakeBilling().client });
+    await screen.findByText("Lifetime");
+    await fireEvent.press(screen.getByText("Delete account"));
+    expect(screen.queryByText(/Google Play/)).toBeNull();
+    await first.unmount();
+
+    await renderWithProviders(<AccountScreen />, { billing: createUnavailableBilling() });
+    await screen.findByText("Free plan");
+    await fireEvent.press(screen.getByText("Delete account"));
+    expect(screen.queryByText(/Google Play/)).toBeNull();
+  });
+
+  test("a free or lifetime account sees no such note", async () => {
+    for (const plan of ["free", "lifetime"] as const) {
+      const api = demoApi();
+      api.setPlan(plan);
+      const view = await renderWithProviders(<AccountScreen />, { api });
+      await screen.findByText(plan === "free" ? "Free plan" : "Lifetime");
+      await fireEvent.press(screen.getByText("Delete account"));
+      expect(screen.getByText("Delete your account?")).toBeTruthy();
+      expect(screen.queryByText(/Google Play subscription/)).toBeNull();
+      await view.unmount();
+    }
+  });
 });

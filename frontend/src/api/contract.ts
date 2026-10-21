@@ -83,6 +83,8 @@ export interface Me {
   handle: string;
   avatar_url: string | null;
   plan: "free" | "pro" | "lifetime";
+  /** When a paid plan lapses unless it renews; null = no expiry. Absent from older servers. */
+  plan_expires_at?: string | null;
   saves_this_month: number;
   saves_limit: number;
   resets_on: string;
@@ -149,6 +151,12 @@ export interface CuratedFeed {
   sections: CuratedSection[];
 }
 
+/** POST /billing/sync: the plan the server now holds for the signed-in user. */
+export interface PlanSync {
+  plan: Me["plan"];
+  plan_expires_at: string | null;
+}
+
 /** GET /me/export: the archive file once it is built, or still queued. */
 export type ExportDownload = { status: "queued" } | { status: "ready"; filename: string; json: string };
 
@@ -158,6 +166,7 @@ export type ApiErrorCode =
   | "RATE_LIMITED"
   | "NOT_FOUND"
   | "UNAUTHORIZED"
+  | "BILLING_UNAVAILABLE"
   | "NETWORK"
   | "SERVER";
 
@@ -218,6 +227,12 @@ export interface LatelyApi {
   deleteAccount(): Promise<void>;
   /** POST /saves/{id}/hint → 202: the device's own read of the reel (fire-and-forget after a save) */
   sendHint(saveId: string, hint: DeviceHint): Promise<void>;
+  /**
+   * POST /billing/sync → 200: asks the server to re-read the person's Lately Pro status from
+   * RevenueCat (right after a purchase or restore) and returns the plan it now holds.
+   * BILLING_UNAVAILABLE (502) when RevenueCat can't be reached.
+   */
+  syncPlan(): Promise<PlanSync>;
 }
 
 export type Endpoint = keyof LatelyApi;
@@ -245,6 +260,7 @@ const ENDPOINT_SET: Record<Endpoint, true> = {
   retryEnrichment: true,
   deleteAccount: true,
   sendHint: true,
+  syncPlan: true,
 };
 
 /** Every call in the contract. */

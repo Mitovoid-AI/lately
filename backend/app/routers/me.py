@@ -17,12 +17,15 @@ from fastapi.responses import JSONResponse
 
 from ..deps import CurrentUser, pool
 from ..models import ConnectedAccount, MeOut, PreferencesOut, PreferencesPatch, api_error
+from ..services.billing import EFFECTIVE_EXPIRY_SQL, EFFECTIVE_PLAN_SQL
 
 router = APIRouter(prefix="/me", tags=["me"])
 
 # Quota window matches save_reel(): the calendar month, in the database's clock.
-_ME_SQL = """
-select p.id, p.email, p.full_name, p.handle, p.avatar_url, p.plan,
+# `plan` is the effective plan (an expired pro reads as free, as save_reel() sees it).
+_ME_SQL = f"""
+select p.id, p.email, p.full_name, p.handle, p.avatar_url,
+       {EFFECTIVE_PLAN_SQL} as plan, {EFFECTIVE_EXPIRY_SQL} as plan_expires_at,
        p.saves_free_limit, p.created_at::date as member_since,
        (select count(*) from public.reels r where r.auth_user_id = p.id) as total_saves,
        (select count(*) from public.stacks s where s.auth_user_id = p.id) as stacks_count,
@@ -71,6 +74,7 @@ async def get_me(user: CurrentUser) -> MeOut:
         handle=row["handle"] or "",
         avatar_url=row["avatar_url"],
         plan=row["plan"],
+        plan_expires_at=row["plan_expires_at"],
         saves_this_month=row["saves_this_month"],
         saves_limit=row["saves_free_limit"],
         resets_on=row["resets_on"],
@@ -145,8 +149,9 @@ async def request_export(user: CurrentUser) -> dict[str, str]:
 async def delete_me(user: CurrentUser) -> Response:
     """Delete the account and everything that belongs to it (Play Store in-app
     deletion). Removing the auth user cascades to profiles, reels (and their
-    stack memberships), stacks and preferences; queued work for the user is
-    dropped. Shared reel_content cards stay: they hold no user data."""
+    stack memberships), stacks and preferences; queued work and the user's
+    billing events are dropped. Shared reel_content cards stay: they hold no
+    user data. A Google Play subscription is not cancelled by this."""
     uid = uuid.UUID(user.id)
     async with pool().acquire() as con, con.transaction():
         if not await con.fetchval("select exists (select 1 from auth.users where id = $1)", uid):
@@ -158,6 +163,16 @@ async def delete_me(user: CurrentUser) -> Response:
                        or payload->>'reel_id' in (
                          select id::text from public.reels where auth_user_id = $1::uuid)""",
                 uid)
+        # Webhook deliveries name the user as app_user_id, or inside the payload
+        # (original id, aliases; a TRANSFER only has transferred_from / transferred_to).
+        await con.execute(
+            """delete from public.billing_events
+               where app_user_id = $1::text
+                  or payload->'event'->>'original_app_user_id' = $1::text
+                  or payload->'event'->'aliases' @> to_jsonb($1::text)
+                  or payload->'event'->'transferred_from' @> to_jsonb($1::text)
+                  or payload->'event'->'transferred_to' @> to_jsonb($1::text)""",
+            str(uid))
         await con.execute("delete from auth.users where id = $1", uid)
     return Response(status_code=204)
 

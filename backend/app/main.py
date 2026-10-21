@@ -17,6 +17,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from .config import settings
 from .deps import close_pool, init_pool
 from .routers import admin as admin_router  # workstream A
+from .routers import billing as billing_router
 from .routers import curated as curated_router  # workstream A
 from .routers import me, saves
 from .routers import search as search_router
@@ -41,6 +42,7 @@ app.include_router(stacks_router.router)
 app.include_router(retries_router)
 app.include_router(curated_router.router)
 app.include_router(admin_router.router)
+app.include_router(billing_router.router)
 app.include_router(thumbnails_router.router)
 
 # The web build calls the API from another origin (Expo web on :8081/:8082 in dev).

@@ -28,6 +28,7 @@ import { createDemoApi } from "../api/demo";
 import { createHttpApi } from "../api/http";
 import { ApiProvider, createApi } from "../api/index";
 import { AuthProvider, useAuth } from "../auth/AuthProvider";
+import { BillingProvider } from "../billing/BillingProvider";
 import { ToastProvider } from "../components/Toast";
 import { Button } from "../components/Button";
 import { OfflineBanner } from "../components/OfflineBanner";
@@ -82,9 +83,11 @@ function AppProviders({ children }: { children: ReactNode }) {
     <QueryClientProvider client={client}>
       <ApiProvider api={api}>
         {status === "signed-in" ? <ThemeSync /> : null}
-        <ToastProvider>
-          <SaveQueueProvider>{children}</SaveQueueProvider>
-        </ToastProvider>
+        <BillingProvider>
+          <ToastProvider>
+            <SaveQueueProvider>{children}</SaveQueueProvider>
+          </ToastProvider>
+        </BillingProvider>
       </ApiProvider>
     </QueryClientProvider>
   );
@@ -124,6 +127,8 @@ function RootStack() {
         <Stack.Screen name="stack/[id]" />
         <Stack.Screen name="search" options={{ animation: "fade", animationDuration: 220 }} />
         <Stack.Screen name="account" />
+        {/* Lately Pro: slides up over whatever sent you here (the save sheet, Account, the Library). */}
+        <Stack.Screen name="pro" options={{ presentation: "modal", animation: reduced ? "fade" : "slide_from_bottom" }} />
         <Stack.Screen
           name="save-sheet"
           options={{ presentation: "transparentModal", animation: "fade", contentStyle: { backgroundColor: "transparent" } }}

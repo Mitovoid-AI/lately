@@ -203,3 +203,37 @@ test("an export is NOT_FOUND until requested, queued briefly, then a JSON file",
   expect(data.saves[0]).toHaveProperty("source_url");
   expect(Array.isArray(data.stacks)).toBe(true);
 });
+
+describe("plan", () => {
+  test("starts on the free plan with a monthly limit and no expiry", async () => {
+    const { api } = setup();
+    expect(await api.getMe()).toMatchObject({ plan: "free", plan_expires_at: null, saves_limit: 20 });
+    expect(await api.syncPlan()).toEqual({ plan: "free", plan_expires_at: null });
+  });
+
+  test("setPlan changes what GET /me and syncPlan report", async () => {
+    const { api } = setup();
+    api.setPlan("pro", "2027-01-01T00:00:00.000Z");
+    expect(api.currentPlan()).toBe("pro");
+    expect(await api.getMe()).toMatchObject({ plan: "pro", plan_expires_at: "2027-01-01T00:00:00.000Z" });
+    expect(await api.syncPlan()).toEqual({ plan: "pro", plan_expires_at: "2027-01-01T00:00:00.000Z" });
+    api.setPlan("lifetime", "2027-01-01T00:00:00.000Z");
+    expect(await api.getMe()).toMatchObject({ plan: "lifetime", plan_expires_at: null });
+    api.setPlan("free");
+    expect(await api.syncPlan()).toEqual({ plan: "free", plan_expires_at: null });
+  });
+
+  test("the sample over-limit link only trips the limit on the free plan", async () => {
+    const { api } = setup();
+    expect((await rejection(api.createSave("https://www.instagram.com/reel/QUOTA/"))).code).toBe("QUOTA_EXCEEDED");
+    api.setPlan("pro");
+    expect(await api.createSave("https://www.instagram.com/reel/QUOTA/")).toMatchObject({ deduped: false });
+  });
+
+  test("deleting the account drops back to the free plan", async () => {
+    const { api } = setup();
+    api.setPlan("pro");
+    await api.deleteAccount();
+    expect(api.currentPlan()).toBe("free");
+  });
+});

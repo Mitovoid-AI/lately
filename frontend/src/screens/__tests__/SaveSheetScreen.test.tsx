@@ -1,7 +1,9 @@
 import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import { ApiError, type LatelyApi } from "../../api/contract";
+import { PRO_CONFIRMING } from "../../billing/plans";
 import { queueKey, readQueue } from "../../lib/saveQueue";
+import { fakeBilling } from "../../test/fakeBilling";
 import { NOW } from "../../test/fixtures";
 import { demoApi, renderWithProviders } from "../../test/render";
 import { SaveSheetScreen } from "../SaveSheetScreen";
@@ -95,11 +97,115 @@ test("text without a reel link", async () => {
   expect(screen.getByText("Share the reel itself, not a profile or story.")).toBeTruthy();
 });
 
-test("monthly limit shows the limit and the reset date", async () => {
+test("monthly limit shows the limit, the reset date and what Pro changes", async () => {
   mockParams = { text: link("QUOTA") };
   await renderWithProviders(<SaveSheetScreen />);
   expect(await screen.findByText("You've used all 20 free saves this month")).toBeTruthy();
-  expect(await screen.findByText("Saves reset on 1 Nov.")).toBeTruthy();
+  expect(await screen.findByText("Saves reset on 1 Nov. Pro removes the monthly cap.")).toBeTruthy();
+});
+
+test("monthly limit: Go unlimited with Pro replaces the sheet with the paywall, and the reel goes along", async () => {
+  mockParams = { text: link("QUOTA") };
+  await renderWithProviders(<SaveSheetScreen />);
+  await fireEvent.press(await screen.findByRole("button", { name: "Go unlimited with Pro" }));
+  expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/pro", params: { text: link("QUOTA") } });
+  expect(mockRouter.back).not.toHaveBeenCalled();
+});
+
+test("a link pasted into the sheet goes along to the paywall too", async () => {
+  await renderWithProviders(<SaveSheetScreen />);
+  await fireEvent.changeText(screen.getByPlaceholderText("instagram.com/reel/…"), link("QUOTA"));
+  await fireEvent.press(screen.getByText("Save"));
+  await fireEvent.press(await screen.findByRole("button", { name: "Go unlimited with Pro" }));
+  expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/pro", params: { text: link("QUOTA") } });
+});
+
+test("monthly limit: Not now just closes the sheet", async () => {
+  mockParams = { text: link("QUOTA") };
+  await renderWithProviders(<SaveSheetScreen />);
+  await fireEvent.press(await screen.findByRole("button", { name: "Not now" }));
+  expect(mockRouter.back).toHaveBeenCalled();
+  expect(mockRouter.replace).not.toHaveBeenCalled();
+});
+
+test("monthly limit before the account has loaded still says what Pro changes", async () => {
+  mockParams = { text: link("QUOTA") };
+  const api: LatelyApi = { ...demoApi(), getMe: () => new Promise(() => {}) };
+  await renderWithProviders(<SaveSheetScreen />, { api });
+  expect(await screen.findByText("Pro removes the monthly cap.")).toBeTruthy();
+});
+
+test("the store says Pro but the server hasn't heard: the sheet syncs the plan and retries the save once", async () => {
+  const api = demoApi();
+  const createSave = jest
+    .spyOn(api, "createSave")
+    .mockRejectedValueOnce(new ApiError("QUOTA_EXCEEDED", 429))
+    .mockResolvedValueOnce({ reel_id: "s-pro", deduped: false, status: "pending" });
+  const syncPlan = jest.spyOn(api, "syncPlan");
+  const fake = fakeBilling({ isProActive: jest.fn(async () => true) });
+  await renderWithProviders(<SaveSheetScreen />, { api, billing: fake.client });
+  // Let the billing provider read the store before the save starts.
+  await waitFor(() => expect(fake.client.isProActive).toHaveBeenCalled());
+  await act(async () => {});
+  await fireEvent.changeText(screen.getByPlaceholderText("instagram.com/reel/…"), link("QUOTA"));
+  await fireEvent.press(screen.getByText("Save"));
+  expect(await screen.findByText("Saved to Lately")).toBeTruthy();
+  expect(createSave).toHaveBeenCalledTimes(2);
+  expect(syncPlan).toHaveBeenCalledTimes(1);
+});
+
+test("the retry happens only once: still over the limit after syncing says Pro is turning on, with no upsell", async () => {
+  const api = demoApi();
+  const createSave = jest.spyOn(api, "createSave").mockRejectedValue(new ApiError("QUOTA_EXCEEDED", 429));
+  const syncPlan = jest.spyOn(api, "syncPlan");
+  const fake = fakeBilling({ isProActive: jest.fn(async () => true) });
+  await renderWithProviders(<SaveSheetScreen />, { api, billing: fake.client });
+  await waitFor(() => expect(fake.client.isProActive).toHaveBeenCalled());
+  await act(async () => {});
+  await fireEvent.changeText(screen.getByPlaceholderText("instagram.com/reel/…"), link("QUOTA"));
+  await fireEvent.press(screen.getByText("Save"));
+  expect(await screen.findByText("Pro is turning on")).toBeTruthy();
+  expect(screen.getByText(PRO_CONFIRMING)).toBeTruthy();
+  expect(screen.queryByText(/free saves this month/)).toBeNull();
+  expect(screen.queryByRole("button", { name: "Go unlimited with Pro" })).toBeNull();
+  expect(createSave).toHaveBeenCalledTimes(2);
+  expect(syncPlan).toHaveBeenCalledTimes(1);
+
+  // Try again syncs and retries once more; this time the server has caught up.
+  createSave.mockResolvedValueOnce({ reel_id: "s-pro", deduped: false, status: "pending" });
+  await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+  expect(await screen.findByText("Saved to Lately")).toBeTruthy();
+});
+
+test("Pro turning on says so and offers nothing to buy; Close just closes", async () => {
+  const api = demoApi();
+  jest.spyOn(api, "createSave").mockRejectedValue(new ApiError("QUOTA_EXCEEDED", 429));
+  const fake = fakeBilling({ isProActive: jest.fn(async () => true) });
+  mockParams = { text: link("QUOTA") };
+  await renderWithProviders(<SaveSheetScreen />, { api, billing: fake.client });
+  await screen.findByText("Pro is turning on");
+  await fireEvent.press(screen.getByRole("button", { name: "Close" }));
+  expect(mockRouter.back).toHaveBeenCalled();
+  expect(mockRouter.replace).not.toHaveBeenCalled();
+});
+
+test("on the free plan the limit is final: no sync, no retry", async () => {
+  mockParams = { text: link("QUOTA") };
+  const api = demoApi();
+  const createSave = jest.spyOn(api, "createSave");
+  const syncPlan = jest.spyOn(api, "syncPlan");
+  await renderWithProviders(<SaveSheetScreen />, { api });
+  expect(await screen.findByText("You've used all 20 free saves this month")).toBeTruthy();
+  expect(createSave).toHaveBeenCalledTimes(1);
+  expect(syncPlan).not.toHaveBeenCalled();
+});
+
+test("a Pro member's save goes through in demo mode, where the free limit no longer applies", async () => {
+  mockParams = { text: link("QUOTA") };
+  const api = demoApi();
+  api.setPlan("pro");
+  await renderWithProviders(<SaveSheetScreen />, { api });
+  expect(await screen.findByText("Saved to Lately")).toBeTruthy();
 });
 
 test("rate limited: the save waits in the queue instead of being lost", async () => {

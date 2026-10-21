@@ -326,3 +326,44 @@ test("downloadExport before any request is NOT_FOUND", async () => {
   const f = fakeFetch({ status: 404, body: { error: { code: "NOT_FOUND", message: "No export yet." } } });
   expect((await rejection(setup(f).api.downloadExport())).code).toBe("NOT_FOUND");
 });
+
+describe("syncPlan (POST /billing/sync)", () => {
+  test("asks the server to re-read the plan and returns what it holds", async () => {
+    const f = fakeFetch({ status: 200, body: { plan: "pro", plan_expires_at: "2027-01-01T00:00:00Z" } });
+    const { api } = setup(f);
+    await expect(api.syncPlan()).resolves.toEqual({ plan: "pro", plan_expires_at: "2027-01-01T00:00:00Z" });
+    expect(f.mock.calls[0][0]).toBe("http://api.test/billing/sync");
+    expect(f.mock.calls[0][1]?.method).toBe("POST");
+    expect(headersOf(f).Authorization).toBe("Bearer tok-1");
+  });
+
+  test("free, lifetime and a missing expiry", async () => {
+    const f = fakeFetch(
+      { status: 200, body: { plan: "free", plan_expires_at: null } },
+      { status: 200, body: { plan: "lifetime" } },
+    );
+    const { api } = setup(f);
+    await expect(api.syncPlan()).resolves.toEqual({ plan: "free", plan_expires_at: null });
+    await expect(api.syncPlan()).resolves.toEqual({ plan: "lifetime", plan_expires_at: null });
+  });
+
+  test("a plan the app doesn't know reads as free", async () => {
+    const f = fakeFetch({ status: 200, body: { plan: "platinum", plan_expires_at: 5 } }, { status: 200, raw: "" });
+    const { api } = setup(f);
+    await expect(api.syncPlan()).resolves.toEqual({ plan: "free", plan_expires_at: null });
+    await expect(api.syncPlan()).resolves.toEqual({ plan: "free", plan_expires_at: null });
+  });
+
+  test("RevenueCat being unreachable is BILLING_UNAVAILABLE", async () => {
+    const f = fakeFetch({ status: 502, body: { error: { code: "BILLING_UNAVAILABLE", message: "Billing is unavailable." } } });
+    const e = await rejection(setup(f).api.syncPlan());
+    expect(e).toBeInstanceOf(ApiError);
+    expect([e.code, e.status, e.message]).toEqual(["BILLING_UNAVAILABLE", 502, "Billing is unavailable."]);
+  });
+
+  test("GET /me passes plan_expires_at through", async () => {
+    const f = fakeFetch({ status: 200, body: { id: "u", plan: "pro", plan_expires_at: "2027-01-01T00:00:00Z" } });
+    const me = await setup(f).api.getMe();
+    expect(me.plan_expires_at).toBe("2027-01-01T00:00:00Z");
+  });
+});

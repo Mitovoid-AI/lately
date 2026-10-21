@@ -7,9 +7,10 @@ import { ActivityIndicator, Text, View } from "react-native";
 import Animated, { FadeIn, useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import type { ConnectedAccount, Preferences } from "../api/contract";
+import type { ConnectedAccount, Me, Preferences } from "../api/contract";
 import { useApi } from "../api/index";
 import { useAuth } from "../auth/AuthProvider";
+import { useBilling } from "../billing/BillingProvider";
 import { HEADER_HEIGHT, LOGO, ScrollHairline } from "../components/Header";
 import { Icon, type IconName } from "../components/Icon";
 import { IconButton } from "../components/motion/IconButton";
@@ -17,6 +18,7 @@ import { PressableScale } from "../components/motion/PressableScale";
 import { Reveal } from "../components/motion/Reveal";
 import { Checkbox } from "../components/settings/Checkbox";
 import { OptionCard } from "../components/settings/OptionCard";
+import { PlanSection } from "../components/settings/PlanSection";
 import { SettingsRow, SettingsSection } from "../components/settings/SettingsSection";
 import { TextSizeControl } from "../components/settings/TextSizeControl";
 import { IMAGE_FADE } from "../components/Thumb";
@@ -41,6 +43,17 @@ const SIZES: { size: Preferences["text_size"]; name: string }[] = [
 ];
 
 const NOTE_IN = FadeIn.duration(DURATION.state);
+
+/**
+ * Deleting the account doesn't stop a Google Play subscription: say so before it happens.
+ * Plainly when the server or the store says Pro; as an "if" for anyone else on a build that can
+ * sell (not lifetime), since a subscription still being synced, or in account hold, reads as free.
+ */
+function subscriptionNote(plan: Me["plan"] | undefined, storeSaysPro: boolean, canSubscribe: boolean): string {
+  if (plan === "pro" || storeSaysPro) return " Deleting your account doesn't cancel your Google Play subscription. Cancel it in Google Play first.";
+  if (plan !== "lifetime" && canSubscribe) return " If you subscribed to Lately Pro, deleting your account doesn't cancel it. Cancel it in Google Play first.";
+  return "";
+}
 
 const PROVIDER_NAME: Record<ConnectedAccount["provider"], string> = {
   instagram: "Instagram",
@@ -80,6 +93,7 @@ export function AccountScreen() {
   const toast = useToast();
   const insets = useSafeAreaInsets();
   const me = useMe().data;
+  const billing = useBilling();
   const { prefs, update } = usePreferences();
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({ onScroll: (e) => scrollY.set(e.contentOffset.y) });
@@ -104,6 +118,8 @@ export function AccountScreen() {
     if (archive.phase === "idle") void archive.start();
     else if (archive.phase === "ready") void archive.download();
   }
+
+  const cancelNote = subscriptionNote(me?.plan, billing.proActive, billing.client.kind === "store");
 
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
   const [deletingAccount, setDeletingAccount] = useState(false);
@@ -184,7 +200,13 @@ export function AccountScreen() {
             </View>
           </Reveal>
 
-          <Reveal index={1}>
+          {me ? (
+            <Animated.View entering={NOTE_IN}>
+              <PlanSection me={me} />
+            </Animated.View>
+          ) : null}
+
+          <Reveal index={2}>
             <SettingsSection icon="menu-book" title="Reading Experience & Appearance">
               <Text className="font-sans-semibold text-body text-ink">Reading Font</Text>
               <Text className="font-sans text-meta text-ink-2">Serif or Sans for summaries & notes</Text>
@@ -248,7 +270,7 @@ export function AccountScreen() {
             </SettingsSection>
           </Reveal>
 
-          <Reveal index={2}>
+          <Reveal index={3}>
             <SettingsSection icon="shield" title="Account & Security">
               <SettingsRow icon="link" title="Connected Accounts" subtitle="How you sign in to Lately">
                 <View className="ml-14 mt-3 gap-2">
@@ -290,7 +312,7 @@ export function AccountScreen() {
             </SettingsSection>
           </Reveal>
 
-          <Reveal index={3}>
+          <Reveal index={4}>
             <SettingsSection icon="tune" title="Reading Preferences">
               {/* Not built yet: shown as coming soon, switched off and not pressable. */}
               <SettingsRow
@@ -309,7 +331,7 @@ export function AccountScreen() {
             </SettingsSection>
           </Reveal>
 
-          <Reveal index={4}>
+          <Reveal index={5}>
             <SettingsSection icon="gavel" title="Legal">
               <SettingsRow
                 icon="privacy-tip"
@@ -329,7 +351,7 @@ export function AccountScreen() {
             </SettingsSection>
           </Reveal>
 
-          <Reveal index={5}>
+          <Reveal index={6}>
             <PressableScale
               accessibilityRole="button"
               onPress={async () => {
@@ -371,7 +393,7 @@ export function AccountScreen() {
       <ConfirmDialog
         visible={deleteStep === 1}
         title="Delete your account?"
-        message="Your saved reels, notes, cards and stacks will be deleted, and you'll be signed out. Want a copy? Download your archive (a JSON file) first."
+        message={`Your saved reels, notes, cards and stacks will be deleted, and you'll be signed out. Want a copy? Download your archive (a JSON file) first.${cancelNote}`}
         confirmLabel="Continue"
         aside={{
           label: "Download my archive first",
@@ -387,7 +409,7 @@ export function AccountScreen() {
       <ConfirmDialog
         visible={deleteStep === 2}
         title="This can't be undone"
-        message="Everything in your Lately is removed for good."
+        message={`Everything in your Lately is removed for good.${cancelNote}`}
         confirmLabel="Delete forever"
         busy={deletingAccount}
         onConfirm={deleteAccount}

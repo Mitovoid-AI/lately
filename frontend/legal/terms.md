@@ -1,6 +1,6 @@
 # Terms of Service
 
-Last updated: 10 October 2026
+Last updated: 21 October 2026
 
 These terms cover your use of the Lately app and service. By creating an account or using Lately, you agree to them.
 
@@ -31,7 +31,17 @@ Do not use Lately to:
 
 ## Plans and limits
 
-The free plan includes a monthly number of saves, shown in the app. Limits and features may change; any paid plan will be described before you buy it.
+The free plan includes a monthly number of saves, shown in the app. We may change the free plan's limits. If we lower them, we will tell you in the app before the change takes effect.
+
+## Lately Pro subscriptions
+
+- **What Pro includes.** Lately Pro removes the free plan's monthly save limit. Everything else in Lately works the same on both plans.
+- **Price and billing.** Pro is sold as a monthly or yearly subscription through Google Play. The price, currency and billing period are shown in the app and on Google Play's purchase screen before you confirm. Google Play charges the payment method on your Google account, and Google Play's terms apply to the payment.
+- **Free trial.** The yearly plan includes a 7-day free trial for new subscribers (Google accounts that have not had Lately Pro before). Unless you cancel before the trial ends, Google Play charges the yearly price when it ends.
+- **Automatic renewal.** A subscription renews automatically at the end of each month or year until you cancel. If the price changes, Google Play tells you before the new price applies to your subscription.
+- **Canceling.** You can cancel at any time in Google Play > Subscriptions, or from Manage subscription in the app. Canceling stops future renewals, and you keep Pro until the end of the period you have paid for. Uninstalling the app or deleting your Lately account does not cancel the subscription.
+- **Refunds.** Payments are handled by Google Play, and refunds follow Google Play's refund policies. You can ask Google Play for a refund or contact us. If a refund ends your subscription, Pro ends with it.
+- **Your account.** Pro is linked to the Lately account you were signed in to when you subscribed. After switching phones, sign in to the same account; if Pro does not show, use Restore purchases.
 
 ## Service changes and availability
 
@@ -39,7 +49,7 @@ Lately is provided as is and may change, pause or stop features. We aim to keep 
 
 ## Ending use
 
-You can stop using Lately and delete your account at any time. We may suspend or close accounts that break these terms. When an account is closed, its data is deleted as described in the Privacy Policy.
+You can stop using Lately and delete your account at any time. Deleting your account does not cancel a Google Play subscription, so cancel it in Google Play first. We may suspend or close accounts that break these terms. When an account is closed, its data is deleted as described in the Privacy Policy.
 
 ## Liability
 

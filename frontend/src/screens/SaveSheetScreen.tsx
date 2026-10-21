@@ -13,6 +13,8 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useApi } from "../api/index";
+import { useBilling } from "../billing/BillingProvider";
+import { PRO_CONFIRMING } from "../billing/plans";
 import { Button } from "../components/Button";
 import { Chip } from "../components/Chip";
 import { LOGO } from "../components/Header";
@@ -107,6 +109,7 @@ export function SaveSheetScreen() {
   const queryClient = useQueryClient();
   const toast = useToast();
   const queue = useSaveQueue();
+  const billing = useBilling();
   const queuedRef = useRef(false);
   const shared = !!text;
   const now = useNow();
@@ -130,6 +133,21 @@ export function SaveSheetScreen() {
     else router.replace("/");
   }, [router]);
 
+  // The store can say Pro is on a moment before the server hears it. A save that hits the
+  // free limit then tells the server and tries once more, before the sheet gives up on it.
+  const createSave = useCallback(
+    async (t: string) => {
+      try {
+        return await api.createSave(t);
+      } catch (e) {
+        if (!(e instanceof ApiError && e.code === "QUOTA_EXCEEDED" && billing.proActive)) throw e;
+        await billing.syncPlan();
+        return api.createSave(t);
+      }
+    },
+    [api, billing],
+  );
+
   const save = useCallback(
     async (t: string) => {
       if (inFlight.current) return;
@@ -137,7 +155,7 @@ export function SaveSheetScreen() {
       setBusy(true);
       setSavedText(t);
       try {
-        const result = await api.createSave(t);
+        const result = await createSave(t);
         // Fire-and-forget: the phone reads the reel itself and hands the server a hint
         // (Instagram often blocks the server). Never awaited, never throws.
         void sendDeviceHint({ api, mode: config.apiMode, platform: Platform.OS, text: t, result });
@@ -175,7 +193,7 @@ export function SaveSheetScreen() {
         setBusy(false);
       }
     },
-    [api, queryClient, queue],
+    [api, createSave, queryClient, queue],
   );
 
   // A share hands us the text: save immediately (once).
@@ -336,6 +354,15 @@ export function SaveSheetScreen() {
         <Button title="Close" onPress={close} className="mt-5" />
       </Message>
     );
+  } else if (outcome.kind === "quota" && billing.proActive) {
+    // Google Play says Pro is on and the server still doesn't (the save already synced and retried
+    // once): no upsell for someone who has paid. Trying again syncs and retries once more.
+    content = (
+      <Message icon={<StatusIcon name="schedule" color={colors.accent} bg={colors.raised} />} title="Pro is turning on" body={PRO_CONFIRMING}>
+        <Button title="Try again" onPress={() => save(savedText)} className="mt-5" />
+        <Button title="Close" variant="ghost" onPress={close} className="mt-1" />
+      </Message>
+    );
   } else if (outcome.kind === "quota") {
     const limit = me.data?.saves_limit ?? 20;
     content = (
@@ -344,10 +371,17 @@ export function SaveSheetScreen() {
           <View className="h-2 w-full rounded-full bg-accent" />
         </View>
         <Text className="mt-1 self-end font-sans-semibold text-meta text-ink-2">{`${limit}/${limit}`}</Text>
-        {me.data ? (
-          <Text className="mt-2 font-sans text-body text-ink-2">{`Saves reset on ${shortDate(me.data.resets_on)}.`}</Text>
-        ) : null}
-        <Button title="Close" onPress={close} className="mt-5" />
+        <Text className="mt-2 font-sans text-body text-ink-2">
+          {me.data ? `Saves reset on ${shortDate(me.data.resets_on)}. Pro removes the monthly cap.` : "Pro removes the monthly cap."}
+        </Text>
+        {/* Replaces this sheet: closing the paywall goes back to where the save started. The reel
+            goes along, so the paywall can save it once Pro is on. */}
+        <Button
+          title="Go unlimited with Pro"
+          onPress={() => router.replace({ pathname: "/pro", params: { text: savedText } })}
+          className="mt-5"
+        />
+        <Button title="Not now" variant="ghost" onPress={close} className="mt-1" />
       </Message>
     );
   } else if (outcome.kind === "rate_limited") {

@@ -1,6 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
-import { ApiError, type LatelyApi } from "../../api/contract";
+import { ApiError, type LatelyApi, type Me } from "../../api/contract";
 import { enqueueSave, queueKey } from "../../lib/saveQueue";
 import { createMemoryStore } from "../../test/memoryStore";
 import { demoApi, renderWithProviders } from "../../test/render";
@@ -125,4 +125,72 @@ test("several queued saves read as plural", async () => {
   await renderWithProviders(<LibraryScreen />, { api, queueStore });
   expect(await screen.findByText("2 reels waiting to save")).toBeTruthy();
   expect(screen.getByText("Lately saves them when you're back online.")).toBeTruthy();
+});
+
+/** Every string in the rendered tree, in reading order. */
+function renderedTexts(node: unknown): string[] {
+  if (typeof node === "string") return [node];
+  if (Array.isArray(node)) return node.flatMap(renderedTexts);
+  if (node && typeof node === "object" && "children" in node) return renderedTexts((node as { children: unknown }).children);
+  return [];
+}
+
+describe("the free-saves banner", () => {
+  /** The demo API, with GET /me reporting this much of the free limit used. */
+  function withUsage(over: Partial<Me>): LatelyApi {
+    const base = demoApi();
+    return { ...base, getMe: async () => ({ ...(await base.getMe()), saves_limit: 20, ...over }) };
+  }
+
+  test("nothing shows while more than 3 saves are left", async () => {
+    await renderWithProviders(<LibraryScreen />, { api: withUsage({ plan: "free", saves_this_month: 16 }) });
+    await screen.findByText("13 reels");
+    expect(screen.queryByText(/free saves? left this month/)).toBeNull();
+    expect(screen.queryByText("Go Pro")).toBeNull();
+  });
+
+  test("with 3 left it counts them and offers Pro", async () => {
+    await renderWithProviders(<LibraryScreen />, { api: withUsage({ plan: "free", saves_this_month: 17 }) });
+    expect(await screen.findByText("3 free saves left this month")).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Go Pro" }));
+    expect(mockRouter.push).toHaveBeenCalledWith("/pro");
+  });
+
+  test("with 1 left it reads in the singular", async () => {
+    await renderWithProviders(<LibraryScreen />, { api: withUsage({ plan: "free", saves_this_month: 19 }) });
+    expect(await screen.findByText("1 free save left this month")).toBeTruthy();
+  });
+
+  test("with none left it says the month's free saves are used", async () => {
+    await renderWithProviders(<LibraryScreen />, { api: withUsage({ plan: "free", saves_this_month: 20 }) });
+    expect(await screen.findByText("You've used this month's free saves")).toBeTruthy();
+    expect(screen.queryByText(/free saves? left/)).toBeNull();
+    await fireEvent.press(screen.getByRole("button", { name: "Go Pro" }));
+    expect(mockRouter.push).toHaveBeenCalledWith("/pro");
+  });
+
+  test("going over (a lowered limit) reads as none left, never a negative count", async () => {
+    await renderWithProviders(<LibraryScreen />, { api: withUsage({ plan: "free", saves_this_month: 24 }) });
+    expect(await screen.findByText("You've used this month's free saves")).toBeTruthy();
+  });
+
+  test("never for Pro or Lifetime, however many saves were made", async () => {
+    for (const plan of ["pro", "lifetime"] as const) {
+      const view = await renderWithProviders(<LibraryScreen />, { api: withUsage({ plan, saves_this_month: 50 }) });
+      await screen.findByText("13 reels");
+      expect(screen.queryByText("Go Pro")).toBeNull();
+      expect(screen.queryByText(/free saves?/)).toBeNull();
+      await view.unmount();
+    }
+  });
+
+  test("it sits right under the search field, above the list", async () => {
+    await renderWithProviders(<LibraryScreen />, { api: withUsage({ plan: "free", saves_this_month: 18 }) });
+    await screen.findByText("2 free saves left this month");
+    const texts = renderedTexts(screen.toJSON());
+    const [search, banner, list] = ["Search what you remember…", "2 free saves left this month", "RECENTLY SAVED"].map((t) => texts.indexOf(t));
+    expect(search).toBeGreaterThan(-1);
+    expect(search).toBeLessThan(banner);
+    expect(banner).toBeLessThan(list);
+  });
 });

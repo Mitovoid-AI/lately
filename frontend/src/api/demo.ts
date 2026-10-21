@@ -23,6 +23,13 @@ export const PENDING_MS = 6000;
 /** How long a demo export takes to "build". */
 export const EXPORT_MS = 1500;
 
+/** The demo API plus what the demo store (billing/demo.ts) needs to "buy" Pro in it. */
+export interface DemoApi extends LatelyApi {
+  /** The plan demo GET /me reports; resets with the page like the rest of the demo state. */
+  currentPlan(): Me["plan"];
+  setPlan(plan: Me["plan"], expiresAt?: string | null): void;
+}
+
 export const DEMO_USER = {
   id: "demo-user",
   name: "Aanya Sharma",
@@ -50,7 +57,7 @@ function toSave(d: SaveDetail): Save {
   };
 }
 
-export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStore } = {}): LatelyApi {
+export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStore } = {}): DemoApi {
   const now = opts.now ?? Date.now;
   const store = opts.storage ?? deviceStore;
   const latency = opts.now ? 0 : 150; // visible loading states in the browser, instant in tests
@@ -59,6 +66,8 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
   let stacks: DemoStack[] = seed.stacks;
   let created = 0;
   let exportRequestedAt: number | null = null;
+  let plan: Me["plan"] = "free";
+  let planExpiresAt: string | null = null;
 
   const wait = () => (latency ? new Promise((r) => setTimeout(r, latency)) : Promise.resolve());
 
@@ -127,11 +136,18 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
   }
 
   return {
+    currentPlan: () => plan,
+    setPlan(next, expiresAt = null) {
+      plan = next;
+      planExpiresAt = next === "pro" ? expiresAt : null;
+    },
+
     async createSave(text) {
       await wait();
       const link = extractReelUrl(text);
       if (!link) throw new ApiError("BAD_URL", 422, "No Instagram link found.");
-      if (link.shortcode === "QUOTA") throw new ApiError("QUOTA_EXCEEDED", 429, "Monthly save limit reached.");
+      // Pro has no monthly cap: the QUOTA sample link only trips on the free plan.
+      if (link.shortcode === "QUOTA" && plan === "free") throw new ApiError("QUOTA_EXCEEDED", 429, "Monthly save limit reached.");
       if (link.shortcode === "RATE") throw new ApiError("RATE_LIMITED", 429, "Too many saves right now.");
       if (link.shortcode === "NETWORK") throw new ApiError("NETWORK", 0, "Network request failed.");
 
@@ -197,7 +213,8 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
       return {
         ...DEMO_USER,
         avatar_url: IMAGES.avatar,
-        plan: "free",
+        plan,
+        plan_expires_at: planExpiresAt,
         saves_this_month: saves.filter((s) => Date.parse(s.created_at) >= monthStart).length,
         saves_limit: 20,
         resets_on: next.toISOString().slice(0, 10),
@@ -301,12 +318,19 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
       await wait();
       saves = [];
       stacks = [];
+      plan = "free";
+      planExpiresAt = null;
       await writeJson(store, PREFS_KEY, {});
     },
 
     // Demo saves have their content already; the device never reads Instagram in demo mode.
     async sendHint(saveId) {
       find(saveId);
+    },
+
+    async syncPlan() {
+      await wait();
+      return { plan, plan_expires_at: planExpiresAt };
     },
 
     async getCurated(): Promise<CuratedFeed> {

@@ -9,6 +9,8 @@ import {
   type CuratedFeed,
   type CuratedSection,
   type LatelyApi,
+  type Me,
+  type PlanSync,
   type Preferences,
   type Save,
   type SaveDetail,
@@ -17,7 +19,14 @@ import {
   type StackDetail,
 } from "./contract";
 
-const KNOWN_CODES: ApiErrorCode[] = ["BAD_URL", "QUOTA_EXCEEDED", "RATE_LIMITED", "NOT_FOUND", "UNAUTHORIZED"];
+const KNOWN_CODES: ApiErrorCode[] = [
+  "BAD_URL",
+  "QUOTA_EXCEEDED",
+  "RATE_LIMITED",
+  "NOT_FOUND",
+  "UNAUTHORIZED",
+  "BILLING_UNAVAILABLE",
+];
 
 type Raw = Record<string, unknown>;
 
@@ -101,6 +110,12 @@ function toCurated(raw: Raw): CuratedFeed {
       }),
     ),
   };
+}
+
+/** POST /billing/sync answers {plan, plan_expires_at}; anything unexpected reads as the free plan. */
+function toPlanSync(raw: Raw | undefined): PlanSync {
+  const plan = raw?.plan === "pro" || raw?.plan === "lifetime" ? (raw.plan as Me["plan"]) : "free";
+  return { plan, plan_expires_at: raw ? strOf(raw, "plan_expires_at") : null };
 }
 
 /** How long one call may take before it is given up as NETWORK. */
@@ -243,5 +258,6 @@ export function createHttpApi(o: {
     retryEnrichment: (reelId) => call("POST", `/retries/${seg(reelId)}`),
     deleteAccount: () => call("DELETE", "/me"),
     sendHint: (saveId, hint) => call("POST", `/saves/${seg(saveId)}/hint`, hint),
+    syncPlan: async () => toPlanSync(await request<Raw | undefined>("POST", "/billing/sync")),
   };
 }

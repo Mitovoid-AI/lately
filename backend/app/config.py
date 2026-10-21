@@ -60,6 +60,22 @@ class Settings(BaseSettings):
     # GET /admin/health requires header X-Admin-Key == this. Empty = endpoint disabled (404).
     admin_key: str = ""
 
+    # Lately Pro billing (RevenueCat on Google Play). All optional; empty = feature off.
+    # POST /webhooks/revenuecat requires header Authorization == this exact value
+    # (set the same string in the RevenueCat dashboard). Empty = endpoint disabled (404).
+    revenuecat_webhook_auth: str = ""
+    # Optional HMAC signing: also require X-RevenueCat-Webhook-Signature "t=<unix>,v1=<hex>".
+    revenuecat_webhook_signing_secret: str = ""
+    # RevenueCat secret API key (v1 REST). When set, the backend asks RevenueCat for the
+    # truth on every event and on POST /billing/sync instead of trusting event fields.
+    revenuecat_secret_api_key: str = ""
+    revenuecat_entitlement_id: str = "pro"
+    # Sandbox purchases (Play license testers during closed testing) count as Pro.
+    # Switch off after launch so test purchases stop unlocking accounts: sandbox webhook
+    # events are ignored, and with the secret key a sandbox entitlement reads as none.
+    revenuecat_allow_sandbox: bool = True
+    revenuecat_api_base_url: str = "https://api.revenuecat.com/v1"
+
     # Optional AI keys — saves work without them; cards stay partial (Part 2)
     groq_api_key: str = ""
 

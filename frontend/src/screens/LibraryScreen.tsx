@@ -73,6 +73,25 @@ function QueuedBanner({ count, busy, onRetry }: { count: number; busy: boolean; 
   );
 }
 
+/** How few free saves left makes the Library mention Pro. */
+const QUOTA_BANNER_AT = 3;
+
+/** The free plan running low: a slim nudge toward Pro (never shown on Pro or Lifetime). */
+function QuotaBanner({ left, onUpgrade }: { left: number; onUpgrade: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <Reveal>
+      <View className="mt-3 flex-row items-center rounded-2xl border border-hairline bg-card py-1 pl-4 pr-2">
+        <Icon name={left > 0 ? "auto-awesome" : "lock-outline"} size={20} color={colors.accent} />
+        <Text className="ml-3 flex-1 font-sans-semibold text-body text-ink">
+          {left > 0 ? `${countOf(left, "free save")} left this month` : "You've used this month's free saves"}
+        </Text>
+        <Button title="Go Pro" variant="ghost" onPress={onUpgrade} />
+      </View>
+    </Reveal>
+  );
+}
+
 function EmptyState({ onPaste }: { onPaste: () => void }) {
   const { colors } = useTheme();
   const steps: { icon: IconName; text: string }[] = [
@@ -187,6 +206,9 @@ export function LibraryScreen() {
     <View className="w-full self-center" style={{ maxWidth: MAX_WIDTH }}>
       <View className="px-4 pt-1">
         <SearchField onPress={() => router.push("/search")} />
+        {me && me.plan === "free" && me.saves_limit - me.saves_this_month <= QUOTA_BANNER_AT ? (
+          <QuotaBanner left={Math.max(me.saves_limit - me.saves_this_month, 0)} onUpgrade={() => router.push("/pro")} />
+        ) : null}
         {queue.queued.length > 0 ? (
           <QueuedBanner count={queue.queued.length} busy={queue.flushing} onRetry={() => queue.flush()} />
         ) : null}

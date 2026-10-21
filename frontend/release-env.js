@@ -1,5 +1,6 @@
 // Release-build guard, used by app.config.js. A production build must talk to the real
-// backend: never demo mode, never localhost, never without Supabase. Plain CommonJS so the
+// backend: never demo mode, never localhost, never without Supabase or the RevenueCat key
+// (a store build without it could not sell Pro). Plain CommonJS so the
 // Expo config loader can require it without a build step.
 
 /** Is this config being evaluated for a production (store) build? */
@@ -19,6 +20,10 @@ function releaseEnvProblems(env) {
   }
   if (!env.EXPO_PUBLIC_SUPABASE_URL) problems.push("EXPO_PUBLIC_SUPABASE_URL is not set");
   if (!env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY) problems.push("EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY is not set");
+  // RevenueCat's public Google Play SDK key; its secret API key (sk_...) must never end up here.
+  if (!(env.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY ?? "").startsWith("goog_")) {
+    problems.push('EXPO_PUBLIC_REVENUECAT_ANDROID_KEY must be the RevenueCat Google Play SDK key (starts with "goog_")');
+  }
   return problems;
 }
 
