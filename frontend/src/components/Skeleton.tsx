@@ -52,14 +52,17 @@ export function SkeletonGroup({ children, style }: { children: ReactNode; style?
 }
 const GROUP_IN = FadeIn.duration(220).delay(150);
 
-/** A ReelCard-shaped placeholder: square media, two title lines, a meta line. */
+/** A ReelCard-shaped placeholder: tall media with the title on it. */
 function SkeletonCard({ width }: { width: number }) {
+  const { colors, scheme } = useTheme();
+  // The title lines read a step lighter than the block: card on Warm Cream, hairline on Espresso.
+  const bar = { backgroundColor: scheme === "dark" ? colors.hairline : colors.card };
   return (
     <View style={{ width }}>
-      <Skeleton style={{ aspectRatio: 1, borderRadius: 12 }} />
-      <Skeleton style={[styles.line, { marginTop: 10, width: "92%" }]} />
-      <Skeleton style={[styles.line, { marginTop: 6, width: "64%" }]} />
-      <Skeleton style={[styles.meta, { marginTop: 8, width: "48%" }]} />
+      {/* 3:4, ReelCard's CARD_ASPECT (not imported: ReelCard imports this file). */}
+      <Skeleton style={{ aspectRatio: 3 / 4, borderRadius: 12 }} />
+      <View style={[styles.titleBar, bar, { bottom: 46, width: "72%" }]} />
+      <View style={[styles.titleBar, bar, { bottom: 30, width: "48%" }]} />
     </View>
   );
 }
@@ -109,4 +112,6 @@ const styles = StyleSheet.create({
   block: { overflow: "hidden" },
   line: { height: 14, borderRadius: 7 },
   meta: { height: 11, borderRadius: 6 },
+  /** A title line inside the card placeholder, where the real title sits on the photo. */
+  titleBar: { position: "absolute", left: 10, height: 10, borderRadius: 5 },
 });

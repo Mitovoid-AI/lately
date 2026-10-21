@@ -3,36 +3,205 @@
   "version": 1,
   "date": "2026-10-17",
   "mode": "preserve (Warm Editorial palette, Newsreader + Inter)",
-  "dials": { "expression": 5, "motion": 4, "density": 5 },
+  "dials": {
+    "expression": 5,
+    "motion": 4,
+    "density": 5
+  },
   "measured": {
     "viewport": "375x812 (Expo web, phone emulation)",
-    "library_first_card_top": { "before": 233, "after": 201 },
-    "library_card_media": { "before": "164x206 (4:5)", "after": "164x164 (1:1)" },
-    "header_height": { "before": 64, "after": 52 },
-    "search_field_height": { "before": 48, "after": 40 },
-    "tab_bar_height": { "before": 64, "after": 56 },
-    "sign_in_google_button_top": { "before": "below the fold", "after": 615 }
+    "library_first_card_top": {
+      "before": 233,
+      "after": 201
+    },
+    "library_card_media": {
+      "before": "164x206 (4:5)",
+      "after": "164x164 (1:1)"
+    },
+    "header_height": {
+      "before": 64,
+      "after": 52
+    },
+    "search_field_height": {
+      "before": 48,
+      "after": 40
+    },
+    "tab_bar_height": {
+      "before": 64,
+      "after": 56
+    },
+    "sign_in_google_button_top": {
+      "before": "below the fold",
+      "after": 615
+    }
   },
   "findings": [
-    { "id": "FINDING-001", "impact": "high", "category": "screen-anatomy", "summary": "Library showed ~1.5 cards per phone screen (oversized chrome, 4:5 media)", "status": "fixed" },
-    { "id": "FINDING-002", "impact": "high", "category": "screen-anatomy", "summary": "Sign-in buttons below the fold on 375x812", "status": "fixed" },
-    { "id": "FINDING-003", "impact": "medium", "category": "interaction", "summary": "Filled Material icons read as basic; no outline/filled active states", "status": "fixed" },
-    { "id": "FINDING-004", "impact": "medium", "category": "color", "summary": "21 inline hex + 11 rgba values outside the theme", "status": "fixed" },
-    { "id": "FINDING-005", "impact": "medium", "category": "surfaces", "summary": "shadowColor without elevation: shadows invisible on Android (tell 5)", "status": "fixed" },
-    { "id": "FINDING-006", "impact": "medium", "category": "performance", "summary": "Search result rows re-rendered on every keystroke", "status": "fixed" },
-    { "id": "FINDING-007", "impact": "medium", "category": "screen-anatomy", "summary": "Card detail: 64 pt bar + 48 pt status row above a 4:5 hero", "status": "fixed" },
-    { "id": "FINDING-008", "impact": "medium", "category": "color", "summary": "Marigold text on cream ~2.6:1 for action labels", "status": "fixed" },
-    { "id": "FINDING-009", "impact": "polish", "category": "interaction", "summary": "Haptic on every tab switch (tell 39)", "status": "fixed" },
-    { "id": "FINDING-010", "impact": "polish", "category": "copy", "summary": "Em-dashes in visible strings", "status": "fixed" },
-    { "id": "FINDING-011", "impact": "polish", "category": "navigation", "summary": "/save deep link rendered a blank screen", "status": "fixed" },
-    { "id": "FINDING-012", "impact": "polish", "category": "interaction", "summary": "Dead mic affordance in the library search field", "status": "fixed" },
-    { "id": "FINDING-013", "impact": "medium", "category": "color", "summary": "No dark mode (the theme setting says 'coming soon')", "status": "fixed", "note": "Espresso dark theme; Theme & Appearance applies light / dark / system" },
-    { "id": "FINDING-014", "impact": "polish", "category": "navigation", "summary": "Header bookmark duplicates the Stacks tab on Library and Curated", "status": "open" }
+    {
+      "id": "FINDING-001",
+      "impact": "high",
+      "category": "screen-anatomy",
+      "summary": "Library showed ~1.5 cards per phone screen (oversized chrome, 4:5 media)",
+      "status": "fixed"
+    },
+    {
+      "id": "FINDING-002",
+      "impact": "high",
+      "category": "screen-anatomy",
+      "summary": "Sign-in buttons below the fold on 375x812",
+      "status": "fixed"
+    },
+    {
+      "id": "FINDING-003",
+      "impact": "medium",
+      "category": "interaction",
+      "summary": "Filled Material icons read as basic; no outline/filled active states",
+      "status": "fixed"
+    },
+    {
+      "id": "FINDING-004",
+      "impact": "medium",
+      "category": "color",
+      "summary": "21 inline hex + 11 rgba values outside the theme",
+      "status": "fixed"
+    },
+    {
+      "id": "FINDING-005",
+      "impact": "medium",
+      "category": "surfaces",
+      "summary": "shadowColor without elevation: shadows invisible on Android (tell 5)",
+      "status": "fixed"
+    },
+    {
+      "id": "FINDING-006",
+      "impact": "medium",
+      "category": "performance",
+      "summary": "Search result rows re-rendered on every keystroke",
+      "status": "fixed"
+    },
+    {
+      "id": "FINDING-007",
+      "impact": "medium",
+      "category": "screen-anatomy",
+      "summary": "Card detail: 64 pt bar + 48 pt status row above a 4:5 hero",
+      "status": "fixed"
+    },
+    {
+      "id": "FINDING-008",
+      "impact": "medium",
+      "category": "color",
+      "summary": "Marigold text on cream ~2.6:1 for action labels",
+      "status": "fixed"
+    },
+    {
+      "id": "FINDING-009",
+      "impact": "polish",
+      "category": "interaction",
+      "summary": "Haptic on every tab switch (tell 39)",
+      "status": "fixed"
+    },
+    {
+      "id": "FINDING-010",
+      "impact": "polish",
+      "category": "copy",
+      "summary": "Em-dashes in visible strings",
+      "status": "fixed"
+    },
+    {
+      "id": "FINDING-011",
+      "impact": "polish",
+      "category": "navigation",
+      "summary": "/save deep link rendered a blank screen",
+      "status": "fixed"
+    },
+    {
+      "id": "FINDING-012",
+      "impact": "polish",
+      "category": "interaction",
+      "summary": "Dead mic affordance in the library search field",
+      "status": "fixed"
+    },
+    {
+      "id": "FINDING-013",
+      "impact": "medium",
+      "category": "color",
+      "summary": "No dark mode (the theme setting says 'coming soon')",
+      "status": "fixed",
+      "note": "Espresso dark theme; Theme & Appearance applies light / dark / system"
+    },
+    {
+      "id": "FINDING-014",
+      "impact": "polish",
+      "category": "navigation",
+      "summary": "Header bookmark duplicates the Stacks tab on Library and Curated",
+      "status": "open"
+    },
+    {
+      "id": "FINDING-015",
+      "impact": "high",
+      "category": "screen-anatomy",
+      "summary": "Search, the core feature, is a thin bar with no example queries",
+      "status": "open"
+    },
+    {
+      "id": "FINDING-016",
+      "impact": "high",
+      "category": "states",
+      "summary": "The 20-60 s processing wait shows only a spinner, then a shimmer card",
+      "status": "open"
+    },
+    {
+      "id": "FINDING-017",
+      "impact": "high",
+      "category": "states",
+      "summary": "First run is three instruction boxes, no sample card; sign-in email has no code",
+      "status": "open"
+    },
+    {
+      "id": "FINDING-018",
+      "impact": "medium",
+      "category": "surfaces",
+      "summary": "Vertical reels cropped to 1:1 tiles",
+      "status": "open"
+    },
+    {
+      "id": "FINDING-019",
+      "impact": "medium",
+      "category": "typography",
+      "summary": "Serif display, cream canvas and bordered tiles read as a reading app; ~200 pt of chrome above the first photo",
+      "status": "open"
+    },
+    {
+      "id": "FINDING-020",
+      "impact": "medium",
+      "category": "navigation",
+      "summary": "Curated resurfacing hidden in its own tab",
+      "status": "open"
+    },
+    {
+      "id": "FINDING-021",
+      "impact": "medium",
+      "category": "navigation",
+      "summary": "Save tab and Paste link button both save; header bookmark duplicates the Stacks tab",
+      "status": "open"
+    },
+    {
+      "id": "FINDING-022",
+      "impact": "polish",
+      "category": "interaction",
+      "summary": "No celebration for the first saved card",
+      "status": "open"
+    }
   ],
   "unverified": [
     "scroll performance and touch latency on a real Android device (release build)",
     "1.3x system font scale on the tab bar and cards",
     "Android edge-to-edge insets",
     "boxShadow rendering on the user's Android version"
-  ]
+  ],
+  "audit_2026_10_19": {
+    "mode": "overhaul (keep IA and content; nav change gated)",
+    "study": "21 apps: feeds, India everyday apps, save-and-find apps",
+    "proposal": "https://claude.ai/artifact/8HFFesuFTSTkYdCrP6sjrH",
+    "live_pass": "Android emulator (MuMu) + Expo web 375x812 screenshots, 17-19 Oct"
+  }
 }

@@ -16,6 +16,7 @@ export interface Palette {
   accentText: string;
   warm: string;
   onMedia: string;
+  onMediaMuted: string;
   scrim: string;
   scrimLight: string;
   mediaHairline: string;
@@ -35,5 +36,6 @@ export interface Shadows {
 export declare const palettes: { light: Palette; dark: Palette };
 export declare const shadowSets: { light: Shadows; dark: Shadows };
 export declare const sheens: { light: string; dark: string };
+export declare const scrims: { tile: { light: string; dark: string } };
 export declare function cssName(token: string): string;
 export declare function cssVariables(palette: Palette): Record<string, string>;

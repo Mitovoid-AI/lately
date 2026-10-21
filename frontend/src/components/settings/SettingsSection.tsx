@@ -5,14 +5,14 @@ import { useTheme } from "../../theme/ThemeProvider";
 import { Icon, type IconName } from "../Icon";
 import { PressableScale } from "../motion/PressableScale";
 
-/** Section heading (Newsreader + accent icon) and its white card. */
+/** Section heading (display face + accent icon) and its card. */
 export function SettingsSection({ icon, title, children }: { icon: IconName; title: string; children: ReactNode }) {
   const { colors } = useTheme();
   return (
     <View className="mt-8">
       <View className="mb-3 flex-row items-center">
         <Icon name={icon} size={22} color={colors.accent} />
-        <Text className="ml-2 flex-1 font-display text-ink" style={{ fontSize: 20, lineHeight: 26 }}>
+        <Text className="ml-2 flex-1 font-display text-ink" style={{ fontSize: 20, lineHeight: 26, letterSpacing: -0.3 }}>
           {title}
         </Text>
       </View>

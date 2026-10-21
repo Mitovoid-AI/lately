@@ -192,7 +192,7 @@ export function AccountScreen() {
                 <OptionCard
                   selected={prefs.reading_font === "newsreader"}
                   onPress={() => update({ reading_font: "newsreader" })}
-                  top={<Text numberOfLines={1} className="text-center font-display-regular text-ink" style={{ fontSize: 16 }}>Newsreader</Text>}
+                  top={<Text numberOfLines={1} className="text-center font-newsreader text-ink" style={{ fontSize: 16 }}>Newsreader</Text>}
                   label="Default"
                 />
                 <OptionCard

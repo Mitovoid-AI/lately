@@ -22,10 +22,13 @@ module.exports = {
     extend: {
       colors,
       fontFamily: {
-        display: ["Newsreader_600SemiBold"],
-        "display-medium": ["Newsreader_500Medium"],
-        "display-regular": ["Newsreader_400Regular"],
-        "display-italic": ["Newsreader_400Regular_Italic"],
+        // Bricolage Grotesque: screen, sheet and card titles; medium for the wordmark and
+        // names; heavy for the sign-in wordmark and hero lines.
+        display: ["BricolageGrotesque_700Bold"],
+        "display-medium": ["BricolageGrotesque_600SemiBold"],
+        "display-heavy": ["BricolageGrotesque_800ExtraBold"],
+        // Only for reading-font samples (the reading font itself is set by usePreferences).
+        newsreader: ["Newsreader_400Regular"],
         sans: ["Inter_400Regular"],
         "sans-medium": ["Inter_500Medium"],
         "sans-semibold": ["Inter_600SemiBold"],
@@ -33,10 +36,11 @@ module.exports = {
         lora: ["Lora_400Regular"],
       },
       fontSize: {
-        // Phone scale: screen titles 26, sheet/section titles 22/20, card titles 14.
-        "display-lg": ["26px", { lineHeight: "32px", letterSpacing: "-0.26px" }],
-        "display-md": ["22px", { lineHeight: "28px", letterSpacing: "-0.11px" }],
-        "display-sm": ["19px", { lineHeight: "25px" }],
+        // Phone scale: screen titles 26, sheet/section titles 22/20, card titles 14. Bricolage
+        // runs wider and taller than a serif, so the display sizes carry tighter tracking.
+        "display-lg": ["26px", { lineHeight: "31px", letterSpacing: "-0.6px" }],
+        "display-md": ["22px", { lineHeight: "27px", letterSpacing: "-0.4px" }],
+        "display-sm": ["19px", { lineHeight: "24px", letterSpacing: "-0.25px" }],
         title: ["14px", { lineHeight: "19px" }],
         body: ["15px", { lineHeight: "22px" }],
         meta: ["13px", { lineHeight: "18px" }],

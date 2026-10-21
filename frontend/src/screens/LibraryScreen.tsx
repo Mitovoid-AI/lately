@@ -198,7 +198,7 @@ export function LibraryScreen() {
               horizontal
               showsHorizontalScrollIndicator={false}
               contentContainerStyle={{ paddingHorizontal: SIDE, gap: 8 }}
-              className="mt-3"
+              className="mt-2"
             >
               <Chip label="All" active={active === "All"} haptic="selection" onPress={() => pick("All")} />
               {categories.map((c) => (
@@ -213,7 +213,7 @@ export function LibraryScreen() {
               ))}
             </ScrollView>
           ) : null}
-          <View className="mt-4 flex-row items-center justify-between px-4">
+          <View className="mt-3 flex-row items-center justify-between px-4">
             <Text className="font-sans-semibold text-label text-ink-2">RECENTLY SAVED</Text>
             {me ? <Text className="font-sans text-meta text-ink-2">{countOf(me.total_saves, "reel")}</Text> : null}
           </View>

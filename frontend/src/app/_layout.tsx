@@ -1,5 +1,10 @@
 import "../../global.css";
 
+import {
+  BricolageGrotesque_600SemiBold,
+  BricolageGrotesque_700Bold,
+  BricolageGrotesque_800ExtraBold,
+} from "@expo-google-fonts/bricolage-grotesque";
 import { Inter_400Regular, Inter_400Regular_Italic, Inter_500Medium, Inter_600SemiBold } from "@expo-google-fonts/inter";
 import { Lora_400Regular } from "@expo-google-fonts/lora";
 import {
@@ -163,6 +168,10 @@ function ThemedRoot({ children }: { children: ReactNode }) {
 
 export default function RootLayout() {
   const [loaded] = useFonts({
+    // Display face: screen, sheet and card titles. Newsreader stays the default reading font.
+    BricolageGrotesque_600SemiBold,
+    BricolageGrotesque_700Bold,
+    BricolageGrotesque_800ExtraBold,
     Newsreader_400Regular,
     Newsreader_400Regular_Italic,
     Newsreader_500Medium,

@@ -50,3 +50,20 @@ test("pressing the card calls onPress", async () => {
   await fireEvent.press(screen.getByText("Hole-in-the-wall momo spot in Koramangala"));
   expect(onPress).toHaveBeenCalledTimes(1);
 });
+
+test("the card reads as one stop: title, note and meta in that order", async () => {
+  await render(<ReelCard save={byId("s-momo")} now={NOW} onPress={() => {}} />);
+  const card = screen.getByRole("button");
+  const label: string = card.props.accessibilityLabel;
+  const title = label.indexOf("Hole-in-the-wall momo spot in Koramangala");
+  const note = label.indexOf("cafe to try");
+  const meta = label.indexOf("Food & Places · 5d");
+  expect(title).toBeGreaterThanOrEqual(0);
+  expect(note).toBeGreaterThan(title);
+  expect(meta).toBeGreaterThan(note);
+});
+
+test("an enriched tile shows its title once, on the image", async () => {
+  await render(<ReelCard save={byId("s-momo")} now={NOW} onPress={() => {}} />);
+  expect(screen.getAllByText("Hole-in-the-wall momo spot in Koramangala")).toHaveLength(1);
+});

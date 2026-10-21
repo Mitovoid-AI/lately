@@ -104,7 +104,8 @@ export function StackDetailScreen() {
             accessibilityLabel={`Remove ${cardTitle(item)}`}
             onPress={() => remove(item)}
             scaleTo={0.9}
-            containerStyle={{ position: "absolute", top: 8, right: 8 }}
+            // Top-left: the card's category badge sits top-right.
+            containerStyle={{ position: "absolute", top: 8, left: 8 }}
             className="h-9 w-9 items-center justify-center rounded-full border border-hairline bg-card"
           >
             <Icon name="remove-circle-outline" size={20} color={colors.danger} />

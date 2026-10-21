@@ -199,7 +199,7 @@ function ReelStack() {
               </View>
               <Text numberOfLines={1} className="font-sans text-caption text-ink-3">2m</Text>
             </View>
-            <Text numberOfLines={1} className="mt-0.5 font-display-italic text-meta text-ink">
+            <Text numberOfLines={1} className="mt-0.5 font-sans-italic text-meta text-ink">
               “Quiet spot for Sunday…”
             </Text>
           </View>
@@ -364,7 +364,7 @@ export function SignInScreen() {
               style={{ width: 60, height: 60, borderRadius: 16, marginTop: 14 }}
               accessibilityLabel="Lately logo"
             />
-            <Text className="mt-2 font-display-regular text-ink" style={{ fontSize: 36, lineHeight: 42, letterSpacing: -0.5 }}>
+            <Text className="mt-2 font-display-heavy text-ink" style={{ fontSize: 36, lineHeight: 42, letterSpacing: -1 }}>
               Lately
             </Text>
           </Reveal>

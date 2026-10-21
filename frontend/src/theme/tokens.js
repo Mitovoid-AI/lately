@@ -22,6 +22,8 @@ const light = {
   warm: "#EFE3D3",
   /** Text and glyphs over photos and dark scrims. */
   onMedia: "#FFFFFF",
+  /** Secondary text over photos and dark scrims (a tile's note and meta). */
+  onMediaMuted: "rgba(255,255,255,0.82)",
   /** Dark pill or overlay over photos. */
   scrim: "rgba(28,26,23,0.55)",
   /** Light pill over photos (category badge). */
@@ -62,6 +64,7 @@ const dark = {
   accentText: "#F0AE4A",
   warm: "#3A2D1C",
   onMedia: "#FFFFFF",
+  onMediaMuted: "rgba(255,255,255,0.82)",
   scrim: "rgba(16,13,10,0.6)",
   /** The category badge stays a pill over photos, but an espresso one. */
   scrimLight: "rgba(30,26,22,0.88)",
@@ -104,6 +107,19 @@ const sheens = {
   dark: "linear-gradient(90deg, rgba(242,236,227,0) 0%, rgba(242,236,227,0.07) 50%, rgba(242,236,227,0) 100%)",
 };
 
+/**
+ * Gradients laid over photos so text on them stays readable. Media scrims are the same in both
+ * themes: the photo, not the theme, sets what sits under the text.
+ */
+const tileScrim = "linear-gradient(180deg, rgba(0,0,0,0) 25%, rgba(0,0,0,0.55) 55%, rgba(0,0,0,0.82) 100%)";
+const scrims = {
+  /**
+   * A card tile: clear over the top quarter (the category badge), already dark by the middle
+   * where a two-line title starts, darkest at the bottom.
+   */
+  tile: { light: tileScrim, dark: tileScrim },
+};
+
 /** The Tailwind colour name for each token (`ink2` is `ink-2` in classNames). */
 function cssName(token) {
   return token.replace(/([a-z])([A-Z0-9])/g, "$1-$2").toLowerCase();
@@ -121,4 +137,4 @@ function cssVariables(palette) {
   return Object.fromEntries(Object.entries(palette).map(([k, v]) => [`--color-${cssName(k)}`, cssValue(v)]));
 }
 
-module.exports = { palettes, shadowSets, sheens, cssName, cssVariables };
+module.exports = { palettes, shadowSets, sheens, scrims, cssName, cssVariables };

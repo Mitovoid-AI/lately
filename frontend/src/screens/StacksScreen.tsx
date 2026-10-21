@@ -113,7 +113,7 @@ export function StacksScreen() {
         ListHeaderComponent={
           <View className="w-full flex-row items-center self-center px-4 pt-3" style={{ maxWidth: MAX_WIDTH }}>
             <View className="flex-1">
-              <Text className="font-display-regular text-display-lg text-ink">Stacks</Text>
+              <Text className="font-display text-display-lg text-ink">Stacks</Text>
               <Text className="mt-0.5 font-sans text-meta text-ink-2">Your saves, grouped your way.</Text>
             </View>
             <PressableScale

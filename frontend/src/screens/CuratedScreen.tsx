@@ -135,7 +135,7 @@ export function CuratedScreen() {
       >
         <View className="w-full max-w-[720px] self-center">
           <View className="px-4 pt-3">
-            <Text className="font-display-regular text-display-lg text-ink">Curated for you</Text>
+            <Text className="font-display text-display-lg text-ink">Curated for you</Text>
             {feed.data ? (
               <Reveal>
                 <Text className="mt-0.5 font-sans text-meta text-ink-2">{`${feed.data.date_label} · picked from your saves`}</Text>

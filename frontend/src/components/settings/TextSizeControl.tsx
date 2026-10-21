@@ -56,7 +56,7 @@ export function TextSizeControl({
   return (
     <View>
       <View className="mt-4 flex-row items-center">
-        <Text className="font-display-regular text-ink-2" style={{ fontSize: 18 }}>
+        <Text className="font-newsreader text-ink-2" style={{ fontSize: 18 }}>
           A
         </Text>
         <View className="mx-3 h-8 flex-1 justify-center" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
@@ -78,7 +78,7 @@ export function TextSizeControl({
             ))}
           </View>
         </View>
-        <Text className="font-display-regular text-ink" style={{ fontSize: 28 }}>
+        <Text className="font-newsreader text-ink" style={{ fontSize: 28 }}>
           A
         </Text>
       </View>
