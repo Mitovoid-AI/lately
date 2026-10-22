@@ -141,6 +141,17 @@ test("toSave drops categories the app does not know", () => {
   expect(toSave({ ...base, category: "Fitness" }).category).toBe("Fitness");
 });
 
+test("toSave keeps the enrich stage of a pending save and nothing else", () => {
+  const base = { id: "r1", source_url: "u", note: null, created_at: "2026-10-04T00:00:00Z" };
+  expect(toSave({ ...base, status: "pending", stage: "transcribe" }).stage).toBe("transcribe");
+  // A step this app has never heard of (a newer server) reads as none, so the tracker never shows it.
+  expect(toSave({ ...base, status: "pending", stage: "re-rank" }).stage).toBeNull();
+  // Older servers send no stage at all.
+  expect(toSave({ ...base, status: "pending" }).stage).toBeNull();
+  // A finished card has no step, even if the server left one on the row.
+  expect(toSave({ ...base, status: "enriched", stage: "finalize" }).stage).toBeNull();
+});
+
 test("listSaves passes a category filter", async () => {
   const f = fakeFetch({ status: 200, body: [] });
   await setup(f).api.listSaves({ category: "Food & Places", limit: 25 });
@@ -157,6 +168,14 @@ const SAVE = {
   title: "T",
   category: "Fitness",
 };
+
+test("getSave and listSaves carry the stage through", async () => {
+  const pending = { ...SAVE, status: "pending", stage: "vision" };
+  const f = fakeFetch({ status: 200, body: pending }, { status: 200, body: [pending, SAVE] });
+  const { api } = setup(f);
+  expect((await api.getSave("r1")).stage).toBe("vision");
+  expect((await api.listSaves()).map((s) => s.stage)).toEqual(["vision", null]);
+});
 
 const callOf = (f: ReturnType<typeof fakeFetch>, call = 0) => ({
   url: f.mock.calls[call][0],

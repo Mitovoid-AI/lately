@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router";
 import { useEffect, useRef, useState, type ComponentProps } from "react";
-import { StyleSheet, View } from "react-native";
+import { Keyboard, Platform, StyleSheet, View } from "react-native";
 import Animated, {
   interpolateColor,
   useAnimatedStyle,
@@ -12,15 +12,18 @@ import { haptic } from "../lib/haptics";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "../theme/motion";
 import { useTheme } from "../theme/ThemeProvider";
 import type { IconName } from "./Icon";
+import { Icon } from "./Icon";
 import { AnimatedIcon } from "./motion/AnimatedIcon";
 import { PressableScale } from "./motion/PressableScale";
 
 type TabBarProps = Parameters<NonNullable<ComponentProps<typeof Tabs>["tabBar"]>>[0];
 
+// Home, Search, Save, Stacks. The active place swaps to its filled twin and takes the accent
+// ink; the marker above it slides along.
 const ICONS: Record<string, { name: IconName; active?: IconName }> = {
-  curated: { name: "auto-stories", active: "auto-stories-filled" },
-  index: { name: "grid-view", active: "grid-view-filled" },
-  save: { name: "add-circle-outline", active: "add-circle" },
+  index: { name: "home", active: "home-filled" },
+  search: { name: "search", active: "search-filled" },
+  save: { name: "add" },
   stacks: { name: "folder-special", active: "folder-special-filled" },
 };
 const MARK_W = 20;
@@ -31,12 +34,15 @@ function TabItem({
   label,
   icon,
   focused,
+  action = false,
   onPress,
   onLayout,
 }: {
   label: string;
   icon: { name: IconName; active?: IconName };
   focused: boolean;
+  /** An action tab (Save) is never "selected": it shows as a marigold plus and opens a sheet. */
+  action?: boolean;
   onPress: () => void;
   onLayout: (x: number, width: number) => void;
 }) {
@@ -45,33 +51,60 @@ function TabItem({
   useEffect(() => {
     on.set(withTiming(focused ? 1 : 0, { duration: DURATION.state, easing: EASE_OUT }));
   }, [focused, on]);
-  const labelStyle = useAnimatedStyle(() => ({ color: interpolateColor(on.get(), [0, 1], [colors.ink2, colors.accent]) }));
+  const labelStyle = useAnimatedStyle(() => ({ color: interpolateColor(on.get(), [0, 1], [colors.ink2, colors.accentText]) }));
 
   return (
     <PressableScale
-      accessibilityRole="tab"
-      accessibilityState={{ selected: focused }}
+      accessibilityRole={action ? "button" : "tab"}
+      accessibilityState={action ? undefined : { selected: focused }}
       accessibilityLabel={label}
       onPress={onPress}
       scaleTo={0.9}
       onLayout={(e) => onLayout(e.nativeEvent.layout.x, e.nativeEvent.layout.width)}
       className="min-h-12 min-w-16 items-center justify-center"
     >
-      <AnimatedIcon
-        active={focused}
-        name={icon.name}
-        activeName={icon.active ?? icon.name}
-        color={colors.ink2}
-        activeColor={colors.accent}
-        size={23}
-      />
+      {action ? (
+        // The one filled shape in the bar: saving is what Lately is for.
+        <View className="h-8 w-14 items-center justify-center rounded-full bg-accent">
+          <Icon name={icon.name} size={24} color={colors.onAccent} />
+        </View>
+      ) : (
+        <AnimatedIcon
+          active={focused}
+          name={icon.name}
+          activeName={icon.active ?? icon.name}
+          color={colors.ink2}
+          activeColor={colors.accentText}
+          size={23}
+        />
+      )}
       <Animated.Text style={[styles.label, focused ? styles.labelOn : null, labelStyle]}>{label}</Animated.Text>
     </PressableScale>
   );
 }
 
 /**
- * Bottom tabs from "02 Library — light": Curated · Library · Save · Stacks.
+ * On Android the window shrinks for the keyboard, which would lift this bar to sit on top of it
+ * and eat the space the Search tab needs. True while the keyboard is up (Android only: iOS
+ * keeps the bar under the keyboard).
+ */
+function useKeyboardOpen() {
+  const [open, setOpen] = useState(false);
+  useEffect(() => {
+    if (Platform.OS !== "android") return;
+    const show = Keyboard.addListener("keyboardDidShow", () => setOpen(true));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setOpen(false));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return open;
+}
+
+/**
+ * Bottom tabs: Home, Search, Save, Stacks. Save is an action (a marigold plus that opens the
+ * save sheet), the other three are places.
  * Tabs are peers, so the screens swap without sliding; the bar itself answers the tap:
  * the icon dips, its colour dissolves to marigold and a short marker glides to it.
  */
@@ -81,6 +114,7 @@ export function TabBar({ state, descriptors, navigation, insets }: TabBarProps) 
   const markX = useSharedValue(0);
   const markOn = useSharedValue(0);
   const placed = useRef(false);
+  const keyboardOpen = useKeyboardOpen();
   const activeKey = state.routes[state.index]?.key;
 
   useEffect(() => {
@@ -100,6 +134,8 @@ export function TabBar({ state, descriptors, navigation, insets }: TabBarProps) 
     opacity: markOn.get(),
     transform: [{ translateX: markX.get() }],
   }));
+
+  if (keyboardOpen) return null;
 
   return (
     <View
@@ -122,6 +158,7 @@ export function TabBar({ state, descriptors, navigation, insets }: TabBarProps) 
             label={label}
             icon={ICONS[route.name] ?? { name: "circle" }}
             focused={focused}
+            action={route.name === "save"}
             onPress={onPress}
             onLayout={(x, width) =>
               setLayouts((prev) =>

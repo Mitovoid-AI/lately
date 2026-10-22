@@ -10,9 +10,11 @@ import { PressableScale } from "./motion/PressableScale";
 
 type Variant = "primary" | "secondary" | "ghost" | "danger";
 
+// Primary is marigold with a near-black label (7.9:1); secondary is outlined in `control`, the
+// 3:1 outline tone, because a hairline would vanish against white.
 const BOX: Record<Variant, string> = {
   primary: "bg-accent",
-  secondary: "bg-card border border-hairline",
+  secondary: "bg-card border border-control",
   ghost: "bg-transparent",
   danger: "bg-danger-soft",
 };

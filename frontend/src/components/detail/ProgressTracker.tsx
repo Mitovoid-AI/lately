@@ -17,9 +17,9 @@ export function ProgressTracker({ current = 1 }: { current?: number }) {
           <View key={label} className={`flex-row items-center ${i > 0 ? "mt-4" : ""}`}>
             <View className="h-6 w-6 items-center justify-center">
               {done ? (
-                <Icon name="check-circle" size={22} color={colors.accent} />
+                <Icon name="check-circle" size={22} color={colors.accentText} />
               ) : active ? (
-                <ActivityIndicator size="small" color={colors.accent} />
+                <ActivityIndicator size="small" color={colors.accentText} />
               ) : (
                 <Icon name="radio-button-unchecked" size={22} color={colors.ink3} />
               )}

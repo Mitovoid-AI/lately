@@ -22,6 +22,6 @@ test("savedAgo reads like the card detail copy", () => {
 });
 
 test("shortDate and curatedDate", () => {
-  expect(shortDate("2026-11-01")).toBe("1 Nov");
-  expect(curatedDate(NOW)).toBe("Sunday, 4 Oct");
+  expect(shortDate("2026-11-01")).toBe("Nov 1");
+  expect(curatedDate(NOW)).toBe("Sunday, Oct 4");
 });

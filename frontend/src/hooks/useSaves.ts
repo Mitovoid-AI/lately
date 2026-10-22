@@ -1,7 +1,7 @@
 import { useInfiniteQuery, useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { Category, Save } from "../api/contract";
+import { ApiError, type Category, type ReelStatus, type Save, type SaveStage } from "../api/contract";
 import { useApi } from "../api/index";
 
 const PAGE = 25;
@@ -51,7 +51,7 @@ export function pollWhilePending(saves: readonly PendingInfo[] | undefined, now 
 }
 
 /**
- * The Library list (optionally one category): keyset pages, refreshed every 4 s while any
+ * The Home list (optionally one category): keyset pages, refreshed every 4 s while any
  * card is still processing. Every list lives under the ["saves"] key prefix.
  */
 export function useSaves(category?: Category) {
@@ -83,6 +83,75 @@ export function useSaves(category?: Category) {
     },
     refetch: q.refetch,
     isRefetching: q.isRefetching && !q.isFetchingNextPage,
+  };
+}
+
+/** How often the save sheet asks the server how a card is coming along. */
+export const PROGRESS_POLL_MS = 2000;
+/** After this long the card is slow: say so, and ask less often. */
+export const PROGRESS_EASE_AFTER_MS = 90_000;
+export const PROGRESS_SLOW_POLL_MS = 10_000;
+/** After this long the sheet stops asking (Home keeps polling, and the card offers Try again). */
+export const PROGRESS_GIVE_UP_MS = 5 * 60_000;
+
+/**
+ * Follows one save while its card is made: asks `getSave` every 2 s while it is pending, every
+ * 10 s once it has taken 90 s, and stops when it is done, after 5 minutes, when the save is
+ * gone, when `active` turns false (the sheet is closing) and when the screen unmounts. The
+ * `stage` is the server's real step; there is no percentage.
+ */
+export function useSaveProgress(reelId: string | null, active = true) {
+  const api = useApi();
+  const queryClient = useQueryClient();
+  const on = !!reelId && active;
+  const startedAt = useRef<number | null>(null);
+  const [slowFor, setSlowFor] = useState<string | null>(null);
+
+  const q = useQuery({
+    // The card's own key, so opening it a moment later starts from what the sheet already knows.
+    queryKey: ["save", reelId],
+    queryFn: () => api.getSave(reelId as string),
+    enabled: on,
+    staleTime: 0,
+    refetchInterval: (query) => {
+      if (query.state.data && query.state.data.status !== "pending") return false;
+      if (query.state.error instanceof ApiError && query.state.error.code === "NOT_FOUND") return false;
+      const since = startedAt.current === null ? 0 : Date.now() - startedAt.current;
+      if (since >= PROGRESS_GIVE_UP_MS) return false;
+      return since >= PROGRESS_EASE_AFTER_MS ? PROGRESS_SLOW_POLL_MS : PROGRESS_POLL_MS;
+    },
+  });
+
+  const dataStatus = q.data?.status;
+  const status: ReelStatus = dataStatus ?? "pending";
+  const ready = dataStatus !== undefined && dataStatus !== "pending";
+
+  // The clock for "slow" and "give up" starts when this save starts being followed.
+  useEffect(() => {
+    if (!on || ready) return;
+    startedAt.current = Date.now();
+    const id = setTimeout(() => setSlowFor(reelId), PROGRESS_EASE_AFTER_MS);
+    return () => clearTimeout(id);
+  }, [on, ready, reelId]);
+
+  // A card that was pending when the sheet looked turned into a card: Home shows it now.
+  const sawPending = useRef(false);
+  useEffect(() => {
+    if (dataStatus === "pending") sawPending.current = true;
+    else if (dataStatus && sawPending.current) {
+      sawPending.current = false;
+      void queryClient.invalidateQueries({ queryKey: ["saves"] });
+    }
+  }, [dataStatus, queryClient]);
+
+  const stage: SaveStage | null = status === "pending" ? (q.data?.stage ?? null) : null;
+  return {
+    status,
+    stage,
+    ready,
+    slow: !ready && slowFor !== null && slowFor === reelId,
+    /** The last check failed (offline, server trouble); the card keeps being made regardless. */
+    unreachable: q.isError && !ready,
   };
 }
 

@@ -22,16 +22,16 @@ export function savedAgo(iso: string, now: number): string {
   return `Saved ${Math.floor(days / 7)} weeks ago`;
 }
 
-/** "2026-11-01" → "1 Nov" */
+/** "2026-11-01" → "Nov 1" (US order: month first) */
 export function shortDate(isoDate: string): string {
   const [, m, d] = isoDate.slice(0, 10).split("-").map(Number);
-  return `${d} ${MONTHS[m - 1]}`;
+  return `${MONTHS[m - 1]} ${d}`;
 }
 
-/** "Sunday, 4 Oct" (viewer's local date) */
+/** "Sunday, Oct 4" (viewer's local date) */
 export function curatedDate(now: number): string {
   const d = new Date(now);
-  return `${DAYS[d.getDay()]}, ${d.getDate()} ${MONTHS[d.getMonth()]}`;
+  return `${DAYS[d.getDay()]}, ${MONTHS[d.getMonth()]} ${d.getDate()}`;
 }
 
 /** "2023-10-01" → "Oct 2023" */

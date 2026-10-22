@@ -2,12 +2,13 @@ import { Tabs, useRouter } from "expo-router";
 
 import { TabBar } from "../../components/TabBar";
 
+/** Home, Search, Save, Stacks: the order here is the order of the bar. */
 export default function TabsLayout() {
   const router = useRouter();
   return (
     <Tabs tabBar={(props) => <TabBar {...props} />} screenOptions={{ headerShown: false }}>
-      <Tabs.Screen name="curated" options={{ title: "Curated" }} />
-      <Tabs.Screen name="index" options={{ title: "Library" }} />
+      <Tabs.Screen name="index" options={{ title: "Home" }} />
+      <Tabs.Screen name="search" options={{ title: "Search" }} />
       <Tabs.Screen
         name="save"
         options={{ title: "Save" }}

@@ -2,7 +2,7 @@ import { act, render, screen } from "@testing-library/react-native";
 import { Text } from "react-native";
 
 import { createMemoryStore } from "../../test/memoryStore";
-import { CATEGORY, categoryColor } from "../categories";
+import { CATEGORY, categoryColor, categoryPill } from "../categories";
 import { getThemePreference, loadThemePreference, setThemePreference, THEME_KEY } from "../preference";
 import { resolveScheme, ThemeProvider, useTheme } from "../ThemeProvider";
 import { cssVariables, palettes } from "../tokens";
@@ -22,6 +22,65 @@ function contrast(a: string, b: string) {
 }
 
 afterEach(() => setThemePreference("light", createMemoryStore()));
+
+describe("Daylight palette", () => {
+  const light = palettes.light;
+
+  test("is white with a warm-grey raised surface", () => {
+    expect(light.canvas).toBe("#FFFFFF");
+    expect(light.card).toBe("#FFFFFF");
+  });
+
+  test.each(["ink", "ink2", "ink3", "accentText", "danger", "success"] as const)(
+    "%s text clears 4.5:1 on canvas, card, raised and warm",
+    (token) => {
+      for (const surface of ["canvas", "card", "raised", "warm"] as const) {
+        expect(contrast(light[token], light[surface])).toBeGreaterThanOrEqual(4.5);
+      }
+    },
+  );
+
+  test("labels on marigold, on the danger tints and on the success fill stay readable", () => {
+    expect(contrast(light.onAccent, light.accent)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(light.onAccent, light.accentPressed)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(light.danger, light.dangerSoft)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(light.danger, light.dangerPressed)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(light.onSuccess, light.success)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(light.accentText, light.warm)).toBeGreaterThanOrEqual(4.5);
+  });
+
+  test("control outlines keep 3:1 on every surface, in both themes", () => {
+    for (const palette of [light, palettes.dark]) {
+      for (const surface of ["canvas", "card", "raised"] as const) {
+        expect(contrast(palette.control, palette[surface])).toBeGreaterThanOrEqual(3);
+      }
+    }
+  });
+
+  test("category dots keep 3:1 on white and on the raised surface", () => {
+    for (const c of Object.keys(CATEGORY) as (keyof typeof CATEGORY)[]) {
+      expect(contrast(categoryColor(c, "light"), light.canvas)).toBeGreaterThanOrEqual(3);
+      expect(contrast(categoryColor(c, "light"), light.raised)).toBeGreaterThanOrEqual(3);
+    }
+  });
+});
+
+describe("category pills", () => {
+  test("ink on every tint clears 4.5:1 in both themes", () => {
+    for (const c of Object.keys(CATEGORY) as (keyof typeof CATEGORY)[]) {
+      for (const scheme of ["light", "dark"] as const) {
+        const { bg, ink } = categoryPill(c, scheme);
+        expect(contrast(ink, bg)).toBeGreaterThanOrEqual(4.5);
+      }
+    }
+  });
+
+  test("every category has a one-word label short enough for a tile", () => {
+    for (const { short } of Object.values(CATEGORY)) {
+      expect(short).toMatch(/^[A-Za-z]{2,7}$/);
+    }
+  });
+});
 
 describe("Espresso palette", () => {
   const dark = palettes.dark;
@@ -64,6 +123,10 @@ describe("Espresso palette", () => {
     expect(splash.backgroundColor).toBe(palettes.light.canvas);
     expect(splash.dark.backgroundColor).toBe(palettes.dark.canvas);
     expect(appJson.expo.userInterfaceStyle).toBe("automatic");
+  });
+
+  test("labels on the success fill stay readable", () => {
+    expect(contrast(dark.onSuccess, dark.success)).toBeGreaterThanOrEqual(4.5);
   });
 });
 

@@ -23,6 +23,10 @@ from . import thumbnails
 CATEGORIES = ("Dev & Tools", "Food & Places", "Career & Jobs", "Fitness", "Style & Vibes",
               "Watch Later")
 
+# The stages of the enrich job (worker/stages.py), in the order a save goes through them. Anything
+# else on a job row (a newer worker's stage) is not shown: the app only knows these names.
+ENRICH_STAGES = ("resolve", "fetch", "transcribe", "vision", "structure", "finalize")
+
 # reels.source_channel predates the door names (0002 check: app | telegram | web);
 # save_reel() maps app_share → app and meta_dm → telegram on the way in.
 _CHANNEL_OUT = {"app": "app_share", "telegram": "meta_dm", "web": "web"}
@@ -47,6 +51,9 @@ class SaveOut(BaseModel):
     thumbnail_url: str | None
     creator: str | None
     channel: Literal["app_share", "web", "meta_dm"]
+    # Where the enrich job is right now, for a pending save only (null once it is done, or when
+    # no job is queued). The app shows it as the named step of its progress tracker.
+    stage: str | None = None
 
 
 class SaveDetailOut(SaveOut):
@@ -62,7 +69,11 @@ SAVE_COLUMNS = """
   r.created_at, r.source_channel,
   coalesce(rc.thumbnail_path, r.thumbnail_path) as thumbnail_path,
   rc.title, rc.caption, rc.category, rc.creator_handle,
-  rc.summary, rc.steps, rc.tags, rc.entities, coalesce(rc.media_status, 'pending') as media_status
+  rc.summary, rc.steps, rc.tags, rc.entities, coalesce(rc.media_status, 'pending') as media_status,
+  case when r.status = 'pending' then (
+    select j.stage from public.jobs j
+    where j.kind = 'enrich' and j.payload->>'reel_id' = r.id::text
+    order by j.created_at desc limit 1) end as job_stage
 """
 
 SAVE_FROM = """
@@ -111,12 +122,14 @@ def _places(raw: Any) -> list[PlaceOut]:
 
 def to_save(row: asyncpg.Record | dict[str, Any]) -> SaveOut:
     category = row["category"] if row["category"] in CATEGORIES else None
+    stage = row.get("job_stage")
     return SaveOut(
         id=row["id"], source_url=row["source_url"], shortcode=row["shortcode"],
         status=row["status"], note=row["note"], created_at=row["created_at"],
         title=row["title"], caption=row["caption"], category=category,
         thumbnail_url=thumbnail_url(row["thumbnail_path"]), creator=row["creator_handle"],
-        channel=_CHANNEL_OUT.get(row["source_channel"], "app_share"))  # type: ignore[arg-type]
+        channel=_CHANNEL_OUT.get(row["source_channel"], "app_share"),  # type: ignore[arg-type]
+        stage=stage if row["status"] == "pending" and stage in ENRICH_STAGES else None)
 
 
 def to_save_detail(row: asyncpg.Record | dict[str, Any]) -> SaveDetailOut:

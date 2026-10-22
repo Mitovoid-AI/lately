@@ -15,7 +15,10 @@ export function useToast() {
 const TOAST_IN = FadeInDown.duration(DURATION.enter).easing(EASE_OUT);
 const TOAST_OUT = FadeOutDown.duration(DURATION.exit).easing(EASE_OUT);
 
-/** One message at a time, above the tab bar, gone after 2.5 s. */
+/**
+ * One message at a time, above the tab bar, gone after 2.5 s. An ink slab with canvas-coloured
+ * text (18.6:1 light, 15.9:1 espresso), so it inverts with the theme.
+ */
 export function ToastProvider({ children }: { children: ReactNode }) {
   const insets = useSafeAreaInsets();
   const [toast, setToast] = useState<{ id: number; message: string } | null>(null);
@@ -44,7 +47,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             style={{ pointerEvents: "none", position: "absolute", left: 16, right: 16, bottom: insets.bottom + 80, alignItems: "center" }}
           >
             <View accessibilityRole="alert" className="max-w-[420px] rounded-ctl bg-ink px-4 py-3">
-              <Text className="text-center font-sans-medium text-meta text-on-accent">{toast.message}</Text>
+              <Text className="text-center font-sans-medium text-meta text-canvas">{toast.message}</Text>
             </View>
           </Animated.View>
         ) : null}

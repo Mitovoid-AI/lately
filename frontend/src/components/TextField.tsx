@@ -6,8 +6,10 @@ import { DURATION, EASE_OUT } from "../theme/motion";
 import { useTheme } from "../theme/ThemeProvider";
 
 /**
- * Text input with the design system's focus state: the hairline warms to marigold and a soft
- * 20% ring blooms around it (180 ms, UI thread, no re-render on focus).
+ * Text input with the design system's focus state: the outline (3:1 `control` at rest, so the
+ * field is findable on white) deepens to the dark marigold, accent-text, and a soft marigold
+ * ring blooms around it (180 ms, UI thread, no re-render on focus). Plain marigold would be
+ * 2.4:1 on white, too faint for a focus indicator.
  */
 export function TextField({
   className,
@@ -42,7 +44,7 @@ export function TextField({
   );
 
   const boxStyle = useAnimatedStyle(() => ({
-    borderColor: interpolateColor(focus.get(), [0, 1], [colors.hairline, colors.accent]),
+    borderColor: interpolateColor(focus.get(), [0, 1], [colors.control, colors.accentText]),
   }));
   const ringStyle = useAnimatedStyle(() => ({
     opacity: focus.get(),

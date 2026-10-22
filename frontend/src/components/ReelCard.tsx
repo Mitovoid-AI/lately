@@ -8,7 +8,7 @@ import { displayLink } from "../lib/instagram";
 import { CATEGORY } from "../theme/categories";
 import { useTheme, type Scheme } from "../theme/ThemeProvider";
 import { scrims } from "../theme/tokens";
-import { CategoryDot } from "./CategoryDot";
+import { CategoryPill } from "./Chip";
 import { Icon } from "./Icon";
 import { PressableScale } from "./motion/PressableScale";
 import { Skeleton } from "./Skeleton";
@@ -58,11 +58,18 @@ const SCRIM: Record<Scheme, ViewStyle> = { light: scrimFor(scrims.tile.light), d
 /**
  * The tile is a fixed 3:4 box with its text pinned to the bottom, so the text cannot grow
  * freely with the system text size: past this it climbs out of the scrim and into the
- * placeholder and badge. The full title is still in the label and on the detail screen.
+ * placeholder and pill. The full title is still in the label and on the detail screen.
  */
 const MAX_FONT_SCALE = 1.3;
 
-/** One card, three states (pending / enriched / partial), as in "02 Library — light". */
+/**
+ * One card, three states (pending / enriched / partial). The category is a tinted pill with a
+ * one-word label ("Food") top right rather than the old icon badge: the colour is the wayfinding
+ * and the word makes the colour readable. The longest label ("Fitness", about 60 pt wide) fits a
+ * 165 pt tile at 375 wide with room to spare, even at 1.3x text (about 72 pt). Because the pill
+ * names the category, the line at the bottom is only the date; the screen-reader label still
+ * reads both.
+ */
 export const ReelCard = memo(function ReelCard({
   save,
   now,
@@ -79,7 +86,8 @@ export const ReelCard = memo(function ReelCard({
   const pending = save.status === "pending";
   const partial = save.status === "partial";
   const category = pending ? null : save.category;
-  const meta = category ? `${category} · ${relativeShort(save.created_at, now)}` : relativeShort(save.created_at, now);
+  const when = relativeShort(save.created_at, now);
+  const meta = category ? `${category} · ${when}` : when;
   const uri = pending || partial ? null : save.thumbnail_url;
   // White text over a scrim when the photo shows; theme colours over the placeholder fills.
   const onImage = !!uri;
@@ -141,26 +149,18 @@ export const ReelCard = memo(function ReelCard({
           </Text>
         ) : null}
         <View className="flex-row items-center" style={styles.meta}>
-          {category ? (
-            <View className="mr-1.5">
-              <CategoryDot category={category} onMedia={onImage} />
-            </View>
-          ) : null}
           <Text
             numberOfLines={1}
             maxFontSizeMultiplier={MAX_FONT_SCALE}
             className={`flex-1 font-sans text-caption ${onImage ? "text-on-media-muted" : "text-ink-2"}`}
           >
-            {meta}
+            {when}
           </Text>
         </View>
       </View>
       {category ? (
-        <View
-          className="absolute right-2 top-2 h-7 w-7 items-center justify-center rounded-full bg-scrim-light"
-          style={{ boxShadow: shadows.raised }}
-        >
-          <Icon name={CATEGORY[category].icon} size={16} color={colors.ink} />
+        <View className="absolute right-2 top-2 rounded-full" style={{ boxShadow: shadows.raised }}>
+          <CategoryPill category={category} label={CATEGORY[category].short} size="sm" maxFontSizeMultiplier={MAX_FONT_SCALE} />
         </View>
       ) : null}
     </Thumb>

@@ -34,7 +34,7 @@ test("Supabase Auth errors map to what the screens say", () => {
   expect(failureFrom(new Error("Token has expired or is invalid"))).toBe("invalid_code");
 
   expect(authErrorMessage(new AuthFlowError("cancelled"), "google")).toBe("");
-  expect(authErrorMessage(new AuthFlowError("provider_disabled"), "google")).toBe("Google sign-in isn't switched on yet.");
+  expect(authErrorMessage(new AuthFlowError("provider_disabled"), "google")).toBe("Google sign-in isn't turned on yet.");
   expect(authErrorMessage(new AuthFlowError("rate_limited"), "email")).toBe("Too many emails just now. Wait a minute, then try again.");
   expect(authErrorMessage(new AuthFlowError("invalid_code"), "code")).toBe("That code has expired or isn't right. Try again or resend.");
   expect(authErrorMessage(new Error("boom"), "email")).toBe("Couldn't send the link. Try again.");

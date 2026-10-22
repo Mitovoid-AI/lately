@@ -54,7 +54,7 @@ function applyScheme(preference: ThemePreference, scheme: Scheme) {
   }
 }
 
-/** Light, Espresso, or whatever the OS says: the Theme & Appearance setting, applied. */
+/** Light, Espresso, or whatever the OS says: the Account > Theme setting, applied. */
 export function ThemeProvider({ children }: { children: ReactNode }) {
   const preference = useThemePreference();
   const system = useColorScheme();

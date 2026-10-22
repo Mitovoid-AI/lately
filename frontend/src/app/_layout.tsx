@@ -125,9 +125,10 @@ function RootStack() {
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="reel/[id]" />
         <Stack.Screen name="stack/[id]" />
-        <Stack.Screen name="search" options={{ animation: "fade", animationDuration: 220 }} />
+        {/* Opens from Home's "See all"; Search is a tab now, so it has no stack entry. */}
+        <Stack.Screen name="curated" />
         <Stack.Screen name="account" />
-        {/* Lately Pro: slides up over whatever sent you here (the save sheet, Account, the Library). */}
+        {/* Lately Pro: slides up over whatever sent you here (the save sheet, Account, Home). */}
         <Stack.Screen name="pro" options={{ presentation: "modal", animation: reduced ? "fade" : "slide_from_bottom" }} />
         <Stack.Screen
           name="save-sheet"

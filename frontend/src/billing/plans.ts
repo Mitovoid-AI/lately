@@ -42,7 +42,7 @@ export function ctaLabel(plan: PlanOffer): string {
 }
 
 /** Google Play has the payment but the server (which enforces the limit) still reads the account as free. */
-export const PRO_CONFIRMING = "Google Play confirmed your purchase. Lately is turning Pro on, this can take a minute.";
+export const PRO_CONFIRMING = "Google Play confirmed your purchase. Lately is turning Pro on. This can take a minute.";
 
 /** The auto-renewal disclosure Google Play's subscription policy wants beside the button. */
 export function disclosure(plan: PlanOffer): string {

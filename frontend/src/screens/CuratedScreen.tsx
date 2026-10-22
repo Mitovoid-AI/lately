@@ -16,6 +16,7 @@ import { useNow } from "../hooks/useNow";
 import { pollWhilePending, useMe } from "../hooks/useSaves";
 import { relativeShort } from "../lib/dates";
 import { haptic } from "../lib/haptics";
+import { goBack } from "../lib/navigation";
 import { useTheme } from "../theme/ThemeProvider";
 import { ErrorState } from "../components/ErrorState";
 
@@ -113,13 +114,14 @@ export function CuratedScreen() {
         avatarUrl={me?.avatar_url}
         initial={me?.name?.[0]}
         onAvatar={() => router.push("/account")}
-        onBookmark={() => router.push("/stacks")}
+        // Curated is a stack screen now (Home's "See all"), no longer a tab.
+        onBack={() => goBack(router)}
         scrollY={scrollY}
       />
       <Animated.ScrollView
         onScroll={onScroll}
         scrollEventThrottle={16}
-        contentContainerStyle={{ paddingBottom: 48 }}
+        contentContainerStyle={{ paddingBottom: 48 + insets.bottom }}
         refreshControl={
           <RefreshControl
             refreshing={feed.isRefetching}
@@ -127,8 +129,8 @@ export function CuratedScreen() {
               haptic.light();
               feed.refetch();
             }}
-            tintColor={colors.accent}
-            colors={[colors.accent]}
+            tintColor={colors.accentText}
+            colors={[colors.accentText]}
             progressBackgroundColor={colors.card}
           />
         }

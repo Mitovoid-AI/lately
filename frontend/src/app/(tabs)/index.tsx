@@ -1,3 +1,3 @@
-import { LibraryScreen } from "../../screens/LibraryScreen";
+import { HomeScreen } from "../../screens/HomeScreen";
 
-export default LibraryScreen;
+export default HomeScreen;

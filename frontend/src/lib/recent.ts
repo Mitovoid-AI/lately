@@ -8,6 +8,11 @@ export function loadRecent(store: KeyValueStore): Promise<string[]> {
   return readJson<string[]>(store, KEY, []);
 }
 
+/** Forgets every recent search ("Clear" on the empty Search screen). */
+export async function clearRecent(store: KeyValueStore): Promise<void> {
+  await writeJson(store, KEY, []);
+}
+
 /** Adds a query to the front (trimmed, case-insensitive dedupe, last 5 kept). */
 export async function pushRecent(store: KeyValueStore, query: string): Promise<string[]> {
   const q = query.trim();

@@ -3,6 +3,7 @@ export interface Palette {
   card: string;
   raised: string;
   hairline: string;
+  control: string;
   ink: string;
   ink2: string;
   ink3: string;
@@ -10,6 +11,7 @@ export interface Palette {
   onAccent: string;
   accentPressed: string;
   success: string;
+  onSuccess: string;
   danger: string;
   dangerSoft: string;
   dangerPressed: string;

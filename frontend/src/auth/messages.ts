@@ -9,7 +9,7 @@ const FALLBACK: Record<Step, string> = {
 };
 
 /**
- * What to tell someone when a sign-in step fails; "" means say nothing (they cancelled).
+ * What to tell someone when a sign-in step fails; "" means say nothing (they canceled).
  * In development builds a Google window that closed without coming back names the redirect
  * URL to allow in Supabase: a missing allow-list entry looks exactly like a cancel.
  */
@@ -23,7 +23,7 @@ export function authErrorMessage(error: unknown, step: Step, dev: boolean = __DE
         : "";
     }
     case "provider_disabled":
-      return "Google sign-in isn't switched on yet.";
+      return "Google sign-in isn't turned on yet.";
     case "rate_limited":
       return step === "code" ? "Too many tries. Wait a minute, then try again." : "Too many emails just now. Wait a minute, then try again.";
     case "invalid_code":

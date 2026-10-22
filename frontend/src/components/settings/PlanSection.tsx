@@ -67,7 +67,7 @@ export function PlanSection({ me }: { me: Me }) {
     <SettingsRow
       icon="refresh"
       title="Restore purchases"
-      subtitle={me.plan === "free" ? "Already subscribed? Get Pro back" : "Get Pro back after switching phones"}
+      subtitle={me.plan === "free" ? "Already subscribed? Bring Pro back on this phone" : "Use this after switching phones"}
       onPress={restore}
       right={restoring ? <ActivityIndicator color={colors.ink2} accessibilityLabel="Restoring purchases" /> : chevron}
       divider
@@ -76,8 +76,11 @@ export function PlanSection({ me }: { me: Me }) {
   const used = me.saves_this_month;
   const limit = Math.max(me.saves_limit, 1);
 
+  // A bookmark while saves are capped, the infinity mark once they aren't.
+  const planIcon = me.plan === "free" ? "bookmark-border" : "all-inclusive";
+
   return (
-    <SettingsSection icon="auto-awesome" title={PLAN_TITLE[me.plan]}>
+    <SettingsSection icon={planIcon} title={PLAN_TITLE[me.plan]}>
       {me.plan === "free" ? (
         <>
           <Text className="font-sans-semibold text-body text-ink">{`${used} of ${countOf(me.saves_limit, "save")} this month`}</Text>
@@ -85,11 +88,11 @@ export function PlanSection({ me }: { me: Me }) {
             accessible
             accessibilityRole="progressbar"
             accessibilityValue={{ min: 0, max: limit, now: Math.min(used, limit) }}
-            className="mt-2 h-2 overflow-hidden rounded-full bg-raised"
+            className="mt-2 h-2 overflow-hidden rounded-full bg-hairline"
           >
             <View className="h-2 rounded-full bg-accent" style={{ width: `${Math.min(100, (used / limit) * 100)}%` }} />
           </View>
-          <Text className="mt-2 font-sans text-meta text-ink-2">{`Resets ${shortDate(me.resets_on)}`}</Text>
+          <Text className="mt-2 font-sans text-meta text-ink-2">{`Resets on ${shortDate(me.resets_on)}`}</Text>
           <Button title="Upgrade to Pro" onPress={() => router.push("/pro")} className="mt-4" />
           {restoreRow}
         </>

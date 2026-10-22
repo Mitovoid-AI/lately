@@ -122,7 +122,7 @@ export function SheetPanel({
           className="w-full rounded-t-sheet border-t border-hairline bg-card px-4"
           style={{ paddingBottom: Math.max(insets.bottom, 16) + 8 }}
         >
-          <View className="mb-4 mt-3 h-1 w-9 self-center rounded-full bg-hairline" />
+          <View className="mb-4 mt-3 h-1 w-9 self-center rounded-full bg-control" />
           {children}
         </View>
       </Animated.View>

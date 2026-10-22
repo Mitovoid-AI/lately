@@ -22,6 +22,14 @@ export const CATEGORIES: readonly Category[] = [
   "Watch Later",
 ];
 
+/**
+ * Where a pending save's enrich job is right now, in the order a save goes through them. It is
+ * the server's real stage (never an estimate) and is only set while `status` is "pending".
+ */
+export type SaveStage = "resolve" | "fetch" | "transcribe" | "vision" | "structure" | "finalize";
+
+export const SAVE_STAGES: readonly SaveStage[] = ["resolve", "fetch", "transcribe", "vision", "structure", "finalize"];
+
 export type Channel = "app_share" | "web" | "meta_dm";
 
 export interface Save {
@@ -37,6 +45,8 @@ export interface Save {
   thumbnail_url: string | null;
   creator: string | null;
   channel: Channel;
+  /** The enrich job's current stage while the save is pending; null otherwise (or from an older server). */
+  stage?: SaveStage | null;
 }
 
 export interface Place {
@@ -210,7 +220,7 @@ export interface LatelyApi {
   addToStack(stackId: string, saveId: string): Promise<void>;
   /** DELETE /stacks/{id}/saves/{save_id} → 204 (the save itself stays) */
   removeFromStack(stackId: string, saveId: string): Promise<void>;
-  /** DELETE /stacks/{id} → 204 (its saves stay in the Library) */
+  /** DELETE /stacks/{id} → 204 (its saves stay saved) */
   deleteStack(id: string): Promise<void>;
   /** GET /curated */
   getCurated(): Promise<CuratedFeed>;

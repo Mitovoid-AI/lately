@@ -54,7 +54,7 @@ export function LegalScreen() {
                 </Text>
               ) : b.kind === "li" ? (
                 <View key={i} className="mt-3 flex-row">
-                  <Text className="w-5 font-sans text-body text-accent">•</Text>
+                  <Text className="w-5 font-sans text-body text-accent-text">•</Text>
                   <Text className="flex-1 font-sans text-body text-ink-2">
                     <Runs runs={b.text} />
                   </Text>

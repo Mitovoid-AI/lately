@@ -3,11 +3,11 @@ import { createMemoryStore } from "../../test/memoryStore";
 import { ApiError } from "../contract";
 import { createDemoApi, EXPORT_MS, PENDING_MS } from "../demo";
 
-const MOMO = "Hole-in-the-wall momo spot in Koramangala";
+const MOMO = "Hole-in-the-wall momo spot in Jackson Heights";
 const STACK_NAMES = [
-  "Cafes to try",
+  "Food and coffee",
   "Job hunt",
-  "Manali trip",
+  "Pacific Northwest trip",
   "Mobility routine",
   "Dev tools",
   "Outfit ideas",
@@ -48,6 +48,34 @@ test("a new save starts pending, lists first, then enriches", async () => {
   expect(card.status).toBe("enriched");
   expect(card.title).not.toBeNull();
   expect(card.thumbnail_url).not.toBeNull();
+});
+
+test("a pending save walks through the server's stages in order, then has none", async () => {
+  const { api, advance } = setup();
+  const { reel_id } = await api.createSave("https://www.instagram.com/reel/NEW123/");
+  const seen: (string | null | undefined)[] = [];
+  for (let t = 0; t < PENDING_MS; t += 1000) {
+    const card = await api.getSave(reel_id);
+    expect(card.status).toBe("pending");
+    // The list agrees with the detail.
+    expect((await api.listSaves())[0].stage).toBe(card.stage);
+    if (seen[seen.length - 1] !== card.stage) seen.push(card.stage);
+    advance(1000);
+  }
+  expect(seen).toEqual(["resolve", "fetch", "transcribe", "vision", "structure", "finalize"]);
+  const done = await api.getSave(reel_id);
+  expect([done.status, done.stage]).toEqual(["enriched", null]);
+  expect((await api.listSaves())[0].stage).toBeNull();
+});
+
+test("a retried save starts its stages over from the retry", async () => {
+  const { api, advance } = setup();
+  const partial = (await api.listSaves()).find((s) => s.status === "partial")!;
+  advance(5 * 60_000);
+  await api.retryEnrichment(partial.id);
+  expect((await api.getSave(partial.id)).stage).toBe("resolve");
+  advance(PENDING_MS * 0.6);
+  expect((await api.getSave(partial.id)).stage).toBe("vision");
 });
 
 test("saving the same reel twice is deduped", async () => {
@@ -96,7 +124,14 @@ test("getMe reports limit, reset date and totals", async () => {
   expect(me.saves_limit).toBe(20);
   expect(me.resets_on).toBe("2026-11-01");
   expect(me.total_saves).toBe((await api.listSaves({ limit: 100 })).length);
-  expect(me.name).toBe("Aanya Sharma");
+  expect(me.name).toBe("Sam Carter");
+  expect([me.email, me.handle]).toEqual(["sam.carter@example.com", "samcarter"]);
+});
+
+test("getMe lists only the Google sign-in: Lately never connects an Instagram account", async () => {
+  const { api } = setup();
+  const me = await api.getMe();
+  expect(me.connected_accounts).toEqual([{ provider: "google", label: "sam.carter@example.com", status: "secured" }]);
 });
 
 test("stacks: seeded, created, and added to", async () => {
@@ -129,7 +164,7 @@ test("preferences persist in storage", async () => {
 test("curated feed has a hero and sections", async () => {
   const { api } = setup();
   const feed = await api.getCurated();
-  expect(feed.date_label).toBe("Sunday, 4 Oct");
+  expect(feed.date_label).toBe("Sunday, Oct 4");
   expect(feed.hero.save_ids.length).toBeGreaterThanOrEqual(2);
   expect(feed.hero.query).toBe("cafe");
   expect(feed.sections.length).toBeGreaterThanOrEqual(2);

@@ -18,8 +18,9 @@ const CHECK_IN = FadeIn.duration(DURATION.state).easing(EASE_OUT);
 const CHECK_OUT = FadeOut.duration(140);
 
 /**
- * One of a row of choices (reading font, theme). Selected = raised fill + accent check.
- * The fill, border and corner check all dissolve between states.
+ * One of a row of choices (reading font, theme). Selected = raised fill + a dark-marigold check
+ * (accent-text, 5.3:1 on the raised fill; plain marigold would be 2.2:1). The fill, border and
+ * corner check all dissolve between states.
  */
 export function OptionCard({
   selected,
@@ -56,7 +57,7 @@ export function OptionCard({
       <Animated.View style={[styles.box, boxStyle]}>
         {check && selected ? (
           <Animated.View entering={CHECK_IN} exiting={CHECK_OUT} style={styles.check}>
-            <Icon name="check-circle-outline" size={18} color={colors.accent} />
+            <Icon name="check-circle-outline" size={18} color={colors.accentText} />
           </Animated.View>
         ) : null}
         {top}

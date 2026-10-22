@@ -69,7 +69,7 @@ describe("the picker", () => {
     expect(screen.getByText("Save without limits")).toBeTruthy();
     expect(screen.getByText("Free covers 20 saves a month. Pro removes the cap.")).toBeTruthy();
     expect(screen.getByText("Unlimited saves, every month")).toBeTruthy();
-    expect(screen.getByText("No monthly reset to wait for")).toBeTruthy();
+    expect(screen.getByText("Cancel anytime in Google Play")).toBeTruthy();
     expect(screen.getByText("Search, cards and stacks stay the same")).toBeTruthy();
     const radios = screen.getAllByRole("radio");
     expect(radios).toHaveLength(2);

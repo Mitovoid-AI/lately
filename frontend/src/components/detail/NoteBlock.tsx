@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { StyleSheet, Text, View, type TextStyle } from "react-native";
 import Animated, { FadeIn, LinearTransition } from "react-native-reanimated";
 
@@ -20,10 +20,13 @@ export function NoteBlock({
   note,
   onSave,
   textStyle,
+  onEditingChange,
 }: {
   note: string | null;
   onSave: (note: string) => Promise<void>;
   textStyle?: TextStyle;
+  /** Tells the screen when the editor opens or closes (it hides the action bar under the keyboard). */
+  onEditingChange?: (editing: boolean) => void;
 }) {
   const { colors } = useTheme();
   const [editing, setEditing] = useState(false);
@@ -31,6 +34,16 @@ export function NoteBlock({
   const [saving, setSaving] = useState(false);
   const [touched, setTouched] = useState(false);
   const toast = useToast();
+
+  const report = useRef(onEditingChange);
+  useEffect(() => {
+    report.current = onEditingChange;
+  });
+  useEffect(() => {
+    report.current?.(editing);
+  }, [editing]);
+  // Leaving while editing (the card reloads, the screen closes) must not leave the bar hidden.
+  useEffect(() => () => report.current?.(false), []);
 
   function edit() {
     setDraft(note ?? "");
@@ -61,7 +74,7 @@ export function NoteBlock({
   return (
     <Animated.View layout={RESIZE} style={[styles.card, { borderColor: colors.hairline, backgroundColor: colors.card }]}>
       <View className="flex-row items-center justify-between">
-        <Text className="font-sans-semibold text-label text-ink">YOUR NOTE</Text>
+        <Text className="font-sans-semibold text-meta text-ink">Your note</Text>
         {editing ? null : (
           <View className="-m-3">
             <IconButton icon="edit" size={18} label="Edit note" onPress={edit} />

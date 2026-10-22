@@ -37,17 +37,20 @@ async function open() {
   const updatePreferences = jest.spyOn(api, "updatePreferences");
   const requestExport = jest.spyOn(api, "requestExport");
   const view = await renderWithProviders(<AccountScreen />, { api });
-  await screen.findByText("Aanya Sharma");
+  await screen.findByText("Sam Carter");
   return { ...view, updatePreferences, requestExport };
 }
 
 test("shows the profile from the API", async () => {
   await open();
-  expect(screen.getByText("@aanya · aanya.sharma@example.com")).toBeTruthy();
-  expect(screen.getByText("13 Saved Reels")).toBeTruthy();
-  expect(screen.getByText("6 Collections")).toBeTruthy();
-  expect(screen.getByText("Vault Member (Oct 2023)")).toBeTruthy();
-  expect(screen.getByText("Instagram (@aanya.archive)")).toBeTruthy();
+  expect(screen.getByText("@samcarter · sam.carter@example.com")).toBeTruthy();
+  expect(screen.getByText("13 saved reels")).toBeTruthy();
+  expect(screen.getByText("6 stacks")).toBeTruthy();
+  expect(screen.getByText("Member since Oct 2023")).toBeTruthy();
+  expect(screen.getByText("Google (sam.carter@example.com)")).toBeTruthy();
+  // Lately never connects an Instagram account, so the profile never says it did.
+  expect(screen.queryByText(/Connected to/)).toBeNull();
+  expect(screen.queryByText(/Instagram \(/)).toBeNull();
 });
 
 test("reading font and text size are saved", async () => {
@@ -76,7 +79,7 @@ test("picking Dark saves it, switches the app to Espresso and remembers it on th
     </>,
     { api },
   );
-  await screen.findByText("Aanya Sharma");
+  await screen.findByText("Sam Carter");
   expect(screen.getByText("scheme:light")).toBeTruthy();
 
   await fireEvent.press(screen.getByText("Dark"));
@@ -98,11 +101,11 @@ test("download archive prepares a JSON export in the app, then offers Download",
     .mockResolvedValueOnce({ status: "queued" })
     .mockResolvedValue({ status: "ready", filename: "lately-export-20261010.json", json: "{}" });
   await renderWithProviders(<AccountScreen />, { api });
-  await screen.findByText("Aanya Sharma");
+  await screen.findByText("Sam Carter");
   expect(screen.queryByText(/email your archive/i)).toBeNull();
   expect(screen.queryByText(/markdown/i)).toBeNull();
   expect(screen.getByText("Export your reels, notes and stacks as a JSON file")).toBeTruthy();
-  await fireEvent.press(screen.getByText("Download Vault Archive"));
+  await fireEvent.press(screen.getByText("Download your archive"));
   await waitFor(() => expect(requestExport).toHaveBeenCalled());
   expect(screen.getByText("Preparing…")).toBeTruthy();
   await fireEvent.press(await screen.findByText("Download", {}, { timeout: 8000 }));
@@ -114,7 +117,7 @@ test("the delete dialog offers the export first", async () => {
   const requestExport = jest.spyOn(api, "requestExport");
   const deleteAccount = jest.spyOn(api, "deleteAccount");
   await renderWithProviders(<AccountScreen />, { api });
-  await screen.findByText("Aanya Sharma");
+  await screen.findByText("Sam Carter");
   await fireEvent.press(screen.getByText("Delete account"));
   await fireEvent.press(screen.getByRole("button", { name: /Download my archive first/ }));
   await waitFor(() => expect(requestExport).toHaveBeenCalled());
@@ -132,17 +135,17 @@ test("no placeholder password row (Lately has no passwords)", async () => {
 test("digests and offline reading are marked coming soon and can't be toggled", async () => {
   const { updatePreferences } = await open();
   expect(screen.getAllByText("Coming soon")).toHaveLength(2);
-  await fireEvent.press(screen.getByText("Push Digests"));
-  await fireEvent.press(screen.getByText("Offline Reading Storage"));
+  await fireEvent.press(screen.getByText("Weekly digest"));
+  await fireEvent.press(screen.getByText("Offline reading"));
   expect(updatePreferences).not.toHaveBeenCalled();
-  const digests = screen.getByRole("switch", { name: "Push Digests" });
+  const digests = screen.getByRole("switch", { name: "Weekly digest" });
   expect(digests.props.accessibilityState).toEqual({ checked: false, disabled: true });
-  expect(screen.getByRole("switch", { name: "Offline Reading Storage" })).toBeTruthy();
+  expect(screen.getByRole("switch", { name: "Offline reading" })).toBeTruthy();
 });
 
 test("log out and back", async () => {
   const { auth } = await open();
-  await fireEvent.press(screen.getByText("Log Out of Lately"));
+  await fireEvent.press(screen.getByText("Log out"));
   expect(auth.signOut).toHaveBeenCalled();
   await fireEvent.press(screen.getByLabelText("Back"));
   expect(mockRouter.back).toHaveBeenCalled();
@@ -163,7 +166,7 @@ async function expectDeviceDataCleared() {
 test("logging out forgets recent searches, the offline queue and a pending share", async () => {
   await seedDeviceData();
   const { auth } = await open();
-  await fireEvent.press(screen.getByText("Log Out of Lately"));
+  await fireEvent.press(screen.getByText("Log out"));
   await waitFor(() => expect(auth.signOut).toHaveBeenCalled());
   await expectDeviceDataCleared();
 });
@@ -190,7 +193,7 @@ test("deleting the account asks twice, deletes, then signs out", async () => {
   const api = demoApi();
   const deleteAccount = jest.spyOn(api, "deleteAccount");
   const { auth } = await renderWithProviders(<AccountScreen />, { api });
-  await screen.findByText("Aanya Sharma");
+  await screen.findByText("Sam Carter");
   await fireEvent.press(screen.getByText("Delete account"));
   expect(screen.getByText("Delete your account?")).toBeTruthy();
   await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
@@ -204,7 +207,7 @@ test("deleting the account asks twice, deletes, then signs out", async () => {
 test("a failed account deletion keeps you signed in and says so", async () => {
   const api = { ...demoApi(), deleteAccount: jest.fn(async () => Promise.reject(new Error("down"))) };
   const { auth } = await renderWithProviders(<AccountScreen />, { api });
-  await screen.findByText("Aanya Sharma");
+  await screen.findByText("Sam Carter");
   await fireEvent.press(screen.getByText("Delete account"));
   await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
   await fireEvent.press(screen.getByRole("button", { name: "Delete forever" }));
@@ -216,7 +219,7 @@ test("cancelling the first step deletes nothing", async () => {
   const api = demoApi();
   const deleteAccount = jest.spyOn(api, "deleteAccount");
   await renderWithProviders(<AccountScreen />, { api });
-  await screen.findByText("Aanya Sharma");
+  await screen.findByText("Sam Carter");
   await fireEvent.press(screen.getByText("Delete account"));
   await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
   expect(deleteAccount).not.toHaveBeenCalled();
@@ -242,7 +245,7 @@ describe("the plan block", () => {
     await renderWithProviders(<AccountScreen />, { api });
     expect(await screen.findByText("Free plan")).toBeTruthy();
     expect(screen.getByText("12 of 20 saves this month")).toBeTruthy();
-    expect(screen.getByText("Resets 1 Nov")).toBeTruthy();
+    expect(screen.getByText("Resets on Nov 1")).toBeTruthy();
     expect(screen.getByRole("progressbar").props.accessibilityValue).toEqual({ min: 0, max: 20, now: 12 });
     expect(screen.queryByText("Manage subscription")).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Upgrade to Pro" }));
@@ -258,8 +261,8 @@ describe("the plan block", () => {
 
   test("the plan block sits above the settings sections", async () => {
     await open();
-    const titles = screen.getAllByText(/Free plan|Reading Experience & Appearance|Account & Security/).map((n) => n.props.children);
-    expect(titles).toEqual(["Free plan", "Reading Experience & Appearance", "Account & Security"]);
+    const titles = screen.getAllByText(/Free plan|Reading and appearance|Sign-in and data/).map((n) => n.props.children);
+    expect(titles).toEqual(["Free plan", "Reading and appearance", "Sign-in and data"]);
   });
 
   test("pro: unlimited saves, with rows to manage the subscription and to restore purchases", async () => {

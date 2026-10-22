@@ -12,7 +12,10 @@ import { DURATION, EASE_OUT } from "../../theme/motion";
 import { useTheme } from "../../theme/ThemeProvider";
 import { Icon } from "../Icon";
 
-/** Marigold checkbox: the fill floods in and the tick springs up from 60%. */
+/**
+ * Marigold checkbox: the fill floods in and the tick springs up from 60%. At rest the outline is
+ * the 3:1 `control` tone; the tick is near-black on the marigold fill (7.9:1).
+ */
 export function Checkbox({ checked, disabled = false, label }: { checked: boolean; disabled?: boolean; label?: string }) {
   const { colors } = useTheme();
   const on = useSharedValue(checked ? 1 : 0);
@@ -30,7 +33,7 @@ export function Checkbox({ checked, disabled = false, label }: { checked: boolea
 
   const boxStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(on.get(), [0, 1], [colors.card, colors.accent]),
-    borderColor: interpolateColor(on.get(), [0, 1], [colors.hairline, colors.accent]),
+    borderColor: interpolateColor(on.get(), [0, 1], [colors.control, colors.accent]),
   }));
   const tickStyle = useAnimatedStyle(() => ({
     opacity: Math.min(tick.get(), 1),

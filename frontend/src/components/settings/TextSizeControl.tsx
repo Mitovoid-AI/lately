@@ -60,7 +60,7 @@ export function TextSizeControl({
           A
         </Text>
         <View className="mx-3 h-8 flex-1 justify-center" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-          <View className="h-1.5 rounded-full bg-raised" />
+          <View className="h-1.5 rounded-full bg-hairline" />
           <Animated.View style={[styles.thumb, { backgroundColor: colors.accentText, boxShadow: shadows.raised }, thumbStyle]} />
           <View className="absolute inset-0 flex-row items-center justify-between">
             {sizes.map((s) => (
@@ -73,7 +73,7 @@ export function TextSizeControl({
                 hitSlop={8}
                 className="h-8 w-8 items-center justify-center"
               >
-                {s.size === value ? null : <View className="h-2.5 w-2.5 rounded-full bg-hairline" />}
+                {s.size === value ? null : <View className="h-2.5 w-2.5 rounded-full bg-control" />}
               </Pressable>
             ))}
           </View>

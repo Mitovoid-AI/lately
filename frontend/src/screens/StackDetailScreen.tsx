@@ -189,8 +189,8 @@ export function StackDetailScreen() {
                 haptic.light();
                 stack.refetch();
               }}
-              tintColor={colors.accent}
-              colors={[colors.accent]}
+              tintColor={colors.accentText}
+              colors={[colors.accentText]}
               progressBackgroundColor={colors.card}
             />
           }
@@ -200,7 +200,7 @@ export function StackDetailScreen() {
       <ConfirmDialog
         visible={confirmOpen}
         title={`Delete “${data?.name ?? "this stack"}”?`}
-        message="The stack goes away; its reels stay in your Library."
+        message="The stack goes away; its reels stay saved."
         confirmLabel="Delete"
         busy={deleting}
         onConfirm={deleteStack}

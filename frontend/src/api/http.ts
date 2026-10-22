@@ -4,6 +4,7 @@ import {
   ApiError,
   CATEGORIES,
   DEFAULT_PREFERENCES,
+  SAVE_STAGES,
   type ApiErrorCode,
   type Channel,
   type CuratedFeed,
@@ -14,6 +15,7 @@ import {
   type Preferences,
   type Save,
   type SaveDetail,
+  type SaveStage,
   type SearchHit,
   type Stack,
   type StackDetail,
@@ -32,16 +34,19 @@ type Raw = Record<string, unknown>;
 
 const strOf = (raw: Raw, k: string) => (typeof raw[k] === "string" ? (raw[k] as string) : null);
 const categoryOf = (v: unknown) => CATEGORIES.find((c) => c === v) ?? null;
+/** A stage this app knows; anything else (a newer server's step, a missing field) is none. */
+const stageOf = (v: unknown): SaveStage | null => SAVE_STAGES.find((x) => x === v) ?? null;
 const listOf = (v: unknown): Raw[] => (Array.isArray(v) ? (v as Raw[]) : []);
 
 /** The backend may send a subset of the Save fields; fill the rest. */
 export function toSave(raw: Raw): Save {
   const str = (k: string) => strOf(raw, k);
+  const status = (raw.status as Save["status"]) ?? "pending";
   return {
     id: String(raw.id ?? raw.reel_id),
     source_url: String(raw.source_url),
     shortcode: str("shortcode"),
-    status: (raw.status as Save["status"]) ?? "pending",
+    status,
     note: str("note"),
     created_at: String(raw.created_at),
     title: str("title"),
@@ -50,6 +55,8 @@ export function toSave(raw: Raw): Save {
     thumbnail_url: str("thumbnail_url"),
     creator: str("creator"),
     channel: (str("channel") as Channel | null) ?? "app_share",
+    // Only a pending save has a step; a stale value on a finished one is dropped.
+    stage: status === "pending" ? stageOf(raw.stage) : null,
   };
 }
 

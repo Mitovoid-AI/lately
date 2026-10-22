@@ -14,7 +14,7 @@ jest.mock("expo-router", () => ({
   Link: require("../../test/expoRouterMock").mockLink(() => mockRouter),
 }));
 
-const NAMES = ["Cafes to try", "Job hunt", "Manali trip", "Mobility routine", "Dev tools", "Outfit ideas"];
+const NAMES = ["Food and coffee", "Job hunt", "Pacific Northwest trip", "Mobility routine", "Dev tools", "Outfit ideas"];
 
 beforeEach(() => {
   jest.clearAllMocks();
@@ -32,7 +32,7 @@ test("lists every stack with its count", async () => {
 
 test("a new stack can be created", async () => {
   await renderWithProviders(<StacksScreen />);
-  await screen.findByText("Cafes to try");
+  await screen.findByText("Food and coffee");
   await fireEvent.press(screen.getByLabelText("Create a new stack"));
   const create = screen.getByRole("button", { name: "Create" });
   expect(create).toBeDisabled();
@@ -44,14 +44,14 @@ test("a new stack can be created", async () => {
 
 test("a tile opens the stack", async () => {
   await renderWithProviders(<StacksScreen />);
-  await fireEvent.press(await screen.findByText("Cafes to try"));
+  await fireEvent.press(await screen.findByText("Food and coffee"));
   expect(mockRouter.push).toHaveBeenCalledWith("/stack/st-cafes");
 });
 
 test("stack detail lists its reels", async () => {
   mockParams = { id: "st-cafes" };
   await renderWithProviders(<StackDetailScreen />);
-  expect(await screen.findByText("Hole-in-the-wall momo spot in Koramangala")).toBeTruthy();
+  expect(await screen.findByText("Hole-in-the-wall momo spot in Jackson Heights")).toBeTruthy();
   expect(screen.getByText("4 reels")).toBeTruthy();
 });
 
@@ -74,7 +74,7 @@ test("pressing Enter twice creates one stack", async () => {
   const api = demoApi();
   const createStack = jest.spyOn(api, "createStack");
   await renderWithProviders(<StacksScreen />, { api });
-  await screen.findByText("Cafes to try");
+  await screen.findByText("Food and coffee");
   await fireEvent.press(screen.getByLabelText("Create a new stack"));
   const input = screen.getByPlaceholderText("e.g. Cafes to try");
   await fireEvent.changeText(input, "Trip");
@@ -89,12 +89,12 @@ test("a reel can be removed from a stack in edit mode", async () => {
   const api = demoApi();
   const remove = jest.spyOn(api, "removeFromStack");
   await renderWithProviders(<StackDetailScreen />, { api });
-  await screen.findByText("Hole-in-the-wall momo spot in Koramangala");
+  await screen.findByText("Hole-in-the-wall momo spot in Jackson Heights");
   await fireEvent.press(screen.getByText("Edit"));
-  await fireEvent.press(screen.getByLabelText("Remove Hole-in-the-wall momo spot in Koramangala"));
+  await fireEvent.press(screen.getByLabelText("Remove Hole-in-the-wall momo spot in Jackson Heights"));
   expect(remove).toHaveBeenCalledWith("st-cafes", "s-momo");
   expect(await screen.findByText("3 reels")).toBeTruthy();
-  expect(screen.queryByText("Hole-in-the-wall momo spot in Koramangala")).toBeNull();
+  expect(screen.queryByText("Hole-in-the-wall momo spot in Jackson Heights")).toBeNull();
 });
 
 test("a stack can be deleted after confirming", async () => {
@@ -102,9 +102,9 @@ test("a stack can be deleted after confirming", async () => {
   const api = demoApi();
   const del = jest.spyOn(api, "deleteStack");
   await renderWithProviders(<StackDetailScreen />, { api });
-  await screen.findByText("Hole-in-the-wall momo spot in Koramangala");
+  await screen.findByText("Hole-in-the-wall momo spot in Jackson Heights");
   await fireEvent.press(screen.getByLabelText("Delete stack"));
-  expect(screen.getByText("Delete “Cafes to try”?")).toBeTruthy();
+  expect(screen.getByText("Delete “Food and coffee”?")).toBeTruthy();
   await fireEvent.press(screen.getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(del).toHaveBeenCalledWith("st-cafes"));
   await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith("/stacks"));

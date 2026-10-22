@@ -55,7 +55,7 @@ const GROUP_IN = FadeIn.duration(220).delay(150);
 /** A ReelCard-shaped placeholder: tall media with the title on it. */
 function SkeletonCard({ width }: { width: number }) {
   const { colors, scheme } = useTheme();
-  // The title lines read a step lighter than the block: card on Warm Cream, hairline on Espresso.
+  // The title lines read a step lighter than the block: white card on Daylight, hairline on Espresso.
   const bar = { backgroundColor: scheme === "dark" ? colors.hairline : colors.card };
   return (
     <View style={{ width }}>

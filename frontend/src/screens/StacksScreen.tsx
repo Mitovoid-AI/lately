@@ -155,8 +155,8 @@ export function StacksScreen() {
               haptic.light();
               stacks.refetch();
             }}
-            tintColor={colors.accent}
-            colors={[colors.accent]}
+            tintColor={colors.accentText}
+            colors={[colors.accentText]}
             progressBackgroundColor={colors.card}
           />
         }

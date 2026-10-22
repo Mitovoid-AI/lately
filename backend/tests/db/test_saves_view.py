@@ -26,6 +26,21 @@ async def test_fetch_save_detail_is_scoped(db, make_user):
     assert await fetch_save_detail(db, b, m) is None
 
 
+async def test_fetch_saves_carries_the_stage_of_a_pending_save_only(db, make_user):
+    a = await make_user()
+    done = await seed_card(db, a, CARDS["MANALI1"], None)
+    pending = await db.fetchval(
+        "select reel_id from public.save_reel($1, $2, 'app_share', $3, 100)", a,
+        "https://www.instagram.com/reel/VIEWSTAGE/", "https://www.instagram.com/reel/VIEWSTAGE/")
+    await db.execute("update public.jobs set stage = 'structure' where payload->>'reel_id' = $1",
+                     str(pending))
+    saves = {s.id: s for s in await fetch_saves(db, a, [done, pending])}
+    assert saves[pending].status == "pending" and saves[pending].stage == "structure"
+    assert saves[done].stage is None
+    detail = await fetch_save_detail(db, a, pending)
+    assert detail is not None and detail.stage == "structure"
+
+
 def test_thumbnail_url_passes_absolute_urls_through():
     assert thumbnail_url(None) is None
     assert thumbnail_url("https://cdn.example/x.jpg") == "https://cdn.example/x.jpg"

@@ -9,7 +9,6 @@ import Animated, {
 } from "react-native-reanimated";
 
 import { useTheme } from "../theme/ThemeProvider";
-import { Icon } from "./Icon";
 import { IconButton } from "./motion/IconButton";
 import { IMAGE_FADE } from "./Thumb";
 
@@ -32,33 +31,45 @@ export function ScrollHairline({ scrollY }: { scrollY?: SharedValue<number> }) {
   return <Animated.View style={[styles.hairline, { backgroundColor: colors.hairline }, style]} />;
 }
 
-/** The Library-style app bar: logo + wordmark, bookmark (a shortcut to Stacks, left out on Stacks itself), avatar. */
+/**
+ * The app bar: logo + wordmark and the avatar (Account). A screen pushed on the stack passes
+ * `onBack`: a back button replaces the wordmark (and `title` can name the screen). The tab
+ * screens need no shortcut to Stacks: it has its own tab.
+ */
 export function Header({
   avatarUrl,
   initial = "A",
   onAvatar,
-  onBookmark,
+  onBack,
+  title,
   scrollY,
 }: {
   avatarUrl?: string | null;
   initial?: string;
   onAvatar?: () => void;
-  onBookmark?: () => void;
+  onBack?: () => void;
+  title?: string;
   scrollY?: SharedValue<number>;
 }) {
   const { colors } = useTheme();
   return (
     <View className="flex-row items-center justify-between bg-canvas px-4" style={{ height: HEADER_HEIGHT }}>
-      <View className="flex-row items-center">
-        <Image source={LOGO} style={{ width: 26, height: 26, borderRadius: 7 }} />
-        <Text className="ml-2 font-display-medium text-display-sm text-ink">Lately</Text>
-      </View>
+      {onBack ? (
+        <View className="-ml-3 flex-1 flex-row items-center">
+          <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={onBack} />
+          {title ? (
+            <Text numberOfLines={1} className="ml-1 flex-1 font-display-medium text-display-sm text-ink">
+              {title}
+            </Text>
+          ) : null}
+        </View>
+      ) : (
+        <View className="flex-row items-center">
+          <Image source={LOGO} style={{ width: 26, height: 26, borderRadius: 7 }} />
+          <Text className="ml-2 font-display-medium text-display-sm text-ink">Lately</Text>
+        </View>
+      )}
       <View className="-mr-2 flex-row items-center">
-        {onBookmark ? (
-          <IconButton label="Stacks" onPress={onBookmark}>
-            <Icon name="bookmark-border" size={22} color={colors.ink2} />
-          </IconButton>
-        ) : null}
         <IconButton label="Account" onPress={onAvatar}>
           {avatarUrl ? (
             <Image

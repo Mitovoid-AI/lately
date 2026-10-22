@@ -66,7 +66,7 @@ function ProviderButton({
   className?: string;
 }) {
   const { colors, shadows } = useTheme();
-  const box = tone === "accent" ? "bg-accent" : tone === "soft" ? "bg-raised" : "bg-card border border-hairline";
+  const box = tone === "accent" ? "bg-accent" : tone === "soft" ? "bg-raised" : "bg-card border border-control";
   const text = tone === "accent" ? "text-on-accent" : "text-ink";
   const icon =
     brand === "google" ? (
@@ -174,7 +174,7 @@ function ReelStack() {
         <Thumb uri={null} aspect={9 / 16} radius={20}>
           <Image source={IMG.cafe} contentFit="cover" style={{ position: "absolute", width: "100%", height: "100%" }} />
           <View className="absolute left-2 top-2">
-            <Tag icon="play-circle-outline" text="REELS" />
+            <Tag icon="play-circle-outline" text="Reels" />
           </View>
           <View className="absolute right-2 top-2 h-7 w-7 items-center justify-center rounded-full" style={{ backgroundColor: colors.scrim }}>
             <Icon name="volume-up" size={14} color={colors.onMedia} />
@@ -194,8 +194,8 @@ function ReelStack() {
           <View className="absolute bottom-2 left-2 right-2 rounded-xl bg-card px-2.5 py-2">
             <View className="flex-row items-center justify-between">
               <View className="flex-row items-center">
-                <Icon name="edit-note" size={14} color={colors.accent} />
-                <Text className="ml-1 font-sans-semibold text-caption text-accent">Your Note</Text>
+                <Icon name="edit-note" size={14} color={colors.accentText} />
+                <Text className="ml-1 font-sans-semibold text-caption text-accent-text">Your note</Text>
               </View>
               <Text numberOfLines={1} className="font-sans text-caption text-ink-3">2m</Text>
             </View>
@@ -222,9 +222,9 @@ function StripTile({ index, rotate, children }: { index: number; rotate: number;
 /** The three-image strip from "00 Sign up — light". */
 function ImageStrip() {
   const tiles: { src: number; label: string; icon: IconName; rotate: number }[] = [
-    { src: IMG.kyoto, label: "Kyoto", icon: "place", rotate: -4 },
-    { src: IMG.toast, label: "Brunch notes", icon: "edit-note", rotate: 0 },
-    { src: IMG.living, label: "Studio", icon: "home", rotate: 4 },
+    { src: IMG.kyoto, label: "Coffee bar", icon: "local-cafe", rotate: -4 },
+    { src: IMG.toast, label: "Brunch", icon: "restaurant", rotate: 0 },
+    { src: IMG.living, label: "Home ideas", icon: "home", rotate: 4 },
   ];
   return (
     <View className="mt-6 h-[140px] w-full flex-row items-center gap-3 overflow-hidden rounded-2xl bg-raised px-2">
@@ -355,7 +355,7 @@ export function SignInScreen() {
           <Reveal index={0}>
             <View className="h-8 flex-row items-center rounded-full bg-raised px-4">
               <View className="mr-2 h-1.5 w-1.5 rounded-full bg-accent" />
-              <Text className="font-sans-semibold text-label uppercase text-ink-2">Your mindful vault</Text>
+              <Text className="font-sans-semibold text-label uppercase text-ink-2">Free to start</Text>
             </View>
           </Reveal>
           <Reveal index={1} style={{ alignItems: "center" }}>
@@ -372,8 +372,8 @@ export function SignInScreen() {
             <Animated.View key={tab} entering={SWAP_IN}>
               <Text className="mt-2 text-center font-sans text-body text-ink-2">
                 {signUp
-                  ? "Create your personal vault. Save what inspires you across Instagram."
-                  : "Save it with a reason.\nFind it when you need it."}
+                  ? "Sign up to keep every reel you save in one place you can search."
+                  : "Save reels from Instagram.\nFind them again by typing what you remember."}
               </Text>
             </Animated.View>
           </Reveal>
@@ -387,7 +387,7 @@ export function SignInScreen() {
           {pendingShare ? (
             <Reveal index={6} style={{ width: "100%" }}>
               <View className="mt-6 w-full flex-row items-center rounded-2xl border border-hairline bg-card px-4 py-3">
-                <Icon name="ios-share" size={20} color={colors.accent} />
+                <Icon name="ios-share" size={20} color={colors.accentText} />
                 <Text className="ml-3 flex-1 font-sans-medium text-body text-ink">
                   Sign in to finish saving the reel you shared.
                 </Text>
@@ -415,9 +415,9 @@ export function SignInScreen() {
           {signUp ? (
             <Reveal index={7}>
               <View className="mt-6 flex-row flex-wrap justify-center gap-2">
-                <Pill icon="check-circle-outline" label="Organized reading" iconColor={colors.success} />
-                <Pill icon="bolt" label="Instant recall" iconColor={colors.accent} />
-                <Pill icon="lock-outline" label="Private & encrypted" />
+                <Pill icon="check-circle-outline" label="Reels become cards" iconColor={colors.success} />
+                <Pill icon="search" label="Search what you remember" iconColor={colors.accentText} />
+                <Pill icon="lock-outline" label="Private to your account" />
               </View>
             </Reveal>
           ) : null}

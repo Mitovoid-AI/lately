@@ -1,106 +1,72 @@
 import { useQuery } from "@tanstack/react-query";
-import { useLocalSearchParams, useRouter } from "expo-router";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { FlatList, Text, View } from "react-native";
-import Animated, { FadeIn, FadeOut } from "react-native-reanimated";
+import { useFocusEffect, useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { FlatList, ScrollView, Text, View, type TextInput } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import type { SearchHit } from "../api/contract";
+import { ApiError, type SearchHit } from "../api/contract";
 import { useApi } from "../api/index";
-import { Chip } from "../components/Chip";
-import { HEADER_HEIGHT } from "../components/Header";
-import { Icon } from "../components/Icon";
-import { IconButton } from "../components/motion/IconButton";
-import { PressableScale } from "../components/motion/PressableScale";
-import { Reveal, useEntranceWindow } from "../components/motion/Reveal";
-import { cardTitle } from "../components/ReelCard";
-import { SkeletonGroup, SkeletonRow } from "../components/Skeleton";
-import { TextField } from "../components/TextField";
-import { Thumb } from "../components/Thumb";
-import { useNow } from "../hooks/useNow";
-import { relativeShort } from "../lib/dates";
-import { loadRecent, pushRecent } from "../lib/recent";
-import { deviceStore } from "../lib/storage";
-import { DURATION } from "../theme/motion";
-import { useTheme } from "../theme/ThemeProvider";
-import { goBack } from "../lib/navigation";
 import { ErrorState } from "../components/ErrorState";
+import { IconButton } from "../components/motion/IconButton";
+import { Reveal, useEntranceWindow } from "../components/motion/Reveal";
+import { BestMatch, CompactRow } from "../components/search/ResultRows";
+import { SearchField } from "../components/search/SearchField";
+import { IdleState, NoResults, SearchSkeleton } from "../components/search/SearchStates";
+import { useIsPushed } from "../components/search/useIsPushed";
 import { pollWhilePending } from "../hooks/useSaves";
+import { useNow } from "../hooks/useNow";
+import { goBack } from "../lib/navigation";
+import { clearRecent, loadRecent, pushRecent } from "../lib/recent";
+import { deviceStore } from "../lib/storage";
+import { useTheme } from "../theme/ThemeProvider";
 
-const TRY = ["that cafe reel", "workout for back pain", "repo for job search"];
+/** The widest the content gets (tablets, web); phones fill the width. */
+const COLUMN = { maxWidth: 640, width: "100%", alignSelf: "center" } as const;
 
-// The screen fades up and the field's focus ring blooms: it reads as the Library's search bar
-// opening up. (No entering animation on the field itself: it must be focusable on mount.)
-const CLEAR_IN = FadeIn.duration(DURATION.state);
-const CLEAR_OUT = FadeOut.duration(120);
-
-function TryChips({ onPick, start = 0 }: { onPick: (q: string) => void; start?: number }) {
+/** The short states (empty query, no results) scroll too: with the keyboard up they can outgrow the screen. */
+function Scroll({ children, bottom }: { children: ReactNode; bottom: number }) {
   return (
-    <Reveal index={start} style={{ marginTop: 24 }}>
-      <Text className="font-sans-semibold text-label text-ink-2">TRY</Text>
-      <View className="mt-3 flex-row flex-wrap gap-2">
-        {TRY.map((t) => (
-          <Chip key={t} label={t} onPress={() => onPick(t)} />
-        ))}
-      </View>
-    </Reveal>
+    <ScrollView
+      keyboardDismissMode="on-drag"
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={{ paddingBottom: bottom }}
+    >
+      {children}
+    </ScrollView>
   );
 }
 
-/** One result. Memoised: typing re-renders the screen, not every row (rows only change with data). */
-const ResultRow = memo(function ResultRow({
-  hit,
-  now,
-  onOpen,
-}: {
-  hit: SearchHit;
-  now: number;
-  onOpen: (hit: SearchHit) => void;
-}) {
-  const { colors } = useTheme();
-  const s = hit.save;
-  return (
-    <PressableScale
-      accessibilityRole="button"
-      onPress={() => onOpen(hit)}
-      scaleTo={1}
-      highlightColor={colors.raised}
-      className="-mx-2 flex-row rounded-xl px-2 py-3"
-    >
-      <View style={{ width: 64 }}>
-        <Thumb uri={s.status === "enriched" ? s.thumbnail_url : null} aspect={64 / 80} radius={10} />
-      </View>
-      <View className="ml-3 flex-1">
-        <View className="flex-row items-start">
-          <Text numberOfLines={2} className="flex-1 font-sans-semibold text-title text-ink">
-            {cardTitle(s)}
-          </Text>
-          <Text className="ml-2 font-sans text-meta text-ink-3">{relativeShort(s.created_at, now)}</Text>
-        </View>
-        <View className="mt-2 flex-row flex-wrap gap-1.5">
-          {hit.why.map((w) => (
-            <View key={w} className="rounded-full bg-raised px-2 py-1">
-              <Text numberOfLines={1} className="font-sans text-caption text-ink-2">
-                {w}
-              </Text>
-            </View>
-          ))}
-        </View>
-      </View>
-    </PressableScale>
-  );
-});
+function SectionLabel({ children }: { children: string }) {
+  return <Text className="font-sans-semibold text-meta text-ink-2">{children}</Text>;
+}
 
+/**
+ * Search, a tab: type what you remember and the best match comes first as a large card with the
+ * reasons it matched, then the other saves as compact rows. The field takes focus when the tab
+ * does (and only when it is empty, so coming back to results does not throw the keyboard up).
+ * Back shows only when Search was pushed over another screen, not when it is the tab root.
+ */
 export function SearchScreen() {
   const { colors } = useTheme();
-  const { q: initial = "" } = useLocalSearchParams<{ q?: string }>();
+  const params = useLocalSearchParams<{ q?: string | string[] }>();
+  const initial = (Array.isArray(params.q) ? params.q[0] : params.q) ?? "";
   const router = useRouter();
   const api = useApi();
   const insets = useSafeAreaInsets();
   const now = useNow();
+  const pushed = useIsPushed();
+  const inputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState(initial);
   const [debounced, setDebounced] = useState(initial.trim());
   const [recent, setRecent] = useState<string[]>([]);
+
+  // The tab stays mounted, so a later "/search?q=..." arrives as a changed param: apply it.
+  const [appliedParam, setAppliedParam] = useState(initial);
+  if (initial !== appliedParam) {
+    setAppliedParam(initial);
+    setQuery(initial);
+    setDebounced(initial.trim());
+  }
 
   useEffect(() => {
     loadRecent(deviceStore).then(setRecent);
@@ -110,6 +76,25 @@ export function SearchScreen() {
     return () => clearTimeout(t);
   }, [query]);
 
+  // Read at tap and focus time, so callbacks (and every row) don't change on each keystroke.
+  const queryRef = useRef(query);
+  useEffect(() => {
+    queryRef.current = query;
+  }, [query]);
+
+  // Focus the field whenever the tab gains focus, unless results are already on screen; let go of
+  // the keyboard when the tab loses focus (switching tabs, opening a card).
+  useFocusEffect(
+    useCallback(() => {
+      const focusLater = queryRef.current.trim().length === 0;
+      const t = focusLater ? setTimeout(() => inputRef.current?.focus(), 60) : undefined;
+      return () => {
+        if (t) clearTimeout(t);
+        inputRef.current?.blur();
+      };
+    }, []),
+  );
+
   const results = useQuery({
     queryKey: ["search", debounced],
     queryFn: () => api.search(debounced),
@@ -118,11 +103,6 @@ export function SearchScreen() {
   });
 
   const remember = useCallback(async (q: string) => setRecent(await pushRecent(deviceStore, q)), []);
-  // Read at tap time, so the row callbacks (and every row) don't change on each keystroke.
-  const queryRef = useRef(query);
-  useEffect(() => {
-    queryRef.current = query;
-  }, [query]);
   const open = useCallback(
     (hit: SearchHit) => {
       remember(queryRef.current);
@@ -130,117 +110,107 @@ export function SearchScreen() {
     },
     [remember, router],
   );
-  const pick = (q: string) => setQuery(q);
+  const pick = useCallback((q: string) => setQuery(q), []);
+  const forgetRecent = useCallback(async () => {
+    await clearRecent(deviceStore);
+    setRecent([]);
+  }, []);
+
   const hits = results.data ?? [];
+  const best = hits[0];
+  const rest = hits.slice(1);
   const blank = query.trim().length === 0;
   const searching = results.isLoading || debounced !== query.trim();
+  const offline = results.error instanceof ApiError && results.error.code === "NETWORK";
   // Each new set of results staggers in; rows scrolled into view later just appear.
   const entrance = useEntranceWindow(debounced, !searching);
 
   const renderItem = useCallback(
     ({ item, index }: { item: SearchHit; index: number }) => (
-      <Reveal index={index} enabled={entrance}>
-        <ResultRow hit={item} now={now} onOpen={open} />
+      <Reveal index={index + 2} enabled={entrance}>
+        <CompactRow hit={item} now={now} onOpen={open} />
       </Reveal>
     ),
     [entrance, now, open],
   );
 
+  // A tab's bar already clears the home indicator; a pushed screen has to do it itself.
+  const bottomPad = (pushed ? insets.bottom : 0) + 24;
+
+  let body: ReactNode;
+  if (blank) {
+    body = (
+      <Scroll bottom={bottomPad}>
+        <IdleState recent={recent} onPick={pick} onClearRecent={forgetRecent} />
+      </Scroll>
+    );
+  } else if (searching) {
+    body = <SearchSkeleton />;
+  } else if (results.isError && !results.data) {
+    body = offline ? (
+      <ErrorState
+        title="You're offline"
+        body="Search needs a connection. Try again when you're back online."
+        onRetry={() => results.refetch()}
+        retrying={results.isRefetching}
+      />
+    ) : (
+      <ErrorState title="Couldn't search right now" onRetry={() => results.refetch()} retrying={results.isRefetching} />
+    );
+  } else if (!best) {
+    body = (
+      <Scroll bottom={bottomPad}>
+        <NoResults query={query.trim()} onPick={pick} />
+      </Scroll>
+    );
+  } else {
+    body = (
+      <FlatList
+        data={rest}
+        keyExtractor={(h) => `${debounced}:${h.save.id}`}
+        contentContainerStyle={{ ...COLUMN, paddingHorizontal: 16, paddingBottom: bottomPad }}
+        keyboardDismissMode="on-drag"
+        keyboardShouldPersistTaps="handled"
+        ListHeaderComponent={
+          <View className="pt-3">
+            <Reveal index={0} enabled={entrance}>
+              <SectionLabel>Best match</SectionLabel>
+              <View className="mt-3">
+                <BestMatch hit={best} now={now} onOpen={open} />
+              </View>
+            </Reveal>
+            {rest.length ? (
+              <Reveal index={1} enabled={entrance} style={{ marginTop: 28 }}>
+                <SectionLabel>Also from your saves</SectionLabel>
+              </Reveal>
+            ) : null}
+          </View>
+        }
+        ItemSeparatorComponent={Separator}
+        renderItem={renderItem}
+      />
+    );
+  }
+
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
-      <View className="flex-row items-center border-b border-hairline px-1" style={{ height: HEADER_HEIGHT }}>
-        <IconButton
-          icon="arrow-back"
-          size={24}
-          color={colors.ink}
-          label="Back"
-          onPress={() => goBack(router)}
+      <View className="w-full max-w-[640px] flex-row items-center self-center pb-3 pr-4 pt-2" style={{ paddingLeft: pushed ? 4 : 16 }}>
+        {pushed ? (
+          <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={() => goBack(router)} />
+        ) : null}
+        <SearchField
+          value={query}
+          onChangeText={setQuery}
+          onSubmit={() => remember(query)}
+          onClear={() => {
+            setQuery("");
+            inputRef.current?.focus();
+          }}
+          placeholder="Search what you remember…"
+          inputRef={inputRef}
         />
-        <View style={{ flex: 1, marginRight: 8 }}>
-          <TextField
-            value={query}
-            onChangeText={setQuery}
-            onSubmitEditing={() => remember(query)}
-            placeholder="Search what you remember…"
-            maxLength={200}
-            autoFocus
-            returnKeyType="search"
-            tone="card"
-            inputClassName="ml-2 -mr-1"
-            leading={<Icon name="search" size={20} color={colors.ink2} />}
-            trailing={
-              query ? (
-                <Animated.View entering={CLEAR_IN} exiting={CLEAR_OUT} style={{ marginRight: -12 }}>
-                  <IconButton icon="close" size={18} color={colors.ink3} label="Clear" onPress={() => setQuery("")} />
-                </Animated.View>
-              ) : null
-            }
-          />
-        </View>
       </View>
-
-      {blank ? (
-        <View className="w-full max-w-[640px] self-center px-4 pt-5">
-          {recent.length ? (
-            <View>
-              <Reveal index={0}>
-                <Text className="font-sans-semibold text-label text-ink-2">Recent</Text>
-              </Reveal>
-              {recent.map((r, i) => (
-                <Reveal key={r} index={i + 1}>
-                  <PressableScale
-                    accessibilityRole="button"
-                    onPress={() => pick(r)}
-                    scaleTo={1}
-                    highlightColor={colors.raised}
-                    className="-mx-2 h-12 flex-row items-center rounded-xl px-2"
-                  >
-                    <Icon name="history" size={20} color={colors.ink3} />
-                    <Text className="ml-3 font-sans text-body text-ink">{r}</Text>
-                  </PressableScale>
-                </Reveal>
-              ))}
-            </View>
-          ) : (
-            <Reveal index={0}>
-              <Text className="font-sans-semibold text-label text-ink-2">Recent</Text>
-              <Text className="mt-2 font-sans text-meta text-ink-3">Your recent searches show up here.</Text>
-            </Reveal>
-          )}
-          <TryChips onPick={pick} start={Math.min(recent.length + 1, 6)} />
-        </View>
-      ) : searching ? (
-        <SkeletonGroup style={{ paddingHorizontal: 16, paddingTop: 36, maxWidth: 640, width: "100%", alignSelf: "center" }}>
-          <SkeletonRow />
-          <SkeletonRow />
-          <SkeletonRow />
-        </SkeletonGroup>
-      ) : results.isError && !results.data ? (
-        <ErrorState title="Couldn't search right now" onRetry={() => results.refetch()} retrying={results.isRefetching} />
-      ) : hits.length === 0 ? (
-        <View className="w-full max-w-[640px] self-center px-4 pt-10">
-          <Reveal index={0}>
-            <Text className="font-display text-display-md text-ink">{`Nothing for “${query.trim()}” yet`}</Text>
-            <Text className="mt-2 font-sans text-body text-ink-2">
-              {"Try a word from your note, a place, or the creator's name."}
-            </Text>
-          </Reveal>
-          <TryChips onPick={pick} start={1} />
-        </View>
-      ) : (
-        <FlatList
-          data={hits}
-          keyExtractor={(h) => `${debounced}:${h.save.id}`}
-          contentContainerStyle={{ paddingHorizontal: 16, paddingBottom: insets.bottom + 24, maxWidth: 640, width: "100%", alignSelf: "center" }}
-          keyboardDismissMode="on-drag"
-          keyboardShouldPersistTaps="handled"
-          ListHeaderComponent={
-            <Text className="pt-4 font-sans text-meta text-ink-2">{hits.length === 1 ? "1 reel" : `${hits.length} reels`}</Text>
-          }
-          ItemSeparatorComponent={Separator}
-          renderItem={renderItem}
-        />
-      )}
+      {body}
     </View>
   );
 }

@@ -5,13 +5,13 @@ import { useTheme } from "../../theme/ThemeProvider";
 import { Icon, type IconName } from "../Icon";
 import { PressableScale } from "../motion/PressableScale";
 
-/** Section heading (display face + accent icon) and its card. */
+/** Section heading (display face + a quiet icon: marigold is kept for actions and selection) and its card. */
 export function SettingsSection({ icon, title, children }: { icon: IconName; title: string; children: ReactNode }) {
   const { colors } = useTheme();
   return (
     <View className="mt-8">
       <View className="mb-3 flex-row items-center">
-        <Icon name={icon} size={22} color={colors.accent} />
+        <Icon name={icon} size={22} color={colors.ink2} />
         <Text className="ml-2 flex-1 font-display text-ink" style={{ fontSize: 20, lineHeight: 26, letterSpacing: -0.3 }}>
           {title}
         </Text>

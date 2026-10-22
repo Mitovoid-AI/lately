@@ -52,7 +52,7 @@
           "image": "./assets/brand/splash-icon.png",
           "imageWidth": 160,
           "resizeMode": "contain",
-          "backgroundColor": "#FAF8F5",
+          "backgroundColor": "#FFFFFF",
           "dark": {
             "image": "./assets/brand/splash-icon.png",
             "backgroundColor": "#15120F"

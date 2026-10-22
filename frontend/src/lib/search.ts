@@ -20,6 +20,60 @@ export function queryTerms(query: string): string[] {
   return meaningful.length ? meaningful : words;
 }
 
+export type WhyKind = "place" | "note" | "meaning" | "title" | "tag" | "caption" | "creator" | "text";
+
+/** One "why it matched" chip, ready to draw: the kind picks the icon, `text` is the label. */
+export interface WhyChip {
+  kind: WhyKind;
+  text: string;
+}
+
+/** The longest a chip label gets; longer ones end in an ellipsis. */
+const WHY_MAX = 36;
+
+function clip(text: string, max = WHY_MAX): string {
+  return text.length > max ? `${text.slice(0, max - 1).trimEnd()}…` : text;
+}
+
+/**
+ * One `why` string from the API or the local matcher, as a chip. Both sources share a format
+ * (the server's starts a place with a pin and a note with `your note:`), so the screen never
+ * shows an emoji or a raw prefix: the pin becomes a place icon, the prefixes become words.
+ */
+export function parseWhy(raw: string): WhyChip | null {
+  const s = raw.trim();
+  if (!s) return null;
+  const place = /^\u{1F4CD}\s*/u.exec(s);
+  if (place) {
+    const name = s.slice(place[0].length).trim();
+    return name ? { kind: "place", text: clip(name) } : null;
+  }
+  const note = /^your note:\s*/i.exec(s);
+  if (note) {
+    const inner = s.slice(note[0].length).replace(/^["“”]+|["“”]+$/g, "").trim();
+    return inner ? { kind: "note", text: `Your note: “${clip(inner, WHY_MAX - 12)}”` } : null;
+  }
+  if (/^similar meaning$/i.test(s)) return { kind: "meaning", text: "Similar meaning" };
+  const title = /^title:\s*/i.exec(s);
+  if (title) return { kind: "title", text: clip(`Title: ${s.slice(title[0].length)}`) };
+  const caption = /^caption:\s*/i.exec(s);
+  if (caption) return { kind: "caption", text: clip(`Caption: ${s.slice(caption[0].length)}`) };
+  if (s.startsWith("#")) return { kind: "tag", text: clip(s) };
+  if (s.startsWith("@")) return { kind: "creator", text: clip(s) };
+  return { kind: "text", text: clip(s) };
+}
+
+/** The first `max` distinct reasons, in the order the matcher found them (strongest first). */
+export function whyChips(why: readonly string[], max = 3): WhyChip[] {
+  const out: WhyChip[] = [];
+  for (const raw of why) {
+    const chip = parseWhy(raw);
+    if (chip && !out.some((c) => c.text === chip.text)) out.push(chip);
+    if (out.length === max) break;
+  }
+  return out;
+}
+
 /**
  * Local search: a card matches when any term appears in some field (plain substring match,
  * no RegExp built from input). Cards matching more of the query rank first (the whole query

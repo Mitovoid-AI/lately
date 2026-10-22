@@ -10,8 +10,8 @@ import { Reveal } from "../components/motion/Reveal";
 import { useTheme } from "../theme/ThemeProvider";
 
 const MESSAGES: Record<AuthFailure, string> = {
-  cancelled: "Sign-in was cancelled.",
-  provider_disabled: "That sign-in method isn't switched on yet.",
+  cancelled: "Sign-in was canceled.",
+  provider_disabled: "That sign-in method isn't turned on yet.",
   rate_limited: "Too many attempts. Wait a minute and try again.",
   invalid_code: "This sign-in link has expired or was already used. Ask for a new one.",
   network: "Couldn't reach the sign-in service. Check your connection.",
@@ -50,7 +50,7 @@ export function AuthCallbackScreen() {
         </Reveal>
       ) : (
         <>
-          <ActivityIndicator color={colors.accent} />
+          <ActivityIndicator color={colors.accentText} />
           <Text className="mt-3 font-sans text-body text-ink-2">Signing you in…</Text>
         </>
       )}

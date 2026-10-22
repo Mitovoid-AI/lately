@@ -30,7 +30,7 @@ const GENERIC_ERROR = "Something went wrong. Try again.";
 
 const BENEFITS: { icon: IconName; text: string }[] = [
   { icon: "all-inclusive", text: "Unlimited saves, every month" },
-  { icon: "calendar-today", text: "No monthly reset to wait for" },
+  { icon: "calendar-today", text: "Cancel anytime in Google Play" },
   { icon: "folder-special", text: "Search, cards and stacks stay the same" },
 ];
 
@@ -79,7 +79,7 @@ function TopBar({ onClose, onRestore, restoring }: { onClose: () => void; onRest
 
 function Radio({ checked }: { checked: boolean }) {
   return (
-    <View className={`h-6 w-6 items-center justify-center rounded-full border-2 ${checked ? "border-accent" : "border-ink-2"}`}>
+    <View className={`h-6 w-6 items-center justify-center rounded-full border-2 ${checked ? "border-accent-text" : "border-ink-2"}`}>
       {checked ? <View className="h-3 w-3 rounded-full bg-accent" /> : null}
     </View>
   );
@@ -94,7 +94,7 @@ function PlanCard({ plan, checked, savePercent, onPress }: { plan: PlanOffer; ch
       onPress={onPress}
       haptic="selection"
       scaleTo={0.98}
-      className={`flex-row items-center rounded-2xl border-[1.5px] bg-card p-4 ${checked ? "border-accent" : "border-hairline"}`}
+      className={`flex-row items-center rounded-2xl border-[1.5px] bg-card p-4 ${checked ? "border-accent-text" : "border-control"}`}
     >
       <Radio checked={checked} />
       <View className="ml-3 flex-1">

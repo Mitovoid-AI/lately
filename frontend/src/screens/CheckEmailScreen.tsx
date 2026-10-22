@@ -42,7 +42,7 @@ export function CheckEmailScreen() {
   async function resend() {
     try {
       await auth.signInWithEmail(email);
-      toast.show("New code sent");
+      toast.show("Sent a new link and code.");
     } catch (e) {
       toast.show(authErrorMessage(e, "email"));
     }
@@ -55,7 +55,7 @@ export function CheckEmailScreen() {
         <View className="mt-8 items-center">
           <PopIn>
             <View className="h-16 w-16 items-center justify-center rounded-full bg-raised">
-              <Icon name="mail-outline" size={30} color={colors.accent} />
+              <Icon name="mail-outline" size={30} color={colors.accentText} />
             </View>
           </PopIn>
           <Reveal index={2} style={{ alignItems: "center" }}>

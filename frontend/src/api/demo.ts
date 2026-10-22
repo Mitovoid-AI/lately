@@ -13,13 +13,28 @@ import {
   type Preferences,
   type Save,
   type SaveDetail,
+  type SaveStage,
   type Stack,
   type StackDetail,
 } from "./contract";
 import { buildDemoSeed, EXTRA_CONTENT, IMAGES, type DemoSave, type DemoStack } from "./demo-data";
 
-/** How long a newly saved demo reel stays "processing". */
-export const PENDING_MS = 6000;
+/** How long a newly saved demo reel stays "processing": about as long as a real card takes. */
+export const PENDING_MS = 20_000;
+
+/**
+ * Where in the processing time (0 to 1) each stage of the real enrich job begins, so a demo
+ * save walks resolve → fetch → transcribe → vision → structure → finalize like the server's.
+ */
+const STAGE_STARTS: readonly (readonly [SaveStage, number])[] = [
+  ["resolve", 0],
+  ["fetch", 0.1],
+  ["transcribe", 0.3],
+  ["vision", 0.55],
+  ["structure", 0.75],
+  ["finalize", 0.93],
+];
+
 /** How long a demo export takes to "build". */
 export const EXPORT_MS = 1500;
 
@@ -32,9 +47,9 @@ export interface DemoApi extends LatelyApi {
 
 export const DEMO_USER = {
   id: "demo-user",
-  name: "Aanya Sharma",
-  email: "aanya.sharma@example.com",
-  handle: "aanya",
+  name: "Sam Carter",
+  email: "sam.carter@example.com",
+  handle: "samcarter",
 };
 
 const PREFS_KEY = "lately.prefs";
@@ -54,6 +69,7 @@ function toSave(d: SaveDetail): Save {
     thumbnail_url: d.thumbnail_url,
     creator: d.creator,
     channel: d.channel,
+    stage: d.stage ?? null,
   };
 }
 
@@ -65,11 +81,23 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
   let saves: DemoSave[] = seed.saves;
   let stacks: DemoStack[] = seed.stacks;
   let created = 0;
+  // When a retried save restarted its processing (a fresh save starts at its created_at).
+  const startedAt = new Map<string, number>();
   let exportRequestedAt: number | null = null;
   let plan: Me["plan"] = "free";
   let planExpiresAt: string | null = null;
 
   const wait = () => (latency ? new Promise((r) => setTimeout(r, latency)) : Promise.resolve());
+
+  /** The stage a pending demo save is in, from how far through its processing time it is. */
+  function stageOf(s: DemoSave): SaveStage {
+    const start = startedAt.get(s.id) ?? Date.parse(s.created_at);
+    const end = s.ready_at ?? start;
+    const done = end > start ? Math.min(Math.max((now() - start) / (end - start), 0), 1) : 0;
+    let stage = STAGE_STARTS[0][0];
+    for (const [name, from] of STAGE_STARTS) if (done >= from) stage = name;
+    return stage;
+  }
 
   /** What a save looks like right now: pending ones hide their content until ready. */
   function present(s: DemoSave): SaveDetail {
@@ -89,9 +117,10 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
       places: s.places,
       media_status: s.media_status,
     };
-    if (s.status !== "pending") return detail;
+    if (s.status !== "pending") return { ...detail, stage: null };
     return {
       ...detail,
+      stage: stageOf(s),
       title: null,
       caption: null,
       category: null,
@@ -168,6 +197,7 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
         channel: "app_share",
         ready_at: now() + PENDING_MS,
       };
+      startedAt.set(save.id, now());
       saves = [save, ...saves];
       return { reel_id: save.id, deduped: false, status: "pending" };
     },
@@ -221,10 +251,9 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
         total_saves: saves.length,
         stacks_count: stacks.length,
         member_since: "2023-10-01",
-        connected_accounts: [
-          { provider: "instagram", label: "@aanya.archive", status: "active" },
-          { provider: "google", label: DEMO_USER.email, status: "secured" },
-        ],
+        // Lately never connects an Instagram account (saves come from the share sheet), so the
+        // demo shows only how this person signs in.
+        connected_accounts: [{ provider: "google", label: DEMO_USER.email, status: "secured" }],
       };
     },
 
@@ -305,6 +334,7 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
         shortcode: s.shortcode === "PARTIAL" ? "PARTIAL-retried" : s.shortcode,
         ready_at: now() + PENDING_MS,
       });
+      startedAt.set(s.id, now());
       if (recovered) {
         Object.assign(s, {
           title: s.caption?.split("\n")[0]?.replace(/…$/, "") ?? "Recovered reel",
@@ -340,7 +370,7 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
         s.category === "Food & Places" && (!!s.note?.includes("cafe") || !!s.tags?.includes("cafe"));
       const cafes = all.filter(isCafe);
       const dev = all.filter((s) => s.category === "Dev & Tools");
-      const trek = all.filter((s) => s.note === "trek in june" && s.status === "enriched");
+      const hike = all.filter((s) => s.note === "hike in june" && s.status === "enriched");
       const old = all.filter((s) => now() - Date.parse(s.created_at) > 30 * DAY);
       return {
         date_label: curatedDate(now()),
@@ -354,7 +384,7 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
         },
         sections: [
           { kind: "row", title: "Revisit · Dev & Tools", subtitle: null, saves: dev.map(toSave) },
-          { kind: "row", title: "From your note “trek in june”", subtitle: null, saves: trek.map(toSave) },
+          { kind: "row", title: "From your note “hike in june”", subtitle: null, saves: hike.map(toSave) },
           { kind: "list", title: "Forgotten gems", subtitle: "Saved over a month ago", saves: old.map(toSave) },
         ],
       };

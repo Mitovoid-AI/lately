@@ -61,11 +61,11 @@ const PROVIDER_NAME: Record<ConnectedAccount["provider"], string> = {
   email: "Email",
 };
 
-function InfoChip({ icon, text, tone = "plain" }: { icon: IconName; text: string; tone?: "plain" | "warm" }) {
+function InfoChip({ icon, text }: { icon: IconName; text: string }) {
   const { colors } = useTheme();
   return (
-    <View className={`h-8 flex-row items-center rounded-full px-3 ${tone === "warm" ? "bg-warm" : "bg-raised"}`}>
-      <Icon name={icon} size={16} color={tone === "warm" ? colors.accent : colors.ink2} />
+    <View className="h-8 flex-row items-center rounded-full bg-raised px-3">
+      <Icon name={icon} size={16} color={colors.ink2} />
       <Text className="ml-1.5 font-sans-medium text-meta text-ink">{text}</Text>
     </View>
   );
@@ -103,7 +103,6 @@ export function AccountScreen() {
   const email = (live ? auth.user?.email : me?.email) ?? "";
   const handle = me?.handle ?? email.split("@")[0];
   const avatar = (live ? auth.user?.avatarUrl : me?.avatar_url) ?? null;
-  const instagram = me?.connected_accounts.find((a) => a.provider === "instagram");
   const sizeName = SIZES.find((s) => s.size === prefs.text_size)?.name ?? "Default";
   const version = Constants.expoConfig?.version ?? "1.0.0";
 
@@ -145,7 +144,7 @@ export function AccountScreen() {
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
       <View className="flex-row items-center px-1" style={{ height: HEADER_HEIGHT }}>
         <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={() => goBack(router)} />
-        <Text className="ml-1 flex-1 font-display text-display-sm text-ink">Account and Settings</Text>
+        <Text className="ml-1 flex-1 font-display text-display-sm text-ink">Account and settings</Text>
         <ScrollHairline scrollY={scrollY} />
       </View>
 
@@ -168,7 +167,7 @@ export function AccountScreen() {
                 <PressableScale
                   accessibilityRole="button"
                   accessibilityLabel="Change photo"
-                  onPress={() => toast.show("Photo upload is coming soon")}
+                  onPress={() => toast.show("Changing your photo isn't available yet.")}
                   scaleTo={0.88}
                   containerClassName="absolute bottom-0 right-0"
                   className="h-8 w-8 items-center justify-center rounded-full border-2 border-canvas bg-accent"
@@ -181,21 +180,11 @@ export function AccountScreen() {
               {me ? (
                 <Animated.View entering={NOTE_IN} style={{ alignItems: "center" }}>
                   <View className="mt-3 flex-row flex-wrap justify-center gap-2">
-                    <InfoChip icon="bookmark-border" text={countOf(me.total_saves, "Saved Reel")} />
-                    <InfoChip icon="folder-open" text={countOf(me.stacks_count, "Collection")} />
+                    <InfoChip icon="bookmark-border" text={countOf(me.total_saves, "saved reel")} />
+                    <InfoChip icon="folder-open" text={countOf(me.stacks_count, "stack")} />
                   </View>
-                  <View className="mt-2">
-                    <InfoChip icon="verified" text={`Vault Member (${monthYear(me.member_since)})`} tone="warm" />
-                  </View>
+                  <Text className="mt-3 font-sans text-meta text-ink-3">{`Member since ${monthYear(me.member_since)}`}</Text>
                 </Animated.View>
-              ) : null}
-              {instagram ? (
-                <View className="mt-3 h-9 flex-row items-center rounded-full bg-raised px-3">
-                  <View className="h-2 w-2 rounded-full bg-success" />
-                  <FontAwesome name="instagram" size={16} color={colors.ink2} style={{ marginLeft: 8 }} />
-                  <Text className="mx-1.5 font-sans-medium text-meta text-ink">{`Connected to ${instagram.label}`}</Text>
-                  <Icon name="check-circle-outline" size={16} color={colors.ink2} />
-                </View>
               ) : null}
             </View>
           </Reveal>
@@ -207,9 +196,9 @@ export function AccountScreen() {
           ) : null}
 
           <Reveal index={2}>
-            <SettingsSection icon="menu-book" title="Reading Experience & Appearance">
-              <Text className="font-sans-semibold text-body text-ink">Reading Font</Text>
-              <Text className="font-sans text-meta text-ink-2">Serif or Sans for summaries & notes</Text>
+            <SettingsSection icon="menu-book" title="Reading and appearance">
+              <Text className="font-sans-semibold text-body text-ink">Reading font</Text>
+              <Text className="font-sans text-meta text-ink-2">Serif or sans-serif for summaries and notes</Text>
               <View className="mt-3 flex-row gap-2">
                 <OptionCard
                   selected={prefs.reading_font === "newsreader"}
@@ -233,8 +222,8 @@ export function AccountScreen() {
 
               <View className="mt-6 flex-row items-start justify-between">
                 <View className="flex-1">
-                  <Text className="font-sans-semibold text-body text-ink">Text Size</Text>
-                  <Text className="font-sans text-meta text-ink-2">Adjust editorial text scale</Text>
+                  <Text className="font-sans-semibold text-body text-ink">Text size</Text>
+                  <Text className="font-sans text-meta text-ink-2">How large summaries and notes read</Text>
                 </View>
                 <View className="rounded-full border border-hairline bg-canvas px-3 py-1">
                   <Text className="font-sans-medium text-meta text-ink">{`${sizeName} (${prefs.text_size}px)`}</Text>
@@ -242,14 +231,14 @@ export function AccountScreen() {
               </View>
               <TextSizeControl sizes={SIZES} value={prefs.text_size} onChange={(size) => update({ text_size: size })} />
 
-              <Text className="mt-6 font-sans-semibold text-body text-ink">Theme & Appearance</Text>
-              <Text className="font-sans text-meta text-ink-2">Choose your color experience</Text>
+              <Text className="mt-6 font-sans-semibold text-body text-ink">Theme</Text>
+              <Text className="font-sans text-meta text-ink-2">Light, dark, or match your phone</Text>
               <View className="mt-3 flex-row gap-2">
                 {(
                   [
-                    { theme: "light", icon: "light-mode", title: "Light", label: "Warm Cream" },
+                    { theme: "light", icon: "light-mode", title: "Light", label: "Daylight" },
                     { theme: "dark", icon: "dark-mode", title: "Dark", label: "Espresso" },
-                    { theme: "system", icon: "brightness-medium", title: "System", label: "Auto matches" },
+                    { theme: "system", icon: "brightness-medium", title: "System", label: "Matches phone" },
                   ] as const
                 ).map((t) => (
                   <OptionCard
@@ -259,7 +248,7 @@ export function AccountScreen() {
                     onPress={() => update({ theme: t.theme })}
                     top={
                       <View>
-                        <Icon name={t.icon} size={20} color={prefs.theme === t.theme ? colors.accent : colors.ink2} />
+                        <Icon name={t.icon} size={20} color={prefs.theme === t.theme ? colors.accentText : colors.ink2} />
                         <Text className="mt-2 font-sans-medium text-body text-ink">{t.title}</Text>
                       </View>
                     }
@@ -271,8 +260,8 @@ export function AccountScreen() {
           </Reveal>
 
           <Reveal index={3}>
-            <SettingsSection icon="shield" title="Account & Security">
-              <SettingsRow icon="link" title="Connected Accounts" subtitle="How you sign in to Lately">
+            <SettingsSection icon="shield" title="Sign-in and data">
+              <SettingsRow icon="link" title="Sign-in methods" subtitle="How you sign in to Lately">
                 <View className="ml-14 mt-3 gap-2">
                   {(me?.connected_accounts ?? []).map((a) => (
                     <View key={a.provider} className="h-11 flex-row items-center rounded-xl bg-raised px-3">
@@ -287,7 +276,7 @@ export function AccountScreen() {
                         {`${PROVIDER_NAME[a.provider]} (${a.label})`}
                       </Text>
                       <Text className="font-sans-medium text-meta text-success">
-                        {a.status === "active" ? "Active" : "Secured"}
+                        {a.status === "active" ? "Active" : "Verified"}
                       </Text>
                     </View>
                   ))}
@@ -295,7 +284,7 @@ export function AccountScreen() {
               </SettingsRow>
               <SettingsRow
                 icon="cloud-download"
-                title="Download Vault Archive"
+                title="Download your archive"
                 subtitle={ARCHIVE_SUBTITLE[archive.phase]}
                 onPress={onArchivePress}
                 right={
@@ -313,19 +302,19 @@ export function AccountScreen() {
           </Reveal>
 
           <Reveal index={4}>
-            <SettingsSection icon="tune" title="Reading Preferences">
+            <SettingsSection icon="tune" title="Notifications and offline">
               {/* Not built yet: shown as coming soon, switched off and not pressable. */}
               <SettingsRow
                 icon="notifications-none"
-                title="Push Digests"
-                subtitle="Weekly summaries of your curated reels"
-                right={<ComingSoon label="Push Digests" />}
+                title="Weekly digest"
+                subtitle="A weekly reminder of reels you saved"
+                right={<ComingSoon label="Weekly digest" />}
               />
               <SettingsRow
                 icon="offline-pin"
-                title="Offline Reading Storage"
-                subtitle="Keep recent transcripts ready offline"
-                right={<ComingSoon label="Offline Reading Storage" />}
+                title="Offline reading"
+                subtitle="Recent cards, available offline"
+                right={<ComingSoon label="Offline reading" />}
                 divider
               />
             </SettingsSection>
@@ -364,8 +353,8 @@ export function AccountScreen() {
             >
               <Icon name="logout" size={22} color={colors.danger} />
               <View className="ml-3">
-                <Text className="font-sans-semibold text-body text-danger">Log Out of Lately</Text>
-                <Text className="font-sans text-meta text-danger">Session will safely end on this device</Text>
+                <Text className="font-sans-semibold text-body text-danger">Log out</Text>
+                <Text className="font-sans text-meta text-danger">Ends your session on this phone</Text>
               </View>
             </PressableScale>
 
@@ -384,7 +373,6 @@ export function AccountScreen() {
             <View className="mt-8 items-center">
               <Image source={LOGO} style={{ width: 28, height: 28, borderRadius: 8 }} />
               <Text className="mt-2 font-sans text-meta text-ink-2">{`Lately v${version}`}</Text>
-              <Text className="font-sans text-meta text-ink-3">Made for mindful reading & quiet curation</Text>
             </View>
           </Reveal>
         </View>
@@ -409,7 +397,7 @@ export function AccountScreen() {
       <ConfirmDialog
         visible={deleteStep === 2}
         title="This can't be undone"
-        message={`Everything in your Lately is removed for good.${cancelNote}`}
+        message={`Everything in your account is removed for good.${cancelNote}`}
         confirmLabel="Delete forever"
         busy={deletingAccount}
         onConfirm={deleteAccount}

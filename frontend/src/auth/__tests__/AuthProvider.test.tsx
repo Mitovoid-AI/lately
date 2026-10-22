@@ -22,7 +22,7 @@ test("demo sign-in, sign-out, and the session survives a restart", async () => {
 
   await act(() => result.current.signInDemo());
   expect(result.current.status).toBe("signed-in");
-  expect(result.current.user?.name).toBe("Aanya Sharma");
+  expect(result.current.user?.name).toBe("Sam Carter");
 
   const restarted = await renderHook(() => useAuth(), { wrapper: wrapperFor(store) });
   await waitFor(() => expect(restarted.result.current.status).toBe("signed-in"));

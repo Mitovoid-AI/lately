@@ -22,10 +22,10 @@ beforeEach(() => {
 test("shows the sign-in options and switches to sign up", async () => {
   await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out" } });
   expect(screen.getByText("Continue with Google")).toBeTruthy();
-  expect(screen.getByText("Save it with a reason.\nFind it when you need it.")).toBeTruthy();
+  expect(screen.getByText("Save reels from Instagram.\nFind them again by typing what you remember.")).toBeTruthy();
   await fireEvent.press(screen.getByRole("tab", { name: "Sign up" }));
   expect(screen.getByText("Sign up with Google")).toBeTruthy();
-  expect(screen.getByText("Private & encrypted")).toBeTruthy();
+  expect(screen.getByText("Private to your account")).toBeTruthy();
 });
 
 test("demo mode: any provider signs in as the demo user", async () => {

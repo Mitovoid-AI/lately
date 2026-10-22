@@ -2,36 +2,44 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
-import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import Animated, {
-  cancelAnimation,
-  Easing,
-  FadeIn,
-  useAnimatedStyle,
-  useSharedValue,
-  withTiming,
-} from "react-native-reanimated";
+import {
+  ActivityIndicator,
+  KeyboardAvoidingView,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  useWindowDimensions,
+  View,
+} from "react-native";
+import Animated, { FadeIn } from "react-native-reanimated";
 
 import { useApi } from "../api/index";
+import { useAuth } from "../auth/AuthProvider";
 import { useBilling } from "../billing/BillingProvider";
 import { PRO_CONFIRMING } from "../billing/plans";
 import { Button } from "../components/Button";
 import { Chip } from "../components/Chip";
-import { LOGO } from "../components/Header";
 import { Icon, type IconName } from "../components/Icon";
 import { PopIn, Reveal } from "../components/motion/Reveal";
 import { usePresence } from "../components/motion/usePresence";
+import { Celebrate, SavedCheck } from "../components/save/Celebrate";
+import { isFirstCard } from "../components/save/firstCard";
+import { SaveTracker } from "../components/save/SaveTracker";
 import { SHEET_RESIZE, SheetPanel, useSheetMotion } from "../components/Sheet";
 import { TextField } from "../components/TextField";
 import { useNow } from "../hooks/useNow";
+import { useSaveProgress } from "../hooks/useSaves";
 import { savedAgo, shortDate } from "../lib/dates";
 import { haptic } from "../lib/haptics";
 import { displayLink, extractReelUrl } from "../lib/instagram";
 import { outcomeFromError, outcomeFromResult, QUEUE_REASON, QUEUED_BODY, type SaveOutcome } from "../lib/saveOutcome";
-import { DURATION, EASE_OUT } from "../theme/motion";
+import { DURATION } from "../theme/motion";
 import { useTheme } from "../theme/ThemeProvider";
 import { useToast } from "../components/Toast";
 import { refreshSaveViews } from "../lib/queryClient";
+import { deviceStore, type KeyValueStore } from "../lib/storage";
 import { useSaveQueue } from "../hooks/useSaveQueue";
 import { ApiError } from "../api/contract";
 import { config } from "../config";
@@ -39,7 +47,6 @@ import { sendDeviceHint } from "../lib/deviceFetch";
 
 const SHARE_BACKDROP = require("../../assets/stitch/save-bg.jpg");
 const QUICK = ["To try", "To buy", "To visit", "To learn", "Watch later"];
-const AUTO_CLOSE_S = 5;
 
 // Each state of the sheet dissolves in; the sheet's height eases to fit it.
 const STATE_IN = FadeIn.duration(DURATION.state);
@@ -67,42 +74,14 @@ function Message({ icon, title, body, children }: { icon: ReactNode; title: stri
   );
 }
 
-/** The success mark: the logo settles while the green tick springs onto its corner. */
-function SavedMark() {
+/**
+ * The sheet that saves a reel (pasted or shared) and then follows its card being made. The
+ * `firstCardStore` is where "this person's first card" is remembered; tests pass a memory store.
+ */
+export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardStore?: KeyValueStore } = {}) {
   const { colors } = useTheme();
-  return (
-    <View>
-      <Image source={LOGO} style={{ width: 56, height: 56, borderRadius: 14 }} />
-      <PopIn style={[styles.badge, { borderColor: colors.card, backgroundColor: colors.success }]}>
-        <Icon name="check" size={14} color={colors.onAccent} />
-      </PopIn>
-    </View>
-  );
-}
-
-/** A hairline that drains over the auto-close countdown; it fades away if the user starts a note. */
-function CountdownLine({ running }: { running: boolean }) {
-  const { colors } = useTheme();
-  const left = useSharedValue(1);
-  const shown = useSharedValue(1);
-  useEffect(() => {
-    if (running) {
-      left.set(withTiming(0, { duration: AUTO_CLOSE_S * 1000, easing: Easing.linear }));
-    } else {
-      cancelAnimation(left);
-      shown.set(withTiming(0, { duration: DURATION.exit, easing: EASE_OUT }));
-    }
-  }, [running, left, shown]);
-  const style = useAnimatedStyle(() => ({ opacity: shown.get(), transform: [{ scaleX: left.get() }] }));
-  return (
-    <View style={[styles.track, { backgroundColor: colors.raised }]}>
-      <Animated.View style={[styles.fill, { backgroundColor: colors.ink3 }, style]} />
-    </View>
-  );
-}
-
-export function SaveSheetScreen() {
-  const { colors } = useTheme();
+  const { height: windowHeight } = useWindowDimensions();
+  const { user } = useAuth();
   const { text } = useLocalSearchParams<{ text?: string }>();
   const router = useRouter();
   const api = useApi();
@@ -121,14 +100,18 @@ export function SaveSheetScreen() {
   const [outcome, setOutcome] = useState<SaveOutcome | null>(null);
   const [savedText, setSavedText] = useState(text ?? "");
   const [note, setNote] = useState("");
-  const [noteTouched, setNoteTouched] = useState(false);
   const [savingNote, setSavingNote] = useState(false);
-  const [secondsLeft, setSecondsLeft] = useState(AUTO_CLOSE_S);
+  // The first card this person has ever saved gets one small celebration when it is ready.
+  const [first, setFirst] = useState(false);
+  // Once the sheet starts closing, nothing here asks the server anything more.
+  const [closed, setClosed] = useState(false);
   const inFlight = useRef(false);
   const started = useRef(false);
+  const userId = user?.id;
 
   // Opened straight from a share (or a link) there is no screen to go back to.
   const close = useCallback(() => {
+    setClosed(true);
     if (router.canGoBack()) router.back();
     else router.replace("/");
   }, [router]);
@@ -165,8 +148,16 @@ export function SaveSheetScreen() {
           queue.dequeue(t);
         }
         const next = outcomeFromResult(result);
-        // The confirmation lands with its haptic, in the same frame the success mark appears.
-        if (next.kind === "saved") haptic.success();
+        // The confirmation lands with its haptic, in the same frame the check appears. The
+        // stronger success haptic is kept for the card being ready.
+        if (next.kind === "saved") {
+          haptic.light();
+          if (userId) {
+            // The demo account comes with a library, so there "first" means the first save in it.
+            const total = async () => (config.apiMode === "demo" ? 1 : (await api.getMe()).total_saves);
+            void isFirstCard(firstCardStore, userId, total).then(setFirst);
+          }
+        }
         setOutcome(next);
         refreshSaveViews(queryClient);
       } catch (e) {
@@ -193,7 +184,7 @@ export function SaveSheetScreen() {
         setBusy(false);
       }
     },
-    [api, createSave, queryClient, queue],
+    [api, createSave, queryClient, queue, userId, firstCardStore],
   );
 
   // A share hands us the text: save immediately (once).
@@ -204,17 +195,6 @@ export function SaveSheetScreen() {
     }
   }, [text, save]);
 
-  // Saved: count down and close unless the user starts writing a note.
-  const counting = outcome?.kind === "saved" && !noteTouched;
-  useEffect(() => {
-    if (!counting) return;
-    const id = setInterval(() => setSecondsLeft((s) => s - 1), 1000);
-    return () => clearInterval(id);
-  }, [counting]);
-  useEffect(() => {
-    if (counting && secondsLeft <= 0) close();
-  }, [counting, secondsLeft, close]);
-
   const reelId = outcome && "reelId" in outcome ? outcome.reelId : null;
   const existing = useQuery({
     queryKey: ["save", reelId],
@@ -223,8 +203,21 @@ export function SaveSheetScreen() {
   });
   const me = useQuery({ queryKey: ["me"], queryFn: () => api.getMe(), enabled: outcome?.kind === "quota" });
 
+  // Saved: follow the card being made, step by step, for as long as the sheet is open.
+  const progress = useSaveProgress(outcome?.kind === "saved" ? reelId : null, !closed);
+  const readyFired = useRef(false);
+  useEffect(() => {
+    if (!progress.ready || readyFired.current) return;
+    readyFired.current = true;
+    // A card that came out whole lands with the success haptic; a part-read one just taps.
+    if (progress.status === "enriched") haptic.success();
+    else haptic.light();
+  }, [progress.ready, progress.status]);
+  const celebrating = first && progress.status === "enriched";
+
   const noteInFlight = useRef(false);
-  async function saveNote() {
+  /** Saves the typed note, then runs `then` (closing the sheet, or opening the card). */
+  async function saveNote(then: () => void = close) {
     if (!reelId || !note.trim() || noteInFlight.current) return;
     noteInFlight.current = true;
     setSavingNote(true);
@@ -232,7 +225,7 @@ export function SaveSheetScreen() {
       await api.setNote(reelId, note.trim());
       refreshSaveViews(queryClient);
       // Stays latched: the sheet is closing, a second tap must not send the note again.
-      close();
+      then();
     } catch {
       noteInFlight.current = false;
       haptic.error();
@@ -242,6 +235,17 @@ export function SaveSheetScreen() {
     }
   }
 
+  function openCard() {
+    if (!reelId) return;
+    const go = () => {
+      setClosed(true);
+      router.replace(`/reel/${reelId}`);
+    };
+    // A note typed while waiting is kept, not dropped on the way to the card.
+    if (note.trim()) void saveNote(go);
+    else go();
+  }
+
   const link = displayLink(extractReelUrl(savedText)?.url ?? savedText);
   const phase = busy || (shared && !outcome) ? "busy" : outcome ? outcome.kind : "paste";
 
@@ -249,7 +253,7 @@ export function SaveSheetScreen() {
   if (phase === "busy") {
     content = (
       <View className="items-center py-10">
-        <ActivityIndicator color={colors.accent} />
+        <ActivityIndicator color={colors.accentText} />
         <Text className="mt-3 font-sans text-body text-ink-2">Saving…</Text>
       </View>
     );
@@ -272,22 +276,42 @@ export function SaveSheetScreen() {
       </View>
     );
   } else if (outcome.kind === "saved") {
+    // It is saved and on Home already; the rest of the sheet is optional and can wait for
+    // the card. A small screen scrolls rather than pushing the Done button out of reach.
     content = (
-      <View>
+      <ScrollView
+        style={{ maxHeight: Math.round(windowHeight * 0.78) }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <View className="flex-row items-center">
-          <SavedMark />
+          {celebrating ? (
+            <Celebrate size={48} />
+          ) : (
+            <PopIn>
+              <SavedCheck size={48} />
+            </PopIn>
+          )}
           <Reveal index={1} style={{ marginLeft: 12, flex: 1 }}>
-            <Text className="font-display text-display-lg text-ink">Saved to Lately</Text>
-            <Text className="font-sans text-body text-ink-2">Your card will be ready in a few seconds.</Text>
+            <Text className="font-display text-display-lg text-ink">Saved</Text>
+            <Text className="font-sans text-body text-ink-2">It&apos;s already in your saves</Text>
           </Reveal>
         </View>
         <Reveal index={2}>
           <View className="mt-4 h-9 flex-row items-center self-start rounded-full border border-hairline bg-raised px-3" style={{ maxWidth: "100%" }}>
-            <Icon name="link" size={18} color={colors.accent} />
+            <Icon name="link" size={18} color={colors.accentText} />
             <Text numberOfLines={1} className="ml-2 shrink font-sans text-meta text-ink-2">
               {link}
             </Text>
           </View>
+          <SaveTracker
+            status={progress.status}
+            stage={progress.stage}
+            slow={progress.slow}
+            unreachable={progress.unreachable}
+            first={first}
+            onOpenCard={openCard}
+          />
         </Reveal>
         <Reveal index={3}>
           <Text className="mt-5 font-sans-medium text-body text-ink-2">
@@ -296,7 +320,6 @@ export function SaveSheetScreen() {
           <TextField
             value={note}
             onChangeText={setNote}
-            onFocus={() => setNoteTouched(true)}
             placeholder="e.g. cafe to try in June"
             maxLength={500}
             size="lg"
@@ -304,28 +327,24 @@ export function SaveSheetScreen() {
           />
           <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3" contentContainerStyle={{ gap: 8 }}>
             {QUICK.map((q) => (
-              <Chip
-                key={q}
-                label={q}
-                active={note === q}
-                haptic="selection"
-                onPress={() => {
-                  setNoteTouched(true);
-                  setNote(q);
-                }}
-              />
+              <Chip key={q} label={q} active={note === q} haptic="selection" onPress={() => setNote(q)} />
             ))}
           </ScrollView>
         </Reveal>
         <Reveal index={4}>
-          <Button title="Save note" onPress={saveNote} disabled={!note.trim()} loading={savingNote} size="lg" className="mt-5" />
-          <Button title="Skip" variant="ghost" onPress={close} className="mt-1" />
-          {counting ? (
-            <Text className="mt-1 text-center font-sans text-meta text-ink-3">{`Closes in ${Math.max(secondsLeft, 0)} s`}</Text>
-          ) : null}
-          <CountdownLine running={counting} />
+          {/* With the card ready, Open card is the main action; until then the note is. */}
+          <Button
+            title="Save note"
+            variant={progress.ready ? "secondary" : "primary"}
+            onPress={() => saveNote()}
+            disabled={!note.trim()}
+            loading={savingNote}
+            size="lg"
+            className="mt-5"
+          />
+          <Button title="Done" variant="ghost" onPress={close} className="mt-1" />
         </Reveal>
-      </View>
+      </ScrollView>
     );
   } else if (outcome.kind === "deduped") {
     const card = existing.data;
@@ -358,7 +377,7 @@ export function SaveSheetScreen() {
     // Google Play says Pro is on and the server still doesn't (the save already synced and retried
     // once): no upsell for someone who has paid. Trying again syncs and retries once more.
     content = (
-      <Message icon={<StatusIcon name="schedule" color={colors.accent} bg={colors.raised} />} title="Pro is turning on" body={PRO_CONFIRMING}>
+      <Message icon={<StatusIcon name="schedule" color={colors.accentText} bg={colors.raised} />} title="Pro is turning on" body={PRO_CONFIRMING}>
         <Button title="Try again" onPress={() => save(savedText)} className="mt-5" />
         <Button title="Close" variant="ghost" onPress={close} className="mt-1" />
       </Message>
@@ -366,7 +385,7 @@ export function SaveSheetScreen() {
   } else if (outcome.kind === "quota") {
     const limit = me.data?.saves_limit ?? 20;
     content = (
-      <Message icon={<StatusIcon name="lock-outline" color={colors.accent} bg={colors.raised} />} title={`You've used all ${limit} free saves this month`}>
+      <Message icon={<StatusIcon name="lock-outline" color={colors.accentText} bg={colors.raised} />} title={`You've used all ${limit} free saves this month`}>
         <View className="mt-4 h-2 overflow-hidden rounded-full bg-raised">
           <View className="h-2 w-full rounded-full bg-accent" />
         </View>
@@ -387,7 +406,7 @@ export function SaveSheetScreen() {
   } else if (outcome.kind === "rate_limited") {
     content = (
       <Message
-        icon={<StatusIcon name="schedule" color={colors.accent} bg={colors.raised} />}
+        icon={<StatusIcon name="schedule" color={colors.accentText} bg={colors.raised} />}
         title="That's a lot of saves at once"
         body="Try again in a minute."
       >
@@ -397,12 +416,12 @@ export function SaveSheetScreen() {
   } else if (outcome.kind === "queued") {
     content = (
       <Message
-        icon={<StatusIcon name="cloud-upload" color={colors.accent} bg={colors.raised} />}
+        icon={<StatusIcon name="cloud-upload" color={colors.accentText} bg={colors.raised} />}
         title="Saved for later"
         body={QUEUED_BODY[outcome.reason]}
       >
         <View className="mt-4 h-9 flex-row items-center self-start rounded-full border border-hairline bg-raised px-3" style={{ maxWidth: "100%" }}>
-          <Icon name="link" size={18} color={colors.accent} />
+          <Icon name="link" size={18} color={colors.accentText} />
           <Text numberOfLines={1} className="ml-2 shrink font-sans text-meta text-ink-2">
             {link}
           </Text>
@@ -445,17 +464,4 @@ export function SaveSheetScreen() {
 
 const styles = StyleSheet.create({
   statusIcon: { width: 56, height: 56, borderRadius: 16, alignItems: "center", justifyContent: "center" },
-  badge: {
-    position: "absolute",
-    right: -4,
-    bottom: -4,
-    width: 24,
-    height: 24,
-    borderRadius: 12,
-    borderWidth: 2,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  track: { marginTop: 8, height: 2, width: 64, alignSelf: "center", borderRadius: 1, overflow: "hidden" },
-  fill: { flex: 1, transformOrigin: "left" },
 });

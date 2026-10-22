@@ -21,14 +21,17 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { ApiError, type Save, type SaveDetail } from "../api/contract";
 import { useApi } from "../api/index";
 import { Button } from "../components/Button";
-import { CategoryDot } from "../components/CategoryDot";
+import { CategoryPill } from "../components/Chip";
 import { ConfirmDialog } from "../components/ConfirmDialog";
+import { ActionBar, type PrimaryAction } from "../components/detail/ActionBar";
+import { FactChips } from "../components/detail/FactChips";
+import { deriveFacts, mapsUrl } from "../components/detail/facts";
 import { NoteBlock } from "../components/detail/NoteBlock";
 import { PlaceCard } from "../components/detail/PlaceCard";
 import { ProgressTracker } from "../components/detail/ProgressTracker";
 import { StackPicker } from "../components/detail/StackPicker";
 import { HEADER_HEIGHT, LOGO, ScrollHairline } from "../components/Header";
-import { Icon, type IconName } from "../components/Icon";
+import { Icon } from "../components/Icon";
 import { IconButton } from "../components/motion/IconButton";
 import { PressableScale } from "../components/motion/PressableScale";
 import { Reveal } from "../components/motion/Reveal";
@@ -57,19 +60,26 @@ const CAPTION_IN = FadeIn.duration(DURATION.enter).easing(EASE_OUT);
 const CAPTION_OUT = FadeOut.duration(DURATION.exit);
 const REFLOW = LinearTransition.duration(240).easing(EASE_OUT);
 
-function Label({ children }: { children: string }) {
-  return <Text className="font-sans-semibold text-label text-ink">{children}</Text>;
+/** A section heading in display type ("Good to know", "Places"). */
+function SectionTitle({ children }: { children: string }) {
+  return <Text className="font-display text-display-sm text-ink">{children}</Text>;
 }
 
-/** Hero media shape: a little shorter than 4:5 so the title shows on the first screen. */
-const HERO_ASPECT = 9 / 10;
+/**
+ * Hero media shape. Square: a vertical reel's frame cropped to the middle, short enough that
+ * the title and the fact chips are on the first screen of a 375 x 812 phone.
+ */
+const HERO_ASPECT = 1;
 
 /** Content column: full width minus 16 pt sides, at most 560 wide (tablets, web). */
 const COLUMN_MAX = 560;
 
+/** Stages in which the server is past fetching the reel and is reading or writing it up. */
+const WRITING_STAGES = new Set(["transcribe", "vision", "structure", "finalize"]);
+
 /**
- * Back on the left, the card's actions on the right. Once the hero and title scroll away the
- * title fades into the bar, so the reader always knows which card this is.
+ * Back on the left, More on the right. Once the hero and title scroll away the title fades
+ * into the bar, so the reader always knows which card this is.
  */
 function TopBar({
   onBack,
@@ -108,16 +118,6 @@ function TopBar({
   );
 }
 
-function Overlay({ icon, text, className }: { icon: IconName; text: string; className: string }) {
-  const { colors } = useTheme();
-  return (
-    <View className={`absolute flex-row items-center rounded-full px-2.5 py-1 ${className}`} style={{ backgroundColor: colors.scrim }}>
-      <Icon name={icon} size={14} color={colors.onMedia} />
-      <Text className="ml-1 font-sans-semibold text-caption text-on-media">{text}</Text>
-    </View>
-  );
-}
-
 /**
  * The hero sits in a window: as the page scrolls the image drifts slower than its frame, and an
  * iOS pull-down stretches it. Both read the scroll offset on the UI thread.
@@ -136,21 +136,34 @@ function useHeroParallax(scrollY: SharedValue<number>) {
   });
 }
 
-function Hero({ card, mediaStyle }: { card: Save; mediaStyle?: ReturnType<typeof useHeroParallax> }) {
+/**
+ * The card's media. `showSource` puts an "Open in Instagram" pill on it; the screen turns it
+ * on only when the action bar's main button is something else (Directions), so the same
+ * action never appears twice at once.
+ */
+function Hero({
+  card,
+  mediaStyle,
+  showSource = false,
+}: {
+  card: Save;
+  mediaStyle?: ReturnType<typeof useHeroParallax>;
+  showSource?: boolean;
+}) {
   const { colors } = useTheme();
-  const openIg = (
+  const openIg = showSource ? (
     <PressableScale
       accessibilityRole="link"
       onPress={() => Linking.openURL(card.source_url)}
       scaleTo={0.95}
       containerClassName="absolute bottom-3 left-3"
-      className="h-10 flex-row items-center rounded-full border px-4"
+      className="h-11 flex-row items-center rounded-full border px-4"
       style={{ backgroundColor: colors.scrim, borderColor: colors.mediaHairline }}
     >
       <Text className="font-sans-semibold text-meta text-on-media">Open in Instagram</Text>
       <Icon name="north-east" size={16} color={colors.onMedia} />
     </PressableScale>
-  );
+  ) : null;
   if (card.status === "pending") {
     return (
       <Thumb uri={null} aspect={HERO_ASPECT} className="border border-hairline">
@@ -176,13 +189,12 @@ function Hero({ card, mediaStyle }: { card: Save; mediaStyle?: ReturnType<typeof
   }
   return (
     <Thumb uri={card.thumbnail_url} aspect={HERO_ASPECT} mediaStyle={mediaStyle} className="border border-hairline">
-      <Overlay icon="smart-display" text="Reel" className="right-3 top-3" />
       {openIg}
     </Thumb>
   );
 }
 
-/** The card as the Library last saw it, so the hero is in place while the detail loads. */
+/** The card as Home last saw it, so the hero is in place while the detail loads. */
 function useCachedSave(id: string): Save | undefined {
   const queryClient = useQueryClient();
   return useMemo(
@@ -235,16 +247,18 @@ export function CardDetailScreen() {
   const [deleting, setDeleting] = useState(false);
   const [captionOpen, setCaptionOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  // While the note editor is open the keyboard needs the room, so the action bar steps aside.
+  const [noteEditing, setNoteEditing] = useState(false);
   const bookmark = usePop();
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({ onScroll: (e) => scrollY.set(e.contentOffset.y) });
   const parallax = useHeroParallax(scrollY);
-  // The page title sits under the hero (creator row above it); once its last line passes the
-  // bar, the bar shows it. Two lines of display type ≈ 64 pt.
+  // The page title sits under the hero (category row above it); once its first line passes the
+  // bar, the bar shows it.
   const { width } = useWindowDimensions();
   const heroHeight = (Math.min(width, COLUMN_MAX) - 32) / HERO_ASPECT;
-  const titleFrom = heroHeight + 4 + 12 + 18 + 4 + 40;
+  const titleFrom = heroHeight + 4 + 16 + 28 + 8 + 31;
 
   const query = useQuery({
     queryKey: ["save", id],
@@ -311,10 +325,11 @@ export function CardDetailScreen() {
   }
 
   let body: ReactNode;
+  let primary: PrimaryAction | null = null;
   if (query.isLoading) {
     body = (
-      <View className="w-full max-w-[560px] self-center px-4 pb-10">
-        <View className="h-12" />
+      <View className="w-full max-w-[560px] self-center px-4 pb-6">
+        <View className="h-1" />
         {preview ? (
           <Link.AppleZoomTarget>
             <View>
@@ -325,15 +340,16 @@ export function CardDetailScreen() {
           <Skeleton style={{ aspectRatio: HERO_ASPECT, borderRadius: 14 }} />
         )}
         <SkeletonGroup>
+          <Skeleton style={{ marginTop: 16, height: 28, width: 120, borderRadius: 999 }} />
           {preview ? (
-            <Text className="mt-6 font-display text-display-lg text-ink">{cardTitle(preview)}</Text>
+            <Text className="mt-2 font-display text-display-lg text-ink">{cardTitle(preview)}</Text>
           ) : (
-            <Skeleton style={{ marginTop: 24, height: 28, width: "80%", borderRadius: 8 }} />
+            <Skeleton style={{ marginTop: 12, height: 28, width: "80%", borderRadius: 8 }} />
           )}
           <Skeleton style={{ marginTop: 16, height: 32, width: 160, borderRadius: 999 }} />
-          <Skeleton style={{ marginTop: 28, height: 96, borderRadius: 16 }} />
-          <Skeleton style={{ marginTop: 24, height: 14, width: "92%", borderRadius: 7 }} />
+          <Skeleton style={{ marginTop: 20, height: 14, width: "92%", borderRadius: 7 }} />
           <Skeleton style={{ marginTop: 8, height: 14, width: "76%", borderRadius: 7 }} />
+          <Skeleton style={{ marginTop: 24, height: 96, borderRadius: 16 }} />
         </SkeletonGroup>
       </View>
     );
@@ -346,63 +362,96 @@ export function CardDetailScreen() {
           <Text className="mt-4 text-center font-display text-display-md text-ink">
             {gone ? "This card isn't here anymore" : "Couldn't load this card"}
           </Text>
-          <Button title="Back to Library" variant="secondary" onPress={() => router.replace("/")} className="mt-6 w-full max-w-[320px]" />
+          {gone ? null : (
+            <Text className="mt-2 text-center font-sans text-body text-ink-2">Check your connection and try again.</Text>
+          )}
+          {gone ? null : (
+            <Button
+              title="Try again"
+              variant="secondary"
+              onPress={() => query.refetch()}
+              loading={query.isRefetching}
+              className="mt-6 w-full max-w-[320px]"
+            />
+          )}
+          <Button
+            title="Back to Home"
+            variant="secondary"
+            onPress={() => router.replace("/")}
+            className="mt-3 w-full max-w-[320px]"
+          />
         </View>
       </Reveal>
     );
   } else {
     const status =
       card.status === "pending"
-        ? { text: "GETTING DETAILS", color: colors.accent }
+        ? { text: "GETTING DETAILS", color: colors.accentText }
         : card.status === "partial"
           ? { text: "PREVIEW UNAVAILABLE", color: colors.ink3 }
           : null;
     const title = card.title ?? (card.status === "pending" ? displayLink(card.source_url) : card.caption?.split("\n")[0] ?? displayLink(card.source_url));
     const showCaption = card.status === "partial" || captionOpen;
     const stale = isStalePending(card, now);
+    const place = card.places[0];
+    const facts = deriveFacts(card);
+    // The server says which step a pending card is on once it is past fetching the reel.
+    const stage = card.stage;
+    primary = place
+      ? { label: "Directions", icon: "place", onPress: () => Linking.openURL(mapsUrl(place)) }
+      : { label: "Open in Instagram", icon: "instagram", onPress: () => Linking.openURL(card.source_url) };
     // The hero sits at the same place in the tree while loading and once loaded, so it stays
     // mounted (the zoom lands on it, the image never re-fades); the text below it arrives in turn.
     let i = 0;
     const next = () => i++;
 
     body = (
-      <View className="w-full max-w-[560px] self-center px-4 pb-10 pt-1">
+      <View className="w-full max-w-[560px] self-center px-4 pb-6 pt-1">
         <Link.AppleZoomTarget>
           <View>
-            <Hero card={card} mediaStyle={parallax} />
+            <Hero card={card} mediaStyle={parallax} showSource={!!place} />
           </View>
         </Link.AppleZoomTarget>
 
         <Reveal index={next()}>
-          <View className="mt-3 flex-row items-center justify-between">
-            <Text className="font-sans text-meta text-ink-2">
-              {card.creator ? `@${card.creator}` : displayLink(card.source_url)}
-            </Text>
-            <Text className="font-sans text-caption text-ink-3">Instagram</Text>
-          </View>
-          <Text className="mt-1 font-display text-display-lg text-ink">{title}</Text>
-          <View className="mt-3 flex-row items-center">
-            {card.category ? (
-              <View className="mr-2 h-8 flex-row items-center rounded-full border border-hairline bg-raised px-3">
-                <CategoryDot category={card.category} />
-                <Text className="ml-1.5 font-sans-medium text-meta text-ink">{card.category}</Text>
-              </View>
-            ) : null}
-            <Text className="font-sans text-meta text-ink-2">{savedAgo(card.created_at, now)}</Text>
+          <View className="mt-4 flex-row flex-wrap items-center gap-x-3 gap-y-2">
+            {card.category ? <CategoryPill category={card.category} /> : null}
             {status ? (
-              <View className="ml-3 flex-row items-center">
+              <View className="flex-row items-center">
                 <View className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.color }} />
                 <Text className="ml-1.5 font-sans-semibold text-label text-ink-2">{status.text}</Text>
               </View>
             ) : null}
           </View>
+          <Text className="mt-2 font-display text-display-lg text-ink">{title}</Text>
+          <View className="mt-2 flex-row flex-wrap items-center">
+            <Text className="font-sans text-meta text-ink-2">
+              {card.creator ? `@${card.creator}` : displayLink(card.source_url)}
+            </Text>
+            <Text className="mx-1.5 font-sans text-meta text-ink-3">·</Text>
+            <Text className="font-sans text-meta text-ink-2">{savedAgo(card.created_at, now)}</Text>
+          </View>
         </Reveal>
 
-        <Reveal index={next()}>
-          <View className="my-4 h-px bg-hairline" />
+        {facts.length ? (
+          <Reveal index={next()} style={{ marginTop: 16 }}>
+            <FactChips facts={facts} />
+          </Reveal>
+        ) : null}
+
+        {card.summary ? (
+          <Reveal index={next()} style={{ marginTop: 16 }}>
+            <Text className="font-sans text-body text-ink" style={readingStyle}>
+              {card.summary}
+            </Text>
+          </Reveal>
+        ) : null}
+
+        <Reveal index={next()} style={{ marginTop: 20 }}>
           <NoteBlock
             note={card.note}
             onSave={saveNote}
+            onEditingChange={setNoteEditing}
             textStyle={{ fontSize: readingStyle.fontSize, lineHeight: readingStyle.lineHeight }}
           />
         </Reveal>
@@ -427,26 +476,17 @@ export function CardDetailScreen() {
 
         {card.status === "pending" ? (
           <Reveal index={next()} style={{ marginTop: 20 }}>
-            <ProgressTracker current={1} />
-          </Reveal>
-        ) : null}
-
-        {card.summary ? (
-          <Reveal index={next()} style={{ marginTop: 24 }}>
-            <Label>SUMMARY</Label>
-            <Text className="mt-2 font-sans text-body text-ink" style={readingStyle}>
-              {card.summary}
-            </Text>
+            <ProgressTracker current={stage && WRITING_STAGES.has(stage) ? 2 : 1} />
           </Reveal>
         ) : null}
 
         {card.steps?.length ? (
-          <Reveal index={next()} style={{ marginTop: 24 }}>
-            <Label>GOOD TO KNOW</Label>
+          <Reveal index={next()} style={{ marginTop: 28 }}>
+            <SectionTitle>Good to know</SectionTitle>
             {card.steps.map((step) => (
               <View key={step} className="mt-3 flex-row items-center">
                 <View className="h-8 w-8 items-center justify-center rounded-full bg-raised">
-                  <Icon name="check" size={16} color={colors.accent} />
+                  <Icon name="check" size={16} color={colors.accentText} />
                 </View>
                 <Text className="ml-3 flex-1 font-sans text-body text-ink">{step}</Text>
               </View>
@@ -455,10 +495,13 @@ export function CardDetailScreen() {
         ) : null}
 
         {card.places.length ? (
-          <Reveal index={next()} style={{ marginTop: 24, gap: 12 }}>
-            {card.places.map((p) => (
-              <PlaceCard key={p.name} place={p} />
-            ))}
+          <Reveal index={next()} style={{ marginTop: 28 }}>
+            <SectionTitle>{card.places.length === 1 ? "Place" : "Places"}</SectionTitle>
+            <View className="mt-3 gap-3">
+              {card.places.map((p) => (
+                <PlaceCard key={p.name} place={p} />
+              ))}
+            </View>
           </Reveal>
         ) : null}
 
@@ -496,16 +539,6 @@ export function CardDetailScreen() {
               <Text className="ml-2 flex-1 font-sans text-meta text-ink-2">
                 Saved to <Text className="font-sans-semibold text-ink">Lately</Text> via {CHANNEL[card.channel]}
               </Text>
-              <PressableScale
-                accessibilityRole="button"
-                onPress={share}
-                scaleTo={0.95}
-                highlightColor={colors.raised}
-                className="h-10 flex-row items-center rounded-full border border-hairline bg-card px-4"
-              >
-                <Icon name="ios-share" size={16} color={colors.ink} />
-                <Text className="ml-1.5 font-sans-semibold text-meta text-ink">Export</Text>
-              </PressableScale>
             </View>
           </Reveal>
         </Animated.View>
@@ -516,21 +549,25 @@ export function CardDetailScreen() {
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
       <TopBar onBack={back} title={card ? cardTitle(card) : undefined} titleFrom={titleFrom} scrollY={scrollY}>
-        {card ? (
-          <>
-            <IconButton icon="share" label="Share" onPress={share} />
-            <IconButton label="Add to stack" onPress={() => setPickerOpen(true)}>
-              <Animated.View style={bookmark.style}>
-                <Icon name="bookmark" size={22} color={colors.accent} />
-              </Animated.View>
-            </IconButton>
-            <IconButton icon="more-vert" label="More" onPress={() => setMenuOpen(true)} />
-          </>
-        ) : null}
+        {card ? <IconButton icon="more-vert" label="More" onPress={() => setMenuOpen(true)} /> : null}
       </TopBar>
-      <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ paddingBottom: insets.bottom + 24 }}>
+      <Animated.ScrollView
+        onScroll={onScroll}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        contentContainerStyle={{ paddingBottom: 24 }}
+      >
         {body}
       </Animated.ScrollView>
+
+      {card && primary && !noteEditing ? (
+        <ActionBar
+          primary={primary}
+          onAddToStack={() => setPickerOpen(true)}
+          onShare={share}
+          stackIconStyle={bookmark.style}
+        />
+      ) : null}
 
       <Sheet visible={menuOpen} onClose={() => setMenuOpen(false)}>
         {card ? (
