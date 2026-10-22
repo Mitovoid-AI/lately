@@ -84,3 +84,96 @@ describe("app.config.js", () => {
     expect(appConfig({ config: { name: "Lately" } })).toMatchObject({ name: "Lately" });
   });
 });
+
+describe("app.config.js release overrides", () => {
+  const saved = { ...process.env };
+  afterEach(() => {
+    process.env = { ...saved };
+  });
+  const base = { name: "Lately", version: "1.0.0", android: { package: "app.lately.android", versionCode: 1 } };
+
+  test("APP_VERSION and ANDROID_VERSION_CODE override version and versionCode", () => {
+    process.env = { ...saved, APP_VERSION: "1.0.1", ANDROID_VERSION_CODE: "42" };
+    const out = appConfig({ config: base }) as { version: string; android: Record<string, unknown> };
+    expect(out.version).toBe("1.0.1");
+    expect(out.android).toMatchObject({ package: "app.lately.android", versionCode: 42 });
+  });
+
+  test("the largest versionCode Google Play accepts is allowed", () => {
+    process.env = { ...saved, ANDROID_VERSION_CODE: "2100000000" };
+    const out = appConfig({ config: base }) as { android: Record<string, unknown> };
+    expect(out.android.versionCode).toBe(2100000000);
+  });
+
+  test("blank or unset overrides leave app.json alone", () => {
+    process.env = { ...saved, APP_VERSION: "  ", ANDROID_VERSION_CODE: "" };
+    const out = appConfig({ config: base }) as { version: string; android: Record<string, unknown> };
+    expect(out.version).toBe("1.0.0");
+    expect(out.android.versionCode).toBe(1);
+  });
+
+  test("a malformed APP_VERSION or ANDROID_VERSION_CODE fails the config", () => {
+    for (const version of ["1.0.1-beta", "v1", "1.0.0.0", "1..2"]) {
+      process.env = { ...saved, APP_VERSION: version };
+      expect(() => appConfig({ config: base })).toThrow(/APP_VERSION/);
+    }
+    for (const code of ["0", "4.5", "-3", "abc", "2100000001"]) {
+      process.env = { ...saved, ANDROID_VERSION_CODE: code };
+      expect(() => appConfig({ config: base })).toThrow(/ANDROID_VERSION_CODE/);
+    }
+  });
+
+  test("every build registers the release signing plugin after the app.json plugins", () => {
+    process.env = { ...saved, APP_VARIANT: undefined, EAS_BUILD_PROFILE: undefined, NODE_ENV: "development" };
+    const out = appConfig({ config: { ...base, plugins: ["expo-router"] } }) as { plugins: unknown[] };
+    expect(out.plugins).toEqual(["expo-router", "./plugins/with-release-signing"]);
+  });
+});
+
+describe("release signing (plugins/release-signing-gradle.js)", () => {
+  // The release-related lines of Expo SDK 57's android/app/build.gradle template.
+  const TEMPLATE = `android {
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            // Caution! In production, you need to generate your own keystore file.
+            signingConfig signingConfigs.debug
+            minifyEnabled enableMinifyInReleaseBuilds
+        }
+    }
+}
+`;
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const releaseSigning = require("../../plugins/release-signing-gradle") as {
+    applyReleaseSigning(contents: string): string;
+  };
+
+  test("release uses the upload config and debug keeps the debug key", () => {
+    const out = releaseSigning.applyReleaseSigning(TEMPLATE);
+    expect(out).toContain("signingConfigs {\n        upload {");
+    expect(out).toMatch(/release \{[\s\S]*?signingConfig signingConfigs\.upload/);
+    expect(out).not.toMatch(/release \{[\s\S]*?signingConfig signingConfigs\.debug/);
+    expect(out).toMatch(/debug \{\n\s*signingConfig signingConfigs\.debug/);
+    expect(out).toContain("gradle.taskGraph.whenReady");
+  });
+
+  test("braces stay balanced and applying it twice changes nothing", () => {
+    const once = releaseSigning.applyReleaseSigning(TEMPLATE);
+    expect((once.match(/\{/g) ?? []).length).toBe((once.match(/\}/g) ?? []).length);
+    expect(releaseSigning.applyReleaseSigning(once)).toBe(once);
+  });
+
+  test("a changed template fails loudly instead of keeping the debug key", () => {
+    expect(() => releaseSigning.applyReleaseSigning("android {\n}\n")).toThrow(/release signing lines/);
+  });
+});

@@ -1,0 +1,191 @@
+name: android-release
+# The signed Google Play bundle (app-release.aab). Start it by hand: Actions tab, android-release,
+# Run workflow. There is no push or schedule trigger, so it runs only when you ask for it.
+# The secret names and the Play Console steps are in docs/release-android.md.
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: "Version users see, such as 1.0.1. Leave empty to use the version in frontend/app.json."
+        required: false
+        default: ""
+        type: string
+      version_code_offset:
+        description: "Added to the run number to make versionCode. Leave 0 unless Google Play says the version code is too low."
+        required: false
+        default: "0"
+        type: string
+
+permissions:
+  contents: read
+
+# A release build is never cancelled half way. Start a new run instead.
+concurrency:
+  group: android-release
+  cancel-in-progress: false
+
+jobs:
+  bundle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: frontend
+    env:
+      APP_VARIANT: production
+      EXPO_PUBLIC_API_MODE: live
+      EXPO_PUBLIC_API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
+      EXPO_PUBLIC_SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+      EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+      EXPO_PUBLIC_REVENUECAT_ANDROID_KEY: ${{ vars.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Check that every secret and variable is set
+        env:
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          missing=()
+          for name in ANDROID_UPLOAD_KEYSTORE_BASE64 ANDROID_UPLOAD_STORE_PASSWORD ANDROID_UPLOAD_KEY_ALIAS ANDROID_UPLOAD_KEY_PASSWORD EXPO_PUBLIC_API_URL EXPO_PUBLIC_SUPABASE_URL EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY EXPO_PUBLIC_REVENUECAT_ANDROID_KEY; do
+            if [ -z "${!name:-}" ]; then missing+=("$name"); fi
+          done
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "These GitHub secrets or variables are empty (names only, values are never printed):" >&2
+            printf '  - %s\n' "${missing[@]}" >&2
+            echo "Add them under Settings, Secrets and variables, Actions. See docs/release-android.md, step 4." >&2
+            exit 1
+          fi
+          echo "All secrets and variables are set."
+
+      - name: Work out the version name and version code
+        env:
+          VERSION_NAME_INPUT: ${{ inputs.version_name }}
+          VERSION_CODE_OFFSET: ${{ inputs.version_code_offset }}
+          RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          if [ -n "$VERSION_NAME_INPUT" ]; then
+            if ! printf '%s' "$VERSION_NAME_INPUT" | grep -Eq '^[0-9]+(\.[0-9]+){0,2}$'; then
+              echo "version_name must look like 1.0.1 (digits and dots only)." >&2
+              exit 1
+            fi
+            echo "APP_VERSION=$VERSION_NAME_INPUT" >> "$GITHUB_ENV"
+          fi
+          if ! printf '%s' "$VERSION_CODE_OFFSET" | grep -Eq '^[0-9]+$'; then
+            echo "version_code_offset must be a whole number." >&2
+            exit 1
+          fi
+          code=$((10#$VERSION_CODE_OFFSET + 10#$RUN_NUMBER))
+          if [ "$code" -gt 2100000000 ]; then
+            echo "The version code $code is above Google Play's limit of 2100000000." >&2
+            exit 1
+          fi
+          echo "ANDROID_VERSION_CODE=$code" >> "$GITHUB_ENV"
+          echo "Version name: ${VERSION_NAME_INPUT:-from frontend/app.json}. Version code: $code."
+
+      - name: Decode the upload key and check its password
+        env:
+          ANDROID_UPLOAD_KEYSTORE_BASE64: ${{ secrets.ANDROID_UPLOAD_KEYSTORE_BASE64 }}
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          umask 077
+          printf '%s' "$ANDROID_UPLOAD_KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/lately-upload-key.jks"
+          keytool -list -keystore "$RUNNER_TEMP/lately-upload-key.jks" -storetype PKCS12 \
+            -storepass:env ANDROID_UPLOAD_STORE_PASSWORD -alias "$ANDROID_UPLOAD_KEY_ALIAS" > /dev/null
+          echo "The upload key decodes, and the store password and alias work."
+
+      - name: Install dependencies
+        run: npm ci
+
+      # android/ is generated from app.json (Continuous Native Generation), never committed.
+      - name: Generate the Android project
+        run: npx expo prebuild --platform android --no-install --clean
+
+      - name: Check that release signing uses the upload key
+        run: |
+          set -euo pipefail
+          grep -q 'lately-release-signing' android/app/build.gradle
+          grep -q 'signingConfig signingConfigs.upload' android/app/build.gradle
+          echo "Release signing is set to the upload key."
+
+      # All ABIs go in the bundle. Google Play splits it per device.
+      - name: Build the signed bundle
+        working-directory: frontend/android
+        env:
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+          ANDROID_UPLOAD_KEY_PASSWORD: ${{ secrets.ANDROID_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          ./gradlew :app:bundleRelease --no-daemon \
+            -Pandroid.injected.signing.store.file="$RUNNER_TEMP/lately-upload-key.jks" \
+            -Pandroid.injected.signing.store.password="$ANDROID_UPLOAD_STORE_PASSWORD" \
+            -Pandroid.injected.signing.key.alias="$ANDROID_UPLOAD_KEY_ALIAS" \
+            -Pandroid.injected.signing.key.password="$ANDROID_UPLOAD_KEY_PASSWORD"
+
+      - name: Check the bundle is signed with the upload key
+        env:
+          ANDROID_UPLOAD_STORE_PASSWORD: ${{ secrets.ANDROID_UPLOAD_STORE_PASSWORD }}
+          ANDROID_UPLOAD_KEY_ALIAS: ${{ secrets.ANDROID_UPLOAD_KEY_ALIAS }}
+        run: |
+          set -euo pipefail
+          aab="android/app/build/outputs/bundle/release/app-release.aab"
+          test -s "$aab" || { echo "app-release.aab was not produced." >&2; exit 1; }
+          key="$RUNNER_TEMP/lately-upload-key.jks"
+          # Write keytool's output to files first: grep stopping early on a pipe can break keytool.
+          keytool -list -v -keystore "$key" -storetype PKCS12 \
+            -storepass:env ANDROID_UPLOAD_STORE_PASSWORD -alias "$ANDROID_UPLOAD_KEY_ALIAS" > "$RUNNER_TEMP/key-info.txt"
+          keytool -printcert -jarfile "$aab" > "$RUNNER_TEMP/bundle-info.txt"
+          expected=$(grep -m1 'SHA256:' "$RUNNER_TEMP/key-info.txt" | sed 's/^[[:space:]]*SHA256: *//')
+          actual=$(grep -m1 'SHA256:' "$RUNNER_TEMP/bundle-info.txt" | sed 's/^[[:space:]]*SHA256: *//')
+          if [ -z "$expected" ] || [ "$expected" != "$actual" ]; then
+            echo "The bundle is not signed with the upload key (the certificate fingerprints differ)." >&2
+            exit 1
+          fi
+          {
+            echo "## Lately release bundle"
+            echo "- Version name: ${APP_VERSION:-from frontend/app.json}"
+            echo "- Version code: $ANDROID_VERSION_CODE"
+            echo "- Upload key SHA-256: $expected"
+            echo "- app-release.aab SHA-256: $(sha256sum "$aab" | cut -d' ' -f1)"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "The bundle is signed with the upload key."
+
+      - name: Upload the bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: lately-android-release-${{ env.ANDROID_VERSION_CODE }}
+          path: frontend/android/app/build/outputs/bundle/release/app-release.aab
+          retention-days: 30
+          if-no-files-found: error
+
+      # Only exists when R8 minification is switched on. Keep it: it decodes crash reports.
+      - name: Upload the R8 mapping file, if one was made
+        uses: actions/upload-artifact@v4
+        with:
+          name: lately-android-mapping-${{ env.ANDROID_VERSION_CODE }}
+          path: frontend/android/app/build/outputs/mapping/release/mapping.txt
+          retention-days: 30
+          if-no-files-found: ignore
+
+      - name: Delete the decoded upload key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/lately-upload-key.jks" "$RUNNER_TEMP/key-info.txt" "$RUNNER_TEMP/bundle-info.txt"

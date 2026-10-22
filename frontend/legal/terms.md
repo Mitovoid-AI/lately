@@ -1,6 +1,6 @@
 # Terms of Service
 
-Last updated: 21 October 2026
+Last updated: October 22, 2026
 
 These terms cover your use of the Lately app and service. By creating an account or using Lately, you agree to them.
 

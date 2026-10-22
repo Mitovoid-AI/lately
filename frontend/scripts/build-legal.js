@@ -1,5 +1,5 @@
 // Bundles legal/*.md into src/legal/documents.ts (Metro can't import .md as text).
-// Run after editing either document: node scripts/build-legal.js
+// Run after editing either document: node scripts/build-legal.js (it also rebuilds ../public-site/)
 // src/legal/__tests__/legal.test.tsx fails if the bundle and the .md files drift apart.
 const fs = require("fs");
 const path = require("path");
@@ -17,3 +17,7 @@ for (const [doc, title] of Object.entries(docs)) {
 out += "};\n";
 fs.writeFileSync(path.join(root, "src", "legal", "documents.ts"), out);
 console.log("wrote src/legal/documents.ts");
+
+// The public web pages Google Play links to (privacy, terms, account deletion) come from the
+// same markdown: ../public-site/, built by scripts/build-public-site.js.
+require("./build-public-site").buildPublicSite();
