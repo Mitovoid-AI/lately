@@ -69,6 +69,19 @@ const STAGE_STEP: Record<SaveStage, number> = {
   finalize: 2,
 };
 
+/** Shown while a save is pending and the server has not named its stage (or names one this app does not know). */
+export const STAGE_FALLBACK = "Getting details";
+
+/**
+ * What the enrich job is doing right now, in the tracker's own words. Home's pending tile and the
+ * card detail use this so every place says the same thing: Getting the reel, Listening to it,
+ * Finding places and steps. With no stage it is "Getting details".
+ */
+export function stageLabel(stage: SaveStage | null | undefined): string {
+  if (!stage || !(stage in STAGE_STEP)) return STAGE_FALLBACK;
+  return STEPS[STAGE_STEP[stage]].doing;
+}
+
 /**
  * The four named steps for a save. A pending save is on the step its stage belongs to (the first
  * one when the server has not said, as an older server does not); an enriched or partial card has
@@ -76,18 +89,21 @@ const STAGE_STEP: Record<SaveStage, number> = {
  */
 export function trackerSteps(status: ReelStatus, stage: SaveStage | null | undefined): TrackerStep[] {
   const finished = status !== "pending";
-  const current = finished ? STEPS.length : stage ? STAGE_STEP[stage] : 0;
+  const current = finished ? STEPS.length : stage && stage in STAGE_STEP ? STAGE_STEP[stage] : 0;
   return STEPS.map((s, i) => {
     const state: StepState = i < current ? "done" : i === current ? "active" : "todo";
     return { key: s.key, label: state === "done" ? s.done : s.doing, state };
   });
 }
 
-export const TRACKER_ESTIMATE = "Usually about 30 s";
+// No time is promised here: nothing measures how long a card takes in production.
+export const TRACKER_ESTIMATE = "Lately is reading the reel. You can close this.";
 export const TRACKER_LATE = "Almost there";
 export const TRACKER_SLOW = "Still working. You can close this; the card keeps filling in.";
 export const TRACKER_UNREACHABLE = "Can't check progress right now. The card keeps filling in.";
-export const TRACKER_PARTIAL = "Lately could only read part of this reel. Open the card to try again.";
+/** One wording for a card that is only partly filled in, here and on the card itself. */
+export const PARTIAL_NOTICE = "Lately could only read part of this reel.";
+export const TRACKER_PARTIAL = `${PARTIAL_NOTICE} Open the card to try again.`;
 
 /** The one line under the steps. */
 export function trackerNote(o: {

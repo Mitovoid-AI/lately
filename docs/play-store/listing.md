@@ -22,8 +22,8 @@ blocks below, not estimated.
 |---|---|---|
 | App name | 24 | 30 |
 | Short description | 71 | 80 |
-| Full description | 2,097 | 4,000 |
-| Release notes 1.0.0 | 324 | 500 |
+| Full description | 2,096 | 4,000 |
+| Release notes 1.0.0 | 323 | 500 |
 
 ## App name
 
@@ -52,7 +52,7 @@ Lately is for the reels you save and can never find again. Share a reel from Ins
 How it works
 • Share a reel to Lately from Instagram's share menu, or paste a link.
 • Add a short note on why you saved it, if you like.
-• Lately reads the reel's public caption, audio and thumbnail and writes a card: a title, a summary, steps, places, tags and a category.
+• Lately reads the reel's public caption, audio and thumbnail and writes a card: a title, a summary, tips, places, tags and a category.
 • Search by a word, a place, a name or what the reel was about. Search copes with typos and different spellings.
 
 Keep things in order
@@ -116,7 +116,7 @@ Notes on the text:
 
 <!-- field:notes -->
 ```text
-First release. Share a reel from Instagram, or paste a link, and Lately turns it into a card with a title, summary, steps, places and tags. Find it later by typing what you remember, group saves into stacks, and download or delete your data at any time. The free plan includes 20 saves a month; Lately Pro removes the limit.
+First release. Share a reel from Instagram, or paste a link, and Lately turns it into a card with a title, summary, tips, places and tags. Find it later by typing what you remember, group saves into stacks, and download or delete your data at any time. The free plan includes 20 saves a month; Lately Pro removes the limit.
 ```
 
 ## Category, tags and contact details
@@ -152,7 +152,7 @@ logo in screenshots and the feature graphic. Each image takes alt text of 140 ch
 less that does not start with "Image of" or "Photo of"; suggested:
 
 1. Home: "Lately home screen with saved reels shown as cards and a search field"
-2. Card: "A saved reel turned into a card with a summary, steps, places and tags"
+2. Card: "A saved reel turned into a card with a summary, tips, places and tags"
 3. Search: "Search results for a half-remembered phrase among saved reels"
 4. Save: "Saving a shared reel with an optional note on why it was saved"
 5. Stacks: "Saved reels grouped into stacks such as cafes to try"

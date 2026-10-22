@@ -13,7 +13,7 @@ feed is empty.
 
 Sections (empty ones are left out, at most 10 saves each): "Recently saved",
 "No note yet", one "Revisit · <category>" row per category (biggest first),
-"Forgotten gems" (saved over a month ago).
+"From over a month ago".
 """
 
 from __future__ import annotations
@@ -40,8 +40,8 @@ _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
 
 
 def date_label(now: datetime) -> str:
-    """'Saturday, 10 Oct' — the app's curatedDate() format (server date, UTC)."""
-    return f"{_DAYS[now.weekday()]}, {now.day} {_MONTHS[now.month - 1]}"
+    """'Saturday, Oct 10' — the app's curatedDate() format (US order; server date, UTC)."""
+    return f"{_DAYS[now.weekday()]}, {_MONTHS[now.month - 1]} {now.day}"
 
 
 def _pick_cluster(items: Sequence[tuple[SaveOut, list[str]]]
@@ -113,12 +113,12 @@ def _sections(saves: list[SaveOut], now: datetime) -> list[CuratedSection]:
                                       saves=items[:_SECTION_MAX]))
 
     add("row", "Recently saved", None, saves)
-    add("list", "No note yet", "Add a why so search can find them",
+    add("list", "No note yet", "Add a note so search can find them",
         [s for s in saves if s.note is None and s.status != "pending"])
     cats = Counter(s.category for s in saves if s.category)
     for cat, _ in sorted(cats.items(), key=lambda kv: (-kv[1], kv[0])):
         add("row", f"Revisit · {cat}", None, [s for s in saves if s.category == cat])
-    add("list", "Forgotten gems", "Saved over a month ago",
+    add("list", "From over a month ago", None,
         [s for s in saves if s.created_at < now - timedelta(days=30)])
     return out
 

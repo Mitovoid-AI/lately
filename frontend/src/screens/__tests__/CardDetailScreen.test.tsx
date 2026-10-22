@@ -4,6 +4,8 @@ import { Linking } from "react-native";
 import { buildDemoSeed } from "../../api/demo-data";
 import { deriveFacts, mapsUrl } from "../../components/detail/facts";
 import { savedAgo } from "../../lib/dates";
+import { displayLink } from "../../lib/instagram";
+import { TRACKER_ESTIMATE } from "../../lib/saveOutcome";
 import { shareOrCopy } from "../../lib/share";
 import { NOW } from "../../test/fixtures";
 import { demoApi, renderWithProviders } from "../../test/render";
@@ -45,11 +47,36 @@ test("a ready card shows everything the reel has", async () => {
   expect(screen.getByText(savedAgo(MOMO.created_at, NOW))).toBeTruthy();
   expect(screen.getByText(MOMO.category!)).toBeTruthy(); // the tinted category pill
   expect(screen.getByText(MOMO.summary!)).toBeTruthy();
-  expect(screen.getByText("Good to know")).toBeTruthy();
+  expect(screen.getByText("Tips")).toBeTruthy();
+  expect(screen.queryByText("Good to know")).toBeNull();
   // The place shows as a fact chip and as its own card.
   expect(screen.getAllByText(MOMO.places[0].name).length).toBeGreaterThan(0);
   expect(screen.getByText(`#${MOMO.tags![0]}`)).toBeTruthy();
   expect(screen.getByText(`“${MOMO.note}”`)).toBeTruthy();
+  // Gone: the "Saved to Lately via Share" line, which was wrong for a pasted link.
+  expect(screen.queryByText(/Saved to/)).toBeNull();
+});
+
+test("a step shown as a chip is not listed again under Tips, and Directions is the one way to Maps", async () => {
+  await open("s-momo");
+  await screen.findByText(MOMO.title!);
+  const facts = deriveFacts(MOMO).filter((f) => f.kind !== "place");
+  expect(facts.length).toBeGreaterThan(0);
+  for (const fact of facts) expect(screen.getAllByText(fact.text)).toHaveLength(1);
+  const listed = MOMO.steps!.filter((step) => !facts.some((f) => f.text === step));
+  expect(listed.length).toBeGreaterThan(0);
+  for (const step of listed) expect(screen.getByText(step)).toBeTruthy();
+  expect(screen.queryByText("Open in Maps")).toBeNull();
+  expect(screen.queryByLabelText(/in Maps/)).toBeNull();
+  expect(screen.getAllByText("Directions")).toHaveLength(1);
+});
+
+test("a tag is a link that searches your saves for it", async () => {
+  await open("s-momo");
+  const tag = MOMO.tags![0];
+  await fireEvent.press(await screen.findByText(`#${tag}`));
+  expect(mockRouter.push).toHaveBeenCalledWith(`/search?q=${encodeURIComponent(tag)}`);
+  expect(screen.getByRole("link", { name: `Search your saves for ${tag}` })).toBeTruthy();
 });
 
 test("facts come first: the place, a price and a tip appear above the summary", async () => {
@@ -60,18 +87,33 @@ test("facts come first: the place, a price and a tip appear above the summary", 
   for (const fact of facts) expect(screen.getAllByText(fact.text).length).toBeGreaterThan(0);
 });
 
-test("a processing card shows the tracker, no steps, and Open in Instagram as the main action", async () => {
+test("a processing card is New reel with its link as meta, the named steps, and Open in Instagram as the main action", async () => {
   await open("s-pending");
-  expect(await screen.findByText("GETTING DETAILS")).toBeTruthy();
-  expect(screen.getByText("Getting the preview")).toBeTruthy();
-  expect(screen.queryByText("Good to know")).toBeNull();
+  expect(await screen.findByText("New reel")).toBeTruthy();
+  const pending = seed.find((s) => s.id === "s-pending")!;
+  const link = screen.getByText(displayLink(pending.source_url));
+  expect(link.props.ellipsizeMode).toBe("middle");
+  expect(link.props.numberOfLines).toBe(1);
+  // No eyebrow: the steps say it, with a state word each, in the words Home and the save sheet use.
+  expect(screen.queryByText("GETTING DETAILS")).toBeNull();
+  expect(screen.queryByText("Getting details…")).toBeNull();
+  expect(screen.getByLabelText("Got the reel, done")).toBeTruthy();
+  expect(screen.getByLabelText("Listening to it, in progress")).toBeTruthy();
+  expect(screen.getByLabelText("Finding places and steps, up next")).toBeTruthy();
+  expect(screen.getByLabelText("Card ready, up next")).toBeTruthy();
+  expect(screen.getByText(TRACKER_ESTIMATE)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Open card" })).toBeNull();
+  expect(screen.queryByText("Getting the preview")).toBeNull();
+  expect(screen.queryByText("Tips")).toBeNull();
   expect(screen.getByText("Open in Instagram")).toBeTruthy();
   expect(screen.queryByText("Directions")).toBeNull();
 });
 
 test("a partial card says the preview is unavailable and shows the caption", async () => {
   await open("s-partial");
-  expect(await screen.findByText("PREVIEW UNAVAILABLE")).toBeTruthy();
+  expect(await screen.findByText("Preview unavailable")).toBeTruthy();
+  expect(screen.queryByText("PREVIEW UNAVAILABLE")).toBeNull();
+  expect(screen.getByText("Lately could only read part of this reel. It can try again.")).toBeTruthy();
   // first caption line is the title; the full caption is shown below it
   const firstLine = PARTIAL.caption!.split("\n")[0];
   expect(screen.getAllByText(firstLine).length).toBeGreaterThan(0);
@@ -101,7 +143,8 @@ test("delete asks first, then removes the card and goes back", async () => {
   await screen.findByText(MOMO.title!);
   await fireEvent.press(screen.getByLabelText("More"));
   await fireEvent.press(screen.getByText("Delete"));
-  expect(screen.getByText("Delete this reel?")).toBeTruthy();
+  expect(screen.getByText("Delete this save?")).toBeTruthy();
+  expect(screen.getByText("Its card and note leave your saves and stacks. The reel stays on Instagram.")).toBeTruthy();
   await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
   expect(deleteSave).not.toHaveBeenCalled();
   await fireEvent.press(screen.getByLabelText("More"));
@@ -204,10 +247,10 @@ test("a partial card can retry getting its details", async () => {
   const api = demoApi();
   const retry = jest.spyOn(api, "retryEnrichment");
   await open("s-partial", api);
-  expect(await screen.findByText("PREVIEW UNAVAILABLE")).toBeTruthy();
+  expect(await screen.findByText("Preview unavailable")).toBeTruthy();
   await fireEvent.press(screen.getByText("Try getting details again"));
   expect(retry).toHaveBeenCalledWith("s-partial");
-  expect(await screen.findByText("GETTING DETAILS")).toBeTruthy();
+  expect(await screen.findByLabelText(/, in progress$/)).toBeTruthy();
 });
 
 test("a card still processing after 10 minutes offers Try again", async () => {
@@ -221,9 +264,37 @@ test("a card still processing after 10 minutes offers Try again", async () => {
   expect(retry).toHaveBeenCalledWith("s-pending");
 });
 
+test("a stuck card says so in the tracker too", async () => {
+  const base = demoApi();
+  // Its own id: the retry test above marks "s-pending" as retried (module state), which would
+  // restart this card's age and make it young again.
+  const stuck = {
+    ...(await base.getSave("s-pending")),
+    id: "s-stuck",
+    created_at: new Date(NOW - 11 * 60_000).toISOString(),
+  };
+  await open("s-stuck", { ...base, getSave: jest.fn(async () => stuck) });
+  expect(await screen.findByText("Still working. You can close this; the card keeps filling in.")).toBeTruthy();
+});
+
+test("the caption toggle reports whether it is open", async () => {
+  await open("s-momo");
+  await screen.findByText(MOMO.title!);
+  const toggle = screen.getByRole("button", { name: "Original caption" });
+  expect(toggle.props.accessibilityState).toMatchObject({ expanded: false });
+  await fireEvent.press(toggle);
+  expect(screen.getByRole("button", { name: "Original caption" }).props.accessibilityState).toMatchObject({ expanded: true });
+});
+
+test("the card's title is a heading", async () => {
+  await open("s-momo");
+  const title = await screen.findByText(MOMO.title!);
+  expect(title.props.accessibilityRole).toBe("header");
+});
+
 test("a young processing card does not offer a retry", async () => {
   await open("s-pending");
-  expect(await screen.findByText("GETTING DETAILS")).toBeTruthy();
+  expect(await screen.findByText("New reel")).toBeTruthy();
   expect(screen.queryByText("Try getting details again")).toBeNull();
 });
 

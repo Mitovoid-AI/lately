@@ -1,5 +1,6 @@
 import { act, renderHook, waitFor } from "@testing-library/react-native";
 import type { ReactNode } from "react";
+import { AccessibilityInfo } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 
 import { ApiError, type ExportDownload, type LatelyApi } from "../../api/contract";
@@ -45,6 +46,17 @@ test("requests an export, polls while it is queued, then is ready", async () => 
   await waitFor(() => expect(result.current.phase).toBe("ready"));
   expect(api.requestExport).toHaveBeenCalledTimes(1);
   expect(api.downloadExport).toHaveBeenCalledTimes(3);
+});
+
+test("a screen reader is told when the archive is ready", async () => {
+  const announce = jest.spyOn(AccessibilityInfo, "announceForAccessibility");
+  const { result } = await setup([{ status: "queued" }, READY]);
+  await act(() => result.current.start());
+  expect(announce).not.toHaveBeenCalled();
+  await waitFor(() => expect(result.current.phase).toBe("ready"));
+  expect(announce).toHaveBeenCalledTimes(1);
+  expect(announce).toHaveBeenCalledWith("Your archive is ready");
+  announce.mockRestore();
 });
 
 test("download writes the file and opens the share sheet", async () => {

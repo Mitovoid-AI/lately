@@ -58,7 +58,7 @@ export function SearchFrontDoor({
       onPress={onPress}
       scaleTo={0.985}
       highlightColor={colors.hairline}
-      className="h-[52px] flex-row items-center rounded-2xl bg-raised px-4"
+      className="h-[52px] flex-row items-center rounded-2xl border border-control bg-raised px-4"
     >
       <Icon name="search" size={20} color={colors.ink2} />
       <View className="ml-3 flex-1 flex-row items-center">

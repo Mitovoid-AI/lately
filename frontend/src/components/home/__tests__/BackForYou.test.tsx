@@ -2,7 +2,7 @@ import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
 import type { CuratedFeed, LatelyApi, Save } from "../../../api/contract";
 import { demoApi, renderWithProviders } from "../../../test/render";
-import { BackForYou, memoriesFrom } from "../BackForYou";
+import { BackForYou, memoriesFrom, sentence } from "../BackForYou";
 
 /** A ready save with a picture; enough for a tile. */
 function save(id: string, over: Partial<Save> = {}): Save {
@@ -41,6 +41,14 @@ function feed(over: Partial<CuratedFeed> = {}): CuratedFeed {
     ...over,
   };
 }
+
+describe("sentence", () => {
+  test("the feed's shouted labels read as a sentence", () => {
+    expect(sentence("THIS WEEK")).toBe("This week");
+    expect(sentence("JUST SAVED")).toBe("Just saved");
+    expect(sentence("")).toBe("");
+  });
+});
 
 describe("memoriesFrom", () => {
   test("the hero comes first, then saves from sections that are real memories", () => {
@@ -111,12 +119,14 @@ describe("the row", () => {
     const onOpen = jest.fn();
     const onSeeAll = jest.fn();
     await renderWithProviders(<BackForYou onOpen={onOpen} onSeeAll={onSeeAll} />);
-    expect(await screen.findByText("Back for you")).toBeTruthy();
-    await fireEvent.press(screen.getByRole("button", { name: "See all picks" }));
+    const title = await screen.findByText("Back for you");
+    expect(title.props.accessibilityRole).toBe("header");
+    await fireEvent.press(screen.getByRole("button", { name: "See all" }));
     expect(onSeeAll).toHaveBeenCalledTimes(1);
-    // The hero pick is the first tile: a group of cafes opens the search that lists them.
+    // The hero pick is the first tile: a group of saves opens the search that lists them.
+    const { hero } = await demoApi().getCurated();
     await fireEvent.press(screen.getAllByRole("button")[1]);
-    expect(onOpen).toHaveBeenCalledWith("/search?q=cafe");
+    expect(onOpen).toHaveBeenCalledWith(`/search?q=${encodeURIComponent(hero.query)}`);
   });
 
   test("a failed feed shows nothing, not an error", async () => {

@@ -1,20 +1,22 @@
 import { fireEvent, screen } from "@testing-library/react-native";
 
+import { TRACKER_ESTIMATE } from "../../../lib/saveOutcome";
 import { renderWithProviders } from "../../../test/render";
 import { Celebrate, SavedCheck } from "../Celebrate";
 import { SaveTracker } from "../SaveTracker";
 
-test("a pending card shows its four steps with the real one in progress, a rough time, and no Open card yet", async () => {
+test("a pending card shows its four steps with the real one in progress, what Lately is doing, and no Open card yet", async () => {
   const onOpenCard = jest.fn();
   await renderWithProviders(<SaveTracker status="pending" stage="vision" onOpenCard={onOpenCard} />);
   expect(screen.getByLabelText("Got the reel, done")).toBeTruthy();
   expect(screen.getByLabelText("Listening to it, in progress")).toBeTruthy();
   expect(screen.getByLabelText("Finding places and steps, up next")).toBeTruthy();
   expect(screen.getByLabelText("Card ready, up next")).toBeTruthy();
-  expect(screen.getByText("Usually about 30 s")).toBeTruthy();
+  expect(screen.getByText(TRACKER_ESTIMATE)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Open card" })).toBeNull();
-  // No percentage anywhere: only named steps and a rough time.
+  // No percentage and no time anywhere: only named steps.
   expect(screen.queryByText(/%/)).toBeNull();
+  expect(screen.queryByText(/\d+ ?s/)).toBeNull();
 });
 
 test("late stages say almost there", async () => {
@@ -31,7 +33,7 @@ test("a slow card says it keeps filling in", async () => {
 test("a card whose last check failed does not claim a time", async () => {
   await renderWithProviders(<SaveTracker status="pending" stage="vision" unreachable onOpenCard={jest.fn()} />);
   expect(screen.getByText("Can't check progress right now. The card keeps filling in.")).toBeTruthy();
-  expect(screen.queryByText("Usually about 30 s")).toBeNull();
+  expect(screen.queryByText(TRACKER_ESTIMATE)).toBeNull();
 });
 
 test("a ready card finishes every step and offers Open card", async () => {
@@ -42,6 +44,12 @@ test("a ready card finishes every step and offers Open card", async () => {
   expect(screen.getByText("Your card is ready.")).toBeTruthy();
   await fireEvent.press(screen.getByRole("button", { name: "Open card" }));
   expect(onOpenCard).toHaveBeenCalledTimes(1);
+});
+
+test("without an Open card handler (the card's own screen) a ready tracker has no button", async () => {
+  await renderWithProviders(<SaveTracker status="enriched" stage={null} />);
+  expect(screen.getByText("Your card is ready.")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Open card" })).toBeNull();
 });
 
 test("the first card says so", async () => {
@@ -63,5 +71,8 @@ test("the celebration and the plain check are for the eye only: hidden from scre
     </>,
   );
   const tree = JSON.stringify(screen.toJSON());
-  expect(tree.match(/"accessibilityElementsHidden":true/g)).toHaveLength(2);
+  // Each of the two hides itself and everything inside it. (Icon glyphs hide themselves too, with
+  // plain "no", so they are not counted here.)
+  expect(tree.match(/"importantForAccessibility":"no-hide-descendants"/g)).toHaveLength(2);
+  expect(tree.match(/"accessibilityElementsHidden":true/g)?.length).toBeGreaterThanOrEqual(2);
 });

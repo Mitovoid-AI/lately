@@ -250,7 +250,8 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
         resets_on: next.toISOString().slice(0, 10),
         total_saves: saves.length,
         stacks_count: stacks.length,
-        member_since: "2023-10-01",
+        // A month ago: the demo account is new, so it never claims a history it does not have.
+        member_since: new Date(now() - 30 * DAY).toISOString().slice(0, 10),
         // Lately never connects an Instagram account (saves come from the share sheet), so the
         // demo shows only how this person signs in.
         connected_accounts: [{ provider: "google", label: DEMO_USER.email, status: "secured" }],
@@ -366,27 +367,63 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
     async getCurated(): Promise<CuratedFeed> {
       await wait();
       const all = sorted().map(present);
+      // The same shapes the real feed sends (backend/app/routers/curated.py): a hero labelled THIS
+      // WEEK, REVISIT or JUST SAVED whose title names a tag and its saves, then rows and lists
+      // titled "Revisit · <category>" or "From over a month ago". The real feed picks its hero
+      // from the biggest tag or category; the demo pins the cafe tag so the screenshots and the
+      // tests always get the same hero.
       const isCafe = (s: SaveDetail) =>
         s.category === "Food & Places" && (!!s.note?.includes("cafe") || !!s.tags?.includes("cafe"));
       const cafes = all.filter(isCafe);
-      const dev = all.filter((s) => s.category === "Dev & Tools");
-      const hike = all.filter((s) => s.note === "hike in june" && s.status === "enriched");
+      const inCategory = (c: SaveDetail["category"]) => all.filter((s) => s.category === c);
       const old = all.filter((s) => now() - Date.parse(s.created_at) > 30 * DAY);
-      return {
-        date_label: curatedDate(now()),
-        hero: {
-          label: "THIS WEEKEND",
-          title: `${cafes.length} cafes you saved and never visited`,
+
+      let hero: CuratedFeed["hero"];
+      if (all.length === 0) {
+        hero = {
+          label: "START HERE",
+          title: "Your saves will show up here",
+          subtitle: "Share a reel to Lately from Instagram to begin",
+          image_url: null,
+          save_ids: [],
+          query: "",
+        };
+      } else if (cafes.length >= 2) {
+        const fresh = now() - Date.parse(cafes[0].created_at) < 7 * DAY;
+        hero = {
+          label: fresh ? "THIS WEEK" : "REVISIT",
+          title: `${cafes.length} saves about cafe`,
           subtitle: "Food & Places · saved over the last month",
-          image_url: IMAGES.kyotoCafe,
+          image_url: cafes.find((s) => s.thumbnail_url)?.thumbnail_url ?? null,
           save_ids: cafes.map((s) => s.id),
           query: "cafe",
-        },
+        };
+      } else {
+        const recent = all.slice(0, 20);
+        hero = {
+          label: "JUST SAVED",
+          title: `${recent.length} new ${recent.length === 1 ? "save" : "saves"}`,
+          subtitle: "Cards fill in as each reel is read",
+          image_url: recent.find((s) => s.thumbnail_url)?.thumbnail_url ?? null,
+          save_ids: recent.map((s) => s.id),
+          query: "",
+        };
+      }
+
+      const section = (kind: "row" | "list", title: string, subtitle: string | null, saves: SaveDetail[]) => ({
+        kind,
+        title,
+        subtitle,
+        saves: saves.slice(0, 10).map(toSave),
+      });
+      return {
+        date_label: curatedDate(now()),
+        hero,
         sections: [
-          { kind: "row", title: "Revisit · Dev & Tools", subtitle: null, saves: dev.map(toSave) },
-          { kind: "row", title: "From your note “hike in june”", subtitle: null, saves: hike.map(toSave) },
-          { kind: "list", title: "Forgotten gems", subtitle: "Saved over a month ago", saves: old.map(toSave) },
-        ],
+          section("row", "Revisit · Food & Places", null, inCategory("Food & Places")),
+          section("row", "Revisit · Dev & Tools", null, inCategory("Dev & Tools")),
+          section("list", "From over a month ago", null, old),
+        ].filter((x) => x.saves.length > 0),
       };
     },
 

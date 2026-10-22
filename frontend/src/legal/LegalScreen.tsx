@@ -37,12 +37,14 @@ export function LegalScreen() {
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
       <View className="flex-row items-center px-1" style={{ height: HEADER_HEIGHT }}>
         <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={() => goBack(router)} />
-        <Text className="font-sans-semibold text-body text-ink">Legal</Text>
+        <Text numberOfLines={1} maxFontSizeMultiplier={1.3} className="flex-1 font-sans-semibold text-body text-ink">
+          Legal
+        </Text>
         <ScrollHairline scrollY={scrollY} />
       </View>
       <Animated.ScrollView onScroll={onScroll} scrollEventThrottle={16} contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
         <Reveal>
-          <View className="w-full max-w-[640px] self-center px-5 pt-4">
+          <View className="w-full max-w-[640px] self-center px-4 pt-4">
             {blocks.map((b, i) =>
               b.kind === "h1" ? (
                 <Text key={i} accessibilityRole="header" className="font-display text-display-lg text-ink">
@@ -54,7 +56,7 @@ export function LegalScreen() {
                 </Text>
               ) : b.kind === "li" ? (
                 <View key={i} className="mt-3 flex-row">
-                  <Text className="w-5 font-sans text-body text-accent-text">•</Text>
+                  <Text className="w-5 font-sans text-body text-ink-2">•</Text>
                   <Text className="flex-1 font-sans text-body text-ink-2">
                     <Runs runs={b.text} />
                   </Text>

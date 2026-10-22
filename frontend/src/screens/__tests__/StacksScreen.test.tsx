@@ -23,11 +23,31 @@ beforeEach(() => {
 });
 afterEach(() => jest.useRealTimers());
 
-test("lists every stack with its count", async () => {
+test("lists every stack with its count and its category as a word, not only a colour", async () => {
   await renderWithProviders(<StacksScreen />);
   for (const name of NAMES) expect(await screen.findByText(name)).toBeTruthy();
-  expect(screen.getByText("4 reels · updated 2d")).toBeTruthy();
+  expect(screen.getByText("4 saves · Food · updated 2d")).toBeTruthy();
   expect(screen.getByText("Your saves, grouped your way.")).toBeTruthy();
+  // The tile reads as one thing to a screen reader, category included.
+  expect(screen.getByLabelText("Food and coffee, 4 saves · Food · updated 2d")).toBeTruthy();
+  expect(screen.getByText("Stacks").props.accessibilityRole).toBe("header");
+});
+
+test("with stacks the header button is the way to make one: no dashed tile", async () => {
+  await renderWithProviders(<StacksScreen />);
+  await screen.findByText("Food and coffee");
+  expect(screen.queryByLabelText("New stack")).toBeNull();
+  expect(screen.getByLabelText("Create a new stack")).toBeTruthy();
+});
+
+test("with no stacks the dashed tile shows, with one line on what a stack is", async () => {
+  const api = { ...demoApi(), listStacks: async () => [] };
+  await renderWithProviders(<StacksScreen />, { api });
+  const tile = await screen.findByLabelText("New stack");
+  expect(screen.getByText("Stacks group saves. Make one to start.")).toBeTruthy();
+  expect(screen.queryByText("Create collection")).toBeNull();
+  await fireEvent.press(tile);
+  expect(screen.getByRole("button", { name: "Create" })).toBeTruthy();
 });
 
 test("a new stack can be created", async () => {
@@ -39,7 +59,7 @@ test("a new stack can be created", async () => {
   await fireEvent.changeText(screen.getByPlaceholderText("e.g. Cafes to try"), "Trip");
   await fireEvent.press(screen.getByText("Create"));
   expect(await screen.findByText("Trip")).toBeTruthy();
-  expect(screen.getByText("0 reels · updated Just now")).toBeTruthy();
+  expect(screen.getByText("0 saves · updated Just now")).toBeTruthy();
 });
 
 test("a tile opens the stack", async () => {
@@ -48,11 +68,11 @@ test("a tile opens the stack", async () => {
   expect(mockRouter.push).toHaveBeenCalledWith("/stack/st-cafes");
 });
 
-test("stack detail lists its reels", async () => {
+test("stack detail lists its saves", async () => {
   mockParams = { id: "st-cafes" };
   await renderWithProviders(<StackDetailScreen />);
   expect(await screen.findByText("Hole-in-the-wall momo spot in Jackson Heights")).toBeTruthy();
-  expect(screen.getByText("4 reels")).toBeTruthy();
+  expect(screen.getByText("4 saves")).toBeTruthy();
 });
 
 test("an empty stack says how to add to it", async () => {
@@ -60,7 +80,7 @@ test("an empty stack says how to add to it", async () => {
   const trip = await api.createStack("Trip");
   mockParams = { id: trip.id };
   await renderWithProviders(<StackDetailScreen />, { api });
-  expect(await screen.findByText("No reels here yet. Add one from a card's bookmark.")).toBeTruthy();
+  expect(await screen.findByText("No saves here yet. Open a card and tap Add to stack.")).toBeTruthy();
 });
 
 test("a failed stacks load shows an error with retry", async () => {
@@ -84,16 +104,16 @@ test("pressing Enter twice creates one stack", async () => {
   expect(createStack).toHaveBeenCalledTimes(1);
 });
 
-test("a reel can be removed from a stack in edit mode", async () => {
+test("a save can be removed from a stack in edit mode", async () => {
   mockParams = { id: "st-cafes" };
   const api = demoApi();
   const remove = jest.spyOn(api, "removeFromStack");
   await renderWithProviders(<StackDetailScreen />, { api });
   await screen.findByText("Hole-in-the-wall momo spot in Jackson Heights");
   await fireEvent.press(screen.getByText("Edit"));
-  await fireEvent.press(screen.getByLabelText("Remove Hole-in-the-wall momo spot in Jackson Heights"));
+  await fireEvent.press(screen.getByLabelText("Remove Hole-in-the-wall momo spot in Jackson Heights from this stack"));
   expect(remove).toHaveBeenCalledWith("st-cafes", "s-momo");
-  expect(await screen.findByText("3 reels")).toBeTruthy();
+  expect(await screen.findByText("3 saves")).toBeTruthy();
   expect(screen.queryByText("Hole-in-the-wall momo spot in Jackson Heights")).toBeNull();
 });
 

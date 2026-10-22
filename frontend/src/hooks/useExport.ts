@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { AccessibilityInfo } from "react-native";
 
 import { ApiError, type ExportDownload } from "../api/contract";
 import { useApi } from "../api/index";
@@ -7,6 +8,9 @@ import { shareExportFile } from "../lib/exportFile";
 import { haptic } from "../lib/haptics";
 
 export type ExportPhase = "idle" | "preparing" | "ready" | "sharing";
+
+/** What the row says once the file is built; also spoken, since nothing else on screen announces it. */
+const READY_TEXT = "Your archive is ready";
 
 type ReadyExport = Extract<ExportDownload, { status: "ready" }>;
 
@@ -63,6 +67,7 @@ export function useExport({ pollMs = 3000, giveUpMs = 3 * 60_000 }: { pollMs?: n
           file.current = out;
           haptic.success();
           finish("ready");
+          if (alive.current) AccessibilityInfo.announceForAccessibility(READY_TEXT);
           return;
         }
       } catch (e) {
@@ -75,7 +80,7 @@ export function useExport({ pollMs = 3000, giveUpMs = 3 * 60_000 }: { pollMs?: n
       if (Date.now() >= until) break;
       await sleep(pollMs);
     }
-    finish("idle", "Your archive is taking longer than usual. Try again in a few minutes.");
+    finish("idle", "Your archive is taking a while. Try again in a few minutes.");
   }, [api, finish, sleep, pollMs, giveUpMs]);
 
   const start = useCallback(async () => {

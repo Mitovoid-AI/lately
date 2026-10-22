@@ -3,6 +3,7 @@ import { Linking } from "react-native";
 
 import { ApiError, type LatelyApi, type Me } from "../../api/contract";
 import { buildDemoSeed } from "../../api/demo-data";
+import { sentence } from "../../components/home/BackForYou";
 import { countOf } from "../../lib/counts";
 import { SEARCH_EXAMPLES } from "../../lib/searchExamples";
 import { enqueueSave, queueKey } from "../../lib/saveQueue";
@@ -24,7 +25,7 @@ const seed = buildDemoSeed(NOW).saves;
 const titleOf = (id: string) => seed.find((s) => s.id === id)!.title!;
 const MOMO = titleOf("s-momo");
 const GITHUB = titleOf("s-github");
-const TOTAL = countOf(seed.length, "reel");
+const TOTAL = countOf(seed.length, "save");
 
 /** The demo API with no "Back for you" picks, so a card's title shows once (in the grid). */
 function quiet(api: LatelyApi = demoApi()): LatelyApi {
@@ -33,7 +34,7 @@ function quiet(api: LatelyApi = demoApi()): LatelyApi {
 
 beforeEach(() => {
   jest.clearAllMocks();
-  // A fixed clock: the demo's pending save is 60 s old, inside the "about 30 s" window.
+  // A fixed clock: the demo's pending save is 60 s old.
   jest.useFakeTimers({ now: NOW, advanceTimers: true });
 });
 afterEach(() => jest.useRealTimers());
@@ -79,14 +80,30 @@ test("switching category shows the matching cached cards at once, not a skeleton
 test("only categories present in the saves get a chip", async () => {
   const api = demoApi();
   const all = await api.listSaves({ limit: 100 });
+  const twoKinds: LatelyApi = {
+    ...quiet(api),
+    listSaves: async () => all.filter((s) => s.category === "Food & Places" || s.category === "Dev & Tools"),
+  };
+  await renderWithProviders(<HomeScreen />, { api: twoKinds });
+  await screen.findByText(MOMO);
+  expect(screen.getByRole("button", { name: "Food & Places" })).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Dev & Tools" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Fitness" })).toBeNull();
+});
+
+test("with one category there is nothing to filter, so no chips at all", async () => {
+  const api = demoApi();
+  const all = await api.listSaves({ limit: 100 });
   const onlyFood: LatelyApi = {
     ...quiet(api),
     listSaves: async () => all.filter((s) => s.category === "Food & Places"),
   };
   await renderWithProviders(<HomeScreen />, { api: onlyFood });
   await screen.findByText(MOMO);
-  expect(screen.queryByText("Dev & Tools")).toBeNull();
-  expect(screen.getByText("Food & Places")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "All" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Food & Places" })).toBeNull();
+  // The grid and its heading are still there.
+  expect(screen.getByText("Recently saved")).toBeTruthy();
 });
 
 test("a category chip asks the API for that category", async () => {
@@ -124,42 +141,23 @@ describe("the top of Home", () => {
 });
 
 describe("cards being written", () => {
-  test("a pending save gets a live row with its step and the usual wait; tapping opens it", async () => {
+  test("a pending save is a tile in the grid that opens its card, with no bar of its own above it", async () => {
     await renderWithProviders(<HomeScreen />, { api: quiet() });
-    expect(await screen.findByText("New reel")).toBeTruthy();
-    expect(screen.getByText(/ · about 30 s$/)).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText(/^New reel, /));
+    await screen.findByText(MOMO);
+    // The tile says which step it is on (the words are saveOutcome's, shared with the save sheet).
+    await fireEvent.press(screen.getByLabelText(/Getting|Listening|Finding/));
     expect(mockRouter.push).toHaveBeenCalledWith("/reel/s-pending");
+    // The old live bar's time estimate is gone for good.
+    expect(screen.queryByText(/about 30 s/)).toBeNull();
+    expect(screen.queryByText(/taking longer than usual/)).toBeNull();
   });
 
-  test("with nothing pending there is no live row", async () => {
+  test("with nothing pending no tile is waiting", async () => {
     const api = demoApi();
     const ready = (await api.listSaves({ limit: 100 })).filter((s) => s.status !== "pending");
     await renderWithProviders(<HomeScreen />, { api: { ...quiet(api), listSaves: async () => ready } });
     await screen.findByText(MOMO);
-    expect(screen.queryByText("New reel")).toBeNull();
-    expect(screen.queryByText(/about 30 s/)).toBeNull();
-  });
-
-  test("a job stuck for ten minutes is no longer shown as live", async () => {
-    const api = demoApi();
-    const saves = await api.listSaves({ limit: 100 });
-    const dead = saves.map((s) =>
-      s.status === "pending" ? { ...s, created_at: new Date(NOW - 20 * 60_000).toISOString() } : s,
-    );
-    await renderWithProviders(<HomeScreen />, { api: { ...quiet(api), listSaves: async () => dead } });
-    await screen.findByText(MOMO);
-    expect(screen.queryByText("New reel")).toBeNull();
-  });
-
-  test("a save already past two minutes admits it is slow instead of repeating the estimate", async () => {
-    const api = demoApi();
-    const saves = await api.listSaves({ limit: 100 });
-    const slow = saves.map((s) =>
-      s.status === "pending" ? { ...s, created_at: new Date(NOW - 5 * 60_000).toISOString() } : s,
-    );
-    await renderWithProviders(<HomeScreen />, { api: { ...quiet(api), listSaves: async () => slow } });
-    expect(await screen.findByText(/ · taking longer than usual$/)).toBeTruthy();
+    expect(screen.queryByLabelText(/Getting|Listening|Finding/)).toBeNull();
   });
 });
 
@@ -167,11 +165,12 @@ describe("Back for you", () => {
   test("shows picture tiles from the curated feed; See all opens Curated", async () => {
     await renderWithProviders(<HomeScreen />);
     expect(await screen.findByText("Back for you")).toBeTruthy();
-    await fireEvent.press(screen.getByRole("button", { name: "See all picks" }));
+    await fireEvent.press(screen.getByRole("button", { name: "See all" }));
     expect(mockRouter.push).toHaveBeenCalledWith("/curated");
-    // The hero pick is a group (cafes), so it opens the search that lists them.
-    await fireEvent.press(screen.getByLabelText(/, This weekend$/));
-    expect(mockRouter.push).toHaveBeenCalledWith("/search?q=cafe");
+    // The hero pick is a group of saves, so it opens the search that lists them.
+    const { hero } = await demoApi().getCurated();
+    await fireEvent.press(screen.getByLabelText(new RegExp(`, ${sentence(hero.label)}$`)));
+    expect(mockRouter.push).toHaveBeenCalledWith(`/search?q=${encodeURIComponent(hero.query)}`);
   });
 
   test("a feed that fails leaves no box behind and the grid untouched", async () => {
@@ -190,7 +189,7 @@ describe("the first run", () => {
     await renderWithProviders(<HomeScreen />, { api: empty() });
     expect(await screen.findByText("Every reel you save, findable in one search.")).toBeTruthy();
     expect(screen.getByText("Example")).toBeTruthy();
-    expect(screen.getByText("In Instagram, tap Share, then Lately.")).toBeTruthy();
+    expect(screen.getByText(/^In Instagram, tap Share/)).toBeTruthy();
     expect(screen.queryByText("Nothing saved yet")).toBeNull();
     expect(screen.queryByText("Open a reel in Instagram")).toBeNull();
     // Nothing saved means nothing to search or to bring back.
@@ -229,7 +228,7 @@ describe("the first run", () => {
 test("a failed load says so instead of showing an empty library", async () => {
   const api: LatelyApi = { ...demoApi(), listSaves: async () => Promise.reject(new ApiError("NETWORK", 0)) };
   await renderWithProviders(<HomeScreen />, { api });
-  expect(await screen.findByText("Couldn't load your reels")).toBeTruthy();
+  expect(await screen.findByText("Couldn't load your saves")).toBeTruthy();
   expect(screen.queryByText("Every reel you save, findable in one search.")).toBeNull();
   expect(screen.getByText("Try again")).toBeTruthy();
 });
@@ -256,7 +255,7 @@ test("several queued saves read as plural", async () => {
   jest.spyOn(api, "createSave").mockRejectedValue(new ApiError("NETWORK", 0));
   await renderWithProviders(<HomeScreen />, { api: quiet(api), queueStore });
   expect(await screen.findByText("2 reels waiting to save")).toBeTruthy();
-  expect(screen.getByText("Lately saves them when you're back online.")).toBeTruthy();
+  expect(screen.getByText("Lately will send them as soon as it can.")).toBeTruthy();
 });
 
 /** Every string in the rendered tree, in reading order. */
@@ -278,13 +277,13 @@ describe("the free-saves banner", () => {
     await renderWithProviders(<HomeScreen />, { api: withUsage({ plan: "free", saves_this_month: 16 }) });
     await screen.findByText(TOTAL);
     expect(screen.queryByText(/free saves? left this month/)).toBeNull();
-    expect(screen.queryByText("Go Pro")).toBeNull();
+    expect(screen.queryByText("Upgrade to Pro")).toBeNull();
   });
 
   test("with 3 left it counts them and offers Pro", async () => {
     await renderWithProviders(<HomeScreen />, { api: withUsage({ plan: "free", saves_this_month: 17 }) });
     expect(await screen.findByText("3 free saves left this month")).toBeTruthy();
-    await fireEvent.press(screen.getByRole("button", { name: "Go Pro" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Upgrade to Pro" }));
     expect(mockRouter.push).toHaveBeenCalledWith("/pro");
   });
 
@@ -297,7 +296,7 @@ describe("the free-saves banner", () => {
     await renderWithProviders(<HomeScreen />, { api: withUsage({ plan: "free", saves_this_month: 20 }) });
     expect(await screen.findByText("You've used this month's free saves")).toBeTruthy();
     expect(screen.queryByText(/free saves? left/)).toBeNull();
-    await fireEvent.press(screen.getByRole("button", { name: "Go Pro" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Upgrade to Pro" }));
     expect(mockRouter.push).toHaveBeenCalledWith("/pro");
   });
 
@@ -310,38 +309,38 @@ describe("the free-saves banner", () => {
     for (const plan of ["pro", "lifetime"] as const) {
       const view = await renderWithProviders(<HomeScreen />, { api: withUsage({ plan, saves_this_month: 50 }) });
       await screen.findByText(TOTAL);
-      expect(screen.queryByText("Go Pro")).toBeNull();
+      expect(screen.queryByText("Upgrade to Pro")).toBeNull();
       expect(screen.queryByText(/free saves?/)).toBeNull();
       await view.unmount();
     }
   });
 
-  test("Home reads top to bottom: search, Pro banner, live row, Back for you, then the grid", async () => {
+  test("Home reads top to bottom: search, Pro banner, Back for you, then the grid", async () => {
     await renderWithProviders(<HomeScreen />, { api: withUsage({ plan: "free", saves_this_month: 18 }) });
     await screen.findByText("2 free saves left this month");
     await screen.findByText("Back for you");
     const texts = renderedTexts(screen.toJSON());
-    const order = ["Search", "2 free saves left this month", "New reel", "Back for you", "Recently saved"].map((t) =>
+    const order = ["Search", "2 free saves left this month", "Back for you", "Recently saved"].map((t) =>
       texts.indexOf(t),
     );
     expect(order.every((i) => i > -1)).toBe(true);
     expect([...order].sort((a, b) => a - b)).toEqual(order);
   });
 
-  test("the offline-queue banner sits with the Pro banner, above the live row", async () => {
+  test("the offline-queue banner sits with the Pro banner, above Back for you", async () => {
     const queueStore = createMemoryStore();
     await enqueueSave(queueStore, queueKey("demo-user"), "https://www.instagram.com/reel/OFF1/");
     const api = withUsage({ plan: "free", saves_this_month: 18 });
     jest.spyOn(api, "createSave").mockRejectedValue(new ApiError("NETWORK", 0));
     await renderWithProviders(<HomeScreen />, { api, queueStore });
     await screen.findByText("1 reel waiting to save");
-    await screen.findByText("New reel");
+    await screen.findByText("Back for you");
     const texts = renderedTexts(screen.toJSON());
-    const [pro, queued, live] = ["2 free saves left this month", "1 reel waiting to save", "New reel"].map((t) =>
+    const [pro, queued, back] = ["2 free saves left this month", "1 reel waiting to save", "Back for you"].map((t) =>
       texts.indexOf(t),
     );
     expect(pro).toBeGreaterThan(-1);
     expect(pro).toBeLessThan(queued);
-    expect(queued).toBeLessThan(live);
+    expect(queued).toBeLessThan(back);
   });
 });

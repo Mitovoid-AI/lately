@@ -1,6 +1,6 @@
 import { Text, View } from "react-native";
 
-import { SEARCH_EXAMPLES } from "../../lib/searchExamples";
+import { MIN_EXAMPLES } from "../../lib/searchExamples";
 import { useTheme } from "../../theme/ThemeProvider";
 import { Chip } from "../Chip";
 import { Icon } from "../Icon";
@@ -8,13 +8,19 @@ import { PressableScale } from "../motion/PressableScale";
 import { Reveal } from "../motion/Reveal";
 import { Skeleton, SkeletonGroup, SkeletonRow } from "../Skeleton";
 
-/** Example searches as chips: the kind of thing people type to find a reel again. */
+/**
+ * Example searches as chips: the kind of thing people type to find a reel again. The caller
+ * decides where they come from (the demo's list, or the user's own saves in the live app) and
+ * fewer than three is no row at all: a lone chip reads as an advert, not a hint.
+ */
 export function ExampleChips({
+  examples,
   onPick,
   title = "Try searching for",
   count,
   start = 0,
 }: {
+  examples: readonly string[];
   onPick: (query: string) => void;
   title?: string;
   /** How many examples to show (all by default). */
@@ -22,13 +28,13 @@ export function ExampleChips({
   /** Stagger index for the entrance. */
   start?: number;
 }) {
-  const examples = count ? SEARCH_EXAMPLES.slice(0, count) : SEARCH_EXAMPLES;
-  if (examples.length === 0) return null;
+  if (examples.length < MIN_EXAMPLES) return null;
+  const shown = count ? examples.slice(0, count) : examples;
   return (
-    <Reveal index={start} style={{ marginTop: 28 }}>
+    <Reveal index={start} style={{ marginTop: 24 }}>
       <Text className="font-sans-semibold text-meta text-ink-2">{title}</Text>
       <View className="mt-3 flex-row flex-wrap gap-x-2 gap-y-3">
-        {examples.map((q) => (
+        {shown.map((q) => (
           <Chip key={q} label={q} onPress={() => onPick(q)} />
         ))}
       </View>
@@ -42,10 +48,12 @@ export function ExampleChips({
  */
 export function IdleState({
   recent,
+  examples,
   onPick,
   onClearRecent,
 }: {
   recent: string[];
+  examples: readonly string[];
   onPick: (query: string) => void;
   onClearRecent: () => void;
 }) {
@@ -65,7 +73,7 @@ export function IdleState({
                 containerClassName="-mr-3"
                 className="h-11 justify-center px-3"
               >
-                <Text className="font-sans-semibold text-meta text-accent-text">Clear</Text>
+                <Text className="font-sans-semibold text-meta text-ink">Clear</Text>
               </PressableScale>
             </View>
           </Reveal>
@@ -91,24 +99,35 @@ export function IdleState({
         <Reveal index={0}>
           <Text className="font-display text-display-md text-ink">Find a reel by what you remember</Text>
           <Text className="mt-2 font-sans text-body text-ink-2">
-            A place, a dish, the creator, or a word from your own note.
+            A place, a dish, a topic, or a word from your own note.
           </Text>
         </Reveal>
       )}
-      <ExampleChips onPick={onPick} start={Math.min(recent.length + 1, 6)} />
+      <ExampleChips examples={examples} onPick={onPick} start={Math.min(recent.length + 1, 6)} />
     </View>
   );
 }
 
 /** Nothing matched: say what was searched, how to widen it, and offer a few searches that work. */
-export function NoResults({ query, onPick }: { query: string; onPick: (query: string) => void }) {
+export function NoResults({
+  query,
+  examples,
+  onPick,
+}: {
+  query: string;
+  examples: readonly string[];
+  onPick: (query: string) => void;
+}) {
   return (
     <View className="w-full max-w-[640px] self-center px-4 pt-10">
       <Reveal index={0}>
-        <Text className="font-display text-display-md text-ink">{`Nothing matched “${query}”`}</Text>
-        <Text className="mt-2 font-sans text-body text-ink-2">Try fewer words, or a place, dish or creator.</Text>
+        {/* A live region: the screen reader says it when the results turn out to be none. */}
+        <Text accessibilityLiveRegion="polite" className="font-display text-display-md text-ink">
+          {`Nothing matched “${query}”`}
+        </Text>
+        <Text className="mt-2 font-sans text-body text-ink-2">Try fewer words, or a place, dish or topic.</Text>
       </Reveal>
-      <ExampleChips onPick={onPick} count={3} start={1} />
+      <ExampleChips examples={examples} onPick={onPick} count={3} start={1} />
     </View>
   );
 }
@@ -123,7 +142,7 @@ export function SearchSkeleton() {
         <Skeleton style={{ marginTop: 14, height: 20, width: "80%", borderRadius: 8 }} />
         <Skeleton style={{ marginTop: 8, height: 14, width: "55%", borderRadius: 7 }} />
       </View>
-      <Skeleton style={{ marginTop: 28, height: 14, width: 150, borderRadius: 7 }} />
+      <Skeleton style={{ marginTop: 24, height: 14, width: 150, borderRadius: 7 }} />
       <View className="mt-1">
         <SkeletonRow />
         <SkeletonRow />

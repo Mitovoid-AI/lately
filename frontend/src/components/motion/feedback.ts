@@ -1,6 +1,7 @@
 import { useCallback } from "react";
 import {
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withDelay,
   withSequence,
@@ -11,27 +12,34 @@ import {
 import { haptic } from "../../lib/haptics";
 import { EASE_OUT, SPRING } from "../../theme/motion";
 
-/** A one-shot "landed" bump: dip, then spring past 1 and settle. For success moments only. */
+/**
+ * A one-shot "landed" bump: dip, then spring past 1 and settle. For success moments only. With
+ * Reduce Motion on it does not move at all: the toast and the haptic say it landed.
+ */
 export function usePop() {
+  const reduced = useReducedMotion();
   const scale = useSharedValue(1);
   const style = useAnimatedStyle(() => ({ transform: [{ scale: scale.get() }] }));
   const pop = useCallback(
     (delay = 0) => {
+      if (reduced) return;
       scale.set(
         withDelay(delay, withSequence(withTiming(0.72, { duration: 90, easing: EASE_OUT }), withSpring(1, SPRING.pop))),
       );
     },
-    [scale],
+    [scale, reduced],
   );
   return { style, pop };
 }
 
-/** A short horizontal shake with an error haptic: "that didn't work". */
+/** A short horizontal shake with an error haptic: "that didn't work". With Reduce Motion on, only the haptic. */
 export function useShake() {
+  const reduced = useReducedMotion();
   const x = useSharedValue(0);
   const style = useAnimatedStyle(() => ({ transform: [{ translateX: x.get() }] }));
   const shake = useCallback(() => {
     haptic.error();
+    if (reduced) return;
     x.set(
       withSequence(
         withTiming(-8, { duration: 45, easing: EASE_OUT }),
@@ -41,6 +49,6 @@ export function useShake() {
         withSpring(0, SPRING.settle),
       ),
     );
-  }, [x]);
+  }, [x, reduced]);
   return { style, shake };
 }

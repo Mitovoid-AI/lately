@@ -170,6 +170,48 @@ test("curated feed has a hero and sections", async () => {
   expect(feed.sections.length).toBeGreaterThanOrEqual(2);
 });
 
+test("the demo curated feed uses the real feed's labels and shapes, and claims nothing it cannot know", async () => {
+  const { api } = setup();
+  const feed = await api.getCurated();
+  // Labels the server can send; the demo's cafes were last saved 12 days ago, so REVISIT, not THIS WEEK.
+  expect(["THIS WEEK", "REVISIT", "JUST SAVED", "START HERE"]).toContain(feed.hero.label);
+  expect(feed.hero.label).toBe("REVISIT");
+  expect(feed.hero.title).toBe(`${feed.hero.save_ids.length} saves about cafe`);
+  expect(feed.hero.subtitle).toBe("Food & Places · saved over the last month");
+  const everything = JSON.stringify(feed);
+  expect(everything).not.toMatch(/never visited|THIS WEEKEND|From your note|Forgotten gems/);
+  const titles = feed.sections.map((x) => x.title);
+  expect(titles).toContain("Revisit · Dev & Tools");
+  expect(titles).toContain("From over a month ago");
+  // Every section title is one the server writes: "Revisit · <category>" or the month-ago list.
+  for (const t of titles) expect(t).toMatch(/^(Revisit · .+|From over a month ago|Recently saved|No note yet)$/);
+  const monthAgo = feed.sections.find((x) => x.title === "From over a month ago")!;
+  expect(monthAgo.kind).toBe("list");
+  expect(monthAgo.subtitle).toBeNull();
+});
+
+test("an empty demo account gets the real feed's START HERE hero and no sections", async () => {
+  const { api } = setup();
+  await api.deleteAccount();
+  const feed = await api.getCurated();
+  expect(feed.hero).toMatchObject({ label: "START HERE", save_ids: [], query: "", image_url: null });
+  expect(feed.sections).toEqual([]);
+});
+
+test("the demo member joined a month ago, not years back", async () => {
+  const { api } = setup();
+  const me = await api.getMe();
+  expect(me.member_since).toBe("2026-09-04");
+});
+
+test("demo creators are plainly samples, never names that could be real accounts", async () => {
+  const { api } = setup();
+  const saves = await api.listSaves({ limit: 100 });
+  const creators = saves.map((s) => s.creator).filter((c): c is string => !!c);
+  expect(creators.length).toBeGreaterThan(0);
+  for (const c of creators) expect(c).toMatch(/^sample\./);
+});
+
 test("listSaves can filter by category", async () => {
   const { api } = setup();
   const fitness = await api.listSaves({ category: "Fitness", limit: 100 });

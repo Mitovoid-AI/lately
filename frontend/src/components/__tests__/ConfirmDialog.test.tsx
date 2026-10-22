@@ -35,3 +35,32 @@ test("when idle, Cancel, the backdrop and Back cancel", async () => {
   backHandler()();
   expect(onCancel).toHaveBeenCalledTimes(3);
 });
+
+test("the buttons are stacked, the confirming one on top, so a long label never squeezes two side by side", async () => {
+  await setup(false);
+  const names = screen.getAllByRole("button").map((b) => b.props.accessibilityLabel);
+  expect(names).toEqual(["Delete", "Cancel"]);
+});
+
+test("an alternative to confirming sits above both, and the title is a heading", async () => {
+  await render(
+    <ConfirmDialog
+      visible
+      title="Delete?"
+      message="Gone for good."
+      confirmLabel="Delete"
+      onCancel={() => {}}
+      onConfirm={() => {}}
+      aside={{ label: "Download first", onPress: () => {} }}
+    />,
+  );
+  expect(screen.getAllByRole("button").map((b) => b.props.accessibilityLabel)).toEqual(["Download first", "Delete", "Cancel"]);
+  expect(screen.getByText("Delete?").props.accessibilityRole).toBe("header");
+});
+
+test("the dimmed backdrop closes on a tap but is not a stop for a screen reader", async () => {
+  await setup(false);
+  const backdrop = screen.getByLabelText("Dismiss");
+  expect(backdrop.props.accessible).toBe(false);
+  expect(backdrop.props.importantForAccessibility).toBe("no");
+});

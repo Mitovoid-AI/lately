@@ -1,9 +1,9 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Image } from "expo-image";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -37,7 +37,6 @@ import { displayLink, extractReelUrl } from "../lib/instagram";
 import { outcomeFromError, outcomeFromResult, QUEUE_REASON, QUEUED_BODY, type SaveOutcome } from "../lib/saveOutcome";
 import { DURATION } from "../theme/motion";
 import { useTheme } from "../theme/ThemeProvider";
-import { useToast } from "../components/Toast";
 import { refreshSaveViews } from "../lib/queryClient";
 import { deviceStore, type KeyValueStore } from "../lib/storage";
 import { useSaveQueue } from "../hooks/useSaveQueue";
@@ -45,11 +44,27 @@ import { ApiError } from "../api/contract";
 import { config } from "../config";
 import { sendDeviceHint } from "../lib/deviceFetch";
 
-const SHARE_BACKDROP = require("../../assets/stitch/save-bg.jpg");
 const QUICK = ["To try", "To buy", "To visit", "To learn", "Watch later"];
 
 // Each state of the sheet dissolves in; the sheet's height eases to fit it.
 const STATE_IN = FadeIn.duration(DURATION.state);
+
+/** How tall the on-screen keyboard is right now (0 when it is down), so the sheet can leave it room. */
+function useKeyboardHeight() {
+  const [height, setHeight] = useState(0);
+  useEffect(() => {
+    const show = Keyboard.addListener("keyboardDidShow", (e) => setHeight(e.endCoordinates.height));
+    const hide = Keyboard.addListener("keyboardDidHide", () => setHeight(0));
+    return () => {
+      show.remove();
+      hide.remove();
+    };
+  }, []);
+  return height;
+}
+
+/** What the sheet's chrome (handle, padding, safe area) takes when the keyboard is up. */
+const SHEET_CHROME = 140;
 
 function StatusIcon({ name, color, bg }: { name: IconName; color: string; bg: string }) {
   return (
@@ -65,11 +80,27 @@ function Message({ icon, title, body, children }: { icon: ReactNode; title: stri
       <View className="flex-row items-center">
         {icon}
         <View className="ml-3 flex-1">
-          <Text className="font-display text-display-md text-ink">{title}</Text>
+          {/* A live region: the outcome is spoken as it appears (role "alert" is silent on Android). */}
+          <Text accessibilityLiveRegion="polite" accessibilityRole="header" className="font-display text-display-md text-ink">
+            {title}
+          </Text>
           {body ? <Text className="mt-0.5 font-sans text-body text-ink-2">{body}</Text> : null}
         </View>
       </View>
       {children}
+    </View>
+  );
+}
+
+/** The reel's link, small, so it is clear which reel this is about. A static chip: fill only. */
+function LinkChip({ link }: { link: string }) {
+  const { colors } = useTheme();
+  return (
+    <View className="mt-4 min-h-9 flex-row items-center self-start rounded-full bg-raised px-3 py-1.5" style={{ maxWidth: "100%" }}>
+      <Icon name="link" size={18} color={colors.ink2} />
+      <Text numberOfLines={1} ellipsizeMode="middle" className="ml-2 shrink font-sans text-meta text-ink-2">
+        {link}
+      </Text>
     </View>
   );
 }
@@ -81,12 +112,12 @@ function Message({ icon, title, body, children }: { icon: ReactNode; title: stri
 export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardStore?: KeyValueStore } = {}) {
   const { colors } = useTheme();
   const { height: windowHeight } = useWindowDimensions();
+  const keyboardHeight = useKeyboardHeight();
   const { user } = useAuth();
   const { text } = useLocalSearchParams<{ text?: string }>();
   const router = useRouter();
   const api = useApi();
   const queryClient = useQueryClient();
-  const toast = useToast();
   const queue = useSaveQueue();
   const billing = useBilling();
   const queuedRef = useRef(false);
@@ -101,6 +132,8 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
   const [savedText, setSavedText] = useState(text ?? "");
   const [note, setNote] = useState("");
   const [savingNote, setSavingNote] = useState(false);
+  // Saying the note did not save belongs under the note, where the person is looking.
+  const [noteFailed, setNoteFailed] = useState(false);
   // The first card this person has ever saved gets one small celebration when it is ready.
   const [first, setFirst] = useState(false);
   // Once the sheet starts closing, nothing here asks the server anything more.
@@ -221,6 +254,7 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
     if (!reelId || !note.trim() || noteInFlight.current) return;
     noteInFlight.current = true;
     setSavingNote(true);
+    setNoteFailed(false);
     try {
       await api.setNote(reelId, note.trim());
       refreshSaveViews(queryClient);
@@ -229,7 +263,7 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
     } catch {
       noteInFlight.current = false;
       haptic.error();
-      toast.show("Couldn't save your note. Try again.");
+      setNoteFailed(true);
     } finally {
       setSavingNote(false);
     }
@@ -247,13 +281,16 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
   }
 
   const link = displayLink(extractReelUrl(savedText)?.url ?? savedText);
+  // The saved sheet scrolls; with the keyboard up it may take only what the keyboard leaves.
+  const scrollMax =
+    keyboardHeight > 0 ? Math.max(180, Math.round(windowHeight - keyboardHeight - SHEET_CHROME)) : Math.round(windowHeight * 0.78);
   const phase = busy || (shared && !outcome) ? "busy" : outcome ? outcome.kind : "paste";
 
   let content: ReactNode;
   if (phase === "busy") {
     content = (
       <View className="items-center py-10">
-        <ActivityIndicator color={colors.accentText} />
+        <ActivityIndicator color={colors.ink2} />
         <Text className="mt-3 font-sans text-body text-ink-2">Saving…</Text>
       </View>
     );
@@ -265,6 +302,7 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
           value={input}
           onChangeText={setInput}
           placeholder="instagram.com/reel/…"
+          accessibilityLabel="Reel link"
           autoCapitalize="none"
           autoCorrect={false}
           autoFocus
@@ -280,7 +318,7 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
     // the card. A small screen scrolls rather than pushing the Done button out of reach.
     content = (
       <ScrollView
-        style={{ maxHeight: Math.round(windowHeight * 0.78) }}
+        style={{ maxHeight: scrollMax, flexShrink: 1 }}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
@@ -294,16 +332,11 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
           )}
           <Reveal index={1} style={{ marginLeft: 12, flex: 1 }}>
             <Text className="font-display text-display-lg text-ink">Saved</Text>
-            <Text className="font-sans text-body text-ink-2">It&apos;s already in your saves</Text>
+            <Text className="font-sans text-body text-ink-2">It&apos;s on Home now. Lately is writing its card.</Text>
           </Reveal>
         </View>
         <Reveal index={2}>
-          <View className="mt-4 h-9 flex-row items-center self-start rounded-full border border-hairline bg-raised px-3" style={{ maxWidth: "100%" }}>
-            <Icon name="link" size={18} color={colors.accentText} />
-            <Text numberOfLines={1} className="ml-2 shrink font-sans text-meta text-ink-2">
-              {link}
-            </Text>
-          </View>
+          <LinkChip link={link} />
           <SaveTracker
             status={progress.status}
             stage={progress.stage}
@@ -319,13 +352,28 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
           </Text>
           <TextField
             value={note}
-            onChangeText={setNote}
+            onChangeText={(t) => {
+              setNote(t);
+              if (noteFailed) setNoteFailed(false);
+            }}
             placeholder="e.g. cafe to try in June"
+            accessibilityLabel="Why you saved it"
             maxLength={500}
             size="lg"
             className="mt-2"
           />
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mt-3" contentContainerStyle={{ gap: 8 }}>
+          {noteFailed ? (
+            <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="mt-2 font-sans text-meta text-danger">
+              Couldn&apos;t save your note. Try again.
+            </Text>
+          ) : null}
+          {/* Bleeds to the sheet's edges so the last chip peeks out and says "scroll". */}
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            className="-mx-4 mt-3"
+            contentContainerStyle={{ gap: 8, paddingHorizontal: 16 }}
+          >
             {QUICK.map((q) => (
               <Chip key={q} label={q} active={note === q} haptic="selection" onPress={() => setNote(q)} />
             ))}
@@ -351,9 +399,29 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
     content = (
       <Message
         icon={<StatusIcon name="info-outline" color={colors.ink2} bg={colors.raised} />}
-        title="Already in your Lately"
-        body={card ? `${savedAgo(card.created_at, now)}.` : " "}
+        title="You saved this already"
+        body={card ? `${savedAgo(card.created_at, now)}.` : undefined}
       >
+        {existing.isLoading ? (
+          <View className="mt-4 flex-row items-center">
+            <ActivityIndicator color={colors.ink2} />
+            <Text className="ml-3 font-sans text-body text-ink-2">Checking your saves</Text>
+          </View>
+        ) : null}
+        {existing.isError ? (
+          <View className="mt-4">
+            <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="font-sans text-body text-ink-2">
+              Couldn&apos;t check your saves.
+            </Text>
+            <Button
+              title="Try again"
+              variant="secondary"
+              onPress={() => existing.refetch()}
+              loading={existing.isRefetching}
+              className="mt-3"
+            />
+          </View>
+        ) : null}
         {card?.note ? (
           <Animated.View entering={STATE_IN}>
             <Text className="mt-4 rounded-xl bg-raised px-4 py-3 font-sans-italic text-body text-ink-2">{`“${card.note}”`}</Text>
@@ -368,7 +436,7 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
       <Message
         icon={<StatusIcon name="error-outline" color={colors.danger} bg={colors.dangerSoft} />}
         title="No reel link found"
-        body="Share the reel itself, not a profile or story."
+        body="Paste or share a link to an Instagram reel or post."
       >
         <Button title="Close" onPress={close} className="mt-5" />
       </Message>
@@ -377,7 +445,7 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
     // Google Play says Pro is on and the server still doesn't (the save already synced and retried
     // once): no upsell for someone who has paid. Trying again syncs and retries once more.
     content = (
-      <Message icon={<StatusIcon name="schedule" color={colors.accentText} bg={colors.raised} />} title="Pro is turning on" body={PRO_CONFIRMING}>
+      <Message icon={<StatusIcon name="schedule" color={colors.ink2} bg={colors.raised} />} title="Pro is turning on" body={PRO_CONFIRMING}>
         <Button title="Try again" onPress={() => save(savedText)} className="mt-5" />
         <Button title="Close" variant="ghost" onPress={close} className="mt-1" />
       </Message>
@@ -385,8 +453,14 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
   } else if (outcome.kind === "quota") {
     const limit = me.data?.saves_limit ?? 20;
     content = (
-      <Message icon={<StatusIcon name="lock-outline" color={colors.accentText} bg={colors.raised} />} title={`You've used all ${limit} free saves this month`}>
-        <View className="mt-4 h-2 overflow-hidden rounded-full bg-raised">
+      <Message icon={<StatusIcon name="lock-outline" color={colors.ink2} bg={colors.raised} />} title={`You've used all ${limit} free saves this month`}>
+        <View
+          accessible
+          accessibilityRole="progressbar"
+          accessibilityLabel="Free saves used this month"
+          accessibilityValue={{ min: 0, max: limit, now: limit }}
+          className="mt-4 h-2 overflow-hidden rounded-full bg-raised"
+        >
           <View className="h-2 w-full rounded-full bg-accent" />
         </View>
         <Text className="mt-1 self-end font-sans-semibold text-meta text-ink-2">{`${limit}/${limit}`}</Text>
@@ -396,7 +470,7 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
         {/* Replaces this sheet: closing the paywall goes back to where the save started. The reel
             goes along, so the paywall can save it once Pro is on. */}
         <Button
-          title="Go unlimited with Pro"
+          title="Upgrade to Pro"
           onPress={() => router.replace({ pathname: "/pro", params: { text: savedText } })}
           className="mt-5"
         />
@@ -406,7 +480,7 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
   } else if (outcome.kind === "rate_limited") {
     content = (
       <Message
-        icon={<StatusIcon name="schedule" color={colors.accentText} bg={colors.raised} />}
+        icon={<StatusIcon name="schedule" color={colors.ink2} bg={colors.raised} />}
         title="That's a lot of saves at once"
         body="Try again in a minute."
       >
@@ -416,16 +490,11 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
   } else if (outcome.kind === "queued") {
     content = (
       <Message
-        icon={<StatusIcon name="cloud-upload" color={colors.accentText} bg={colors.raised} />}
-        title="Saved for later"
+        icon={<StatusIcon name="cloud-upload" color={colors.ink2} bg={colors.raised} />}
+        title="Waiting to save"
         body={QUEUED_BODY[outcome.reason]}
       >
-        <View className="mt-4 h-9 flex-row items-center self-start rounded-full border border-hairline bg-raised px-3" style={{ maxWidth: "100%" }}>
-          <Icon name="link" size={18} color={colors.accentText} />
-          <Text numberOfLines={1} className="ml-2 shrink font-sans text-meta text-ink-2">
-            {link}
-          </Text>
-        </View>
+        <LinkChip link={link} />
         <Button title="Try again now" variant="secondary" onPress={() => save(savedText)} className="mt-5" />
         <Button title="Close" variant="ghost" onPress={close} className="mt-1" />
       </Message>
@@ -444,14 +513,19 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
   }
 
   return (
-    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} className="flex-1 justify-end">
-      {shared ? (
-        <Image source={SHARE_BACKDROP} contentFit="cover" blurRadius={8} style={StyleSheet.absoluteFill} />
-      ) : null}
+    <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} className="flex-1 justify-end">
+      {/* Only the scrim: a shared reel opens over whatever app it came from, and nothing of Lately's own is faked behind it. */}
       <Animated.View
         style={[StyleSheet.absoluteFill, { backgroundColor: shared ? colors.scrim : colors.backdrop }, backdropStyle]}
       >
-        <Pressable accessibilityLabel="Close" onPress={close} style={StyleSheet.absoluteFill} />
+        <Pressable
+          accessible={false}
+          importantForAccessibility="no"
+          focusable={false}
+          accessibilityLabel="Close"
+          onPress={close}
+          style={StyleSheet.absoluteFill}
+        />
       </Animated.View>
       <SheetPanel motion={motion} onDismiss={close} layout={SHEET_RESIZE}>
         <Animated.View key={phase} entering={phase === "busy" ? undefined : STATE_IN}>

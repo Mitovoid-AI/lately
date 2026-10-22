@@ -34,11 +34,12 @@ type CategoryProps = Shared & {
 };
 
 /**
- * Two kinds of chip. `filter` (the default): a 32 high pill with a raised fill, marigold with
- * on-accent text when active; selecting it dissolves fill, border, text and dot together in
- * 180 ms, and the label keeps the width of its bold form so switching weight never nudges the
- * chips beside it. `category`: the tinted label (category tint, deep ink) used on card detail
- * and search results; static unless it gets an `onPress`.
+ * Two kinds of chip. `filter` (the default): a pill at least 32 high (it grows with the text size)
+ * with a raised fill, marigold with on-accent text when active; selecting it dissolves fill,
+ * border, text and dot together in 180 ms, and the label keeps the width of its bold form so
+ * switching weight never nudges the chips beside it. Tappable chips have a hairline border; one
+ * without an `onPress` is a plain label and has none. `category`: the tinted label (category
+ * tint, deep ink) used on card detail and search results; static unless it gets an `onPress`.
  */
 export function Chip(props: FilterProps | CategoryProps) {
   return props.variant === "category" ? <CategoryPill {...props} /> : <FilterChip {...props} />;
@@ -52,9 +53,11 @@ function FilterChip({ label, active = false, dotColor, category, onPress, haptic
     on.set(withTiming(active ? 1 : 0, { duration: DURATION.state, easing: EASE_OUT }));
   }, [active, on]);
 
+  // A chip that does nothing is fill only: a border says "tap me".
+  const rest = onPress ? colors.hairline : colors.raised;
   const pillStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(on.get(), [0, 1], [colors.raised, colors.accent]),
-    borderColor: interpolateColor(on.get(), [0, 1], [colors.hairline, colors.accent]),
+    borderColor: interpolateColor(on.get(), [0, 1], [rest, colors.accent]),
   }));
   const textStyle = useAnimatedStyle(() => ({
     color: interpolateColor(on.get(), [0, 1], [colors.ink, colors.onAccent]),
@@ -98,7 +101,8 @@ type PillSize = "sm" | "md";
  * A category as a tinted label: the category's pale tint behind its deep ink (a dark tint and a
  * lifted ink on espresso), 6.7:1 or better in both themes. The colour is wayfinding; the words
  * carry the meaning, so it never relies on hue alone. `sm` (22 high, 11 pt) sits on a card tile;
- * `md` (26 high, 12 pt) on card detail and search results.
+ * `md` (26 high, 12 pt) on card detail and search results. Both are minimums: a bigger system
+ * text size makes the pill taller, never clips it.
  */
 export function CategoryPill({
   category,
@@ -108,12 +112,18 @@ export function CategoryPill({
   haptic,
   className = "",
   maxFontSizeMultiplier,
+  onPhoto = false,
 }: Omit<CategoryProps, "variant"> & {
   /** A fixed-size host (a tile) caps how far the system text size may grow the label. */
   maxFontSizeMultiplier?: number;
+  /**
+   * The pill sits on a photo. A photo does not change with the theme, so neither does the pill:
+   * the light tint and deep ink in both, where the dark tint would sink into a dark photo.
+   */
+  onPhoto?: boolean;
 }) {
   const { scheme } = useTheme();
-  const { bg, ink } = categoryPill(category, scheme);
+  const { bg, ink } = categoryPill(category, onPhoto ? "light" : scheme);
   const small = size === "sm";
   const pill = (
     <View style={[styles.tint, small ? styles.tintSm : styles.tintMd, { backgroundColor: bg }]}>
@@ -150,20 +160,21 @@ export function CategoryPill({
 
 const styles = StyleSheet.create({
   pill: {
-    height: 32,
+    minHeight: 32,
     flexDirection: "row",
     alignItems: "center",
     borderRadius: 999,
     borderWidth: 1,
     paddingHorizontal: 12,
+    paddingVertical: 5,
   },
   dot: { width: 8, height: 8, borderRadius: 4, marginRight: 6 },
   // Animated.Text takes no className, so the type comes from the same tokens as `text-meta`.
   medium: { fontFamily: "Inter_500Medium", fontSize: 13, lineHeight: 18 },
   bold: { fontFamily: "Inter_600SemiBold", fontSize: 13, lineHeight: 18 },
   tint: { alignSelf: "flex-start", justifyContent: "center", borderRadius: 999 },
-  tintSm: { height: 22, paddingHorizontal: 8 },
-  tintMd: { height: 26, paddingHorizontal: 10 },
+  tintSm: { minHeight: 22, paddingHorizontal: 8, paddingVertical: 4 },
+  tintMd: { minHeight: 26, paddingHorizontal: 10, paddingVertical: 5 },
   // Android: no font padding, so the label sits optically centred in the pill.
   labelSm: { fontSize: 11, lineHeight: 14, includeFontPadding: false },
   labelMd: { fontSize: 12, lineHeight: 16, includeFontPadding: false },

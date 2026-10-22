@@ -1,6 +1,13 @@
 import { useEffect, useRef } from "react";
 import { StyleSheet, View } from "react-native";
-import Animated, { useAnimatedStyle, useSharedValue, withSequence, withSpring, withTiming } from "react-native-reanimated";
+import Animated, {
+  useAnimatedStyle,
+  useReducedMotion,
+  useSharedValue,
+  withSequence,
+  withSpring,
+  withTiming,
+} from "react-native-reanimated";
 
 import { DURATION, EASE_OUT, SPRING } from "../../theme/motion";
 import { Icon, type IconName } from "../Icon";
@@ -8,7 +15,7 @@ import { Icon, type IconName } from "../Icon";
 /**
  * Two layered icons that crossfade when `active` flips: outline ↔ filled, grey ↔ marigold.
  * Opacity and scale only, on the UI thread. `pop` adds a springy landing when it turns on
- * (save and bookmark moments, not tabs).
+ * (save moments, not tabs). With Reduce Motion on the icons only swap: no scale, no pop.
  */
 export function AnimatedIcon({
   active,
@@ -27,6 +34,7 @@ export function AnimatedIcon({
   size?: number;
   pop?: boolean;
 }) {
+  const reduced = useReducedMotion();
   const on = useSharedValue(active ? 1 : 0);
   const bump = useSharedValue(1);
   const first = useRef(true);
@@ -37,13 +45,15 @@ export function AnimatedIcon({
       first.current = false;
       return;
     }
-    if (pop && active) bump.set(withSequence(withTiming(0.7, { duration: 90, easing: EASE_OUT }), withSpring(1, SPRING.pop)));
-  }, [active, pop, on, bump]);
+    if (pop && active && !reduced) {
+      bump.set(withSequence(withTiming(0.7, { duration: 90, easing: EASE_OUT }), withSpring(1, SPRING.pop)));
+    }
+  }, [active, pop, reduced, on, bump]);
 
   const offStyle = useAnimatedStyle(() => ({ opacity: 1 - on.get() }));
   const onStyle = useAnimatedStyle(() => ({
     opacity: on.get(),
-    transform: [{ scale: (0.85 + 0.15 * on.get()) * bump.get() }],
+    transform: [{ scale: reduced ? 1 : (0.85 + 0.15 * on.get()) * bump.get() }],
   }));
 
   return (

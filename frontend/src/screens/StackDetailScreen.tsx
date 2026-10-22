@@ -19,13 +19,11 @@ import { Skeleton, SkeletonGrid } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import { useNow } from "../hooks/useNow";
 import { pollWhilePending } from "../hooks/useSaves";
+import { GRID_GAP, GRID_MAX_WIDTH, GRID_SIDE, gridLayout } from "../lib/grid";
 import { haptic } from "../lib/haptics";
 import { goBack } from "../lib/navigation";
 import { useTheme } from "../theme/ThemeProvider";
-import { reelsCount } from "./StacksScreen";
-
-const MAX_WIDTH = 1280;
-const GAP = 12;
+import { savesCount } from "./StacksScreen";
 
 export function StackDetailScreen() {
   const { colors } = useTheme();
@@ -45,8 +43,7 @@ export function StackDetailScreen() {
   const [editing, setEditing] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
-  const columns = width >= 1024 ? 4 : width >= 768 ? 3 : 2;
-  const itemWidth = (Math.min(width, MAX_WIDTH) - 32 - GAP * (columns - 1)) / columns;
+  const { columns, itemWidth } = gridLayout(width);
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({ onScroll: (e) => scrollY.set(e.contentOffset.y) });
   const entrance = useEntranceWindow(id, !stack.isLoading);
@@ -101,7 +98,7 @@ export function StackDetailScreen() {
         {editing ? (
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel={`Remove ${cardTitle(item)}`}
+            accessibilityLabel={`Remove ${cardTitle(item)} from this stack`}
             onPress={() => remove(item)}
             scaleTo={0.9}
             // Top-left: the card's category badge sits top-right.
@@ -123,7 +120,9 @@ export function StackDetailScreen() {
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
       <View className="flex-row items-center px-1" style={{ height: HEADER_HEIGHT }}>
         <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={() => goBack(router, "/stacks")} />
-        <Text className="flex-1 font-sans-semibold text-body text-ink">Stacks</Text>
+        <Text numberOfLines={1} maxFontSizeMultiplier={1.3} className="flex-1 font-sans-semibold text-body text-ink">
+          Stacks
+        </Text>
         {data ? (
           <>
             {data.saves.length > 0 ? (
@@ -134,7 +133,7 @@ export function StackDetailScreen() {
                 highlightColor={colors.raised}
                 className="h-10 justify-center rounded-full px-3"
               >
-                <Text className="font-sans-semibold text-body text-accent-text">{editing ? "Done" : "Edit"}</Text>
+                <Text className="font-sans-semibold text-body text-ink">{editing ? "Done" : "Edit"}</Text>
               </PressableScale>
             ) : null}
             <IconButton icon="delete-outline" label="Delete stack" onPress={() => setConfirmOpen(true)} />
@@ -144,7 +143,7 @@ export function StackDetailScreen() {
       </View>
       {stack.isLoading ? (
         <View>
-          <View className="w-full self-center px-4 pb-5 pt-5" style={{ maxWidth: MAX_WIDTH }}>
+          <View className="w-full self-center px-4 pb-5 pt-5" style={{ maxWidth: GRID_MAX_WIDTH }}>
             <Skeleton style={{ height: 30, width: "60%", borderRadius: 8 }} />
             <Skeleton style={{ marginTop: 10, height: 12, width: 64, borderRadius: 6 }} />
           </View>
@@ -162,22 +161,24 @@ export function StackDetailScreen() {
           data={data.saves}
           keyExtractor={(s: Save) => s.id}
           numColumns={columns}
-          columnWrapperStyle={{ gap: GAP, paddingHorizontal: 16, alignSelf: "center", width: "100%", maxWidth: MAX_WIDTH }}
-          contentContainerStyle={{ paddingBottom: insets.bottom + 32, gap: 20 }}
+          columnWrapperStyle={{ gap: GRID_GAP, paddingHorizontal: GRID_SIDE, alignSelf: "center", width: "100%", maxWidth: GRID_MAX_WIDTH }}
+          contentContainerStyle={{ paddingBottom: insets.bottom + 32, gap: GRID_GAP }}
           onScroll={onScroll}
           scrollEventThrottle={16}
           ListHeaderComponent={
-            <Reveal style={{ width: "100%", maxWidth: MAX_WIDTH, alignSelf: "center" }}>
+            <Reveal style={{ width: "100%", maxWidth: GRID_MAX_WIDTH, alignSelf: "center" }}>
               <View className="px-4 pt-5">
-                <Text className="font-display text-display-lg text-ink">{data.name}</Text>
-                <Text className="mt-1 font-sans text-meta text-ink-2">{reelsCount(data.save_count)}</Text>
+                <Text accessibilityRole="header" className="font-display text-display-lg text-ink">
+                  {data.name}
+                </Text>
+                <Text className="mt-1 font-sans text-meta text-ink-2">{savesCount(data.save_count)}</Text>
               </View>
             </Reveal>
           }
           ListEmptyComponent={
             <Reveal index={1}>
               <Text className="px-6 pt-10 text-center font-sans text-body text-ink-2">
-                {"No reels here yet. Add one from a card's bookmark."}
+                {"No saves here yet. Open a card and tap Add to stack."}
               </Text>
             </Reveal>
           }

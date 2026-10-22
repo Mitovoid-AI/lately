@@ -16,6 +16,12 @@ export const LOGO = require("../../assets/stitch/logo.png");
 
 /** App bar height: compact, like a native nav bar (44-56 pt). */
 export const HEADER_HEIGHT = 52;
+/**
+ * The bar's content stays in the same column as the screen under it (the 1280 pt grid by
+ * default, centred on a wide window), so the wordmark and avatar line up with the first tile's
+ * edges instead of the window's. The bar's fill and hairline still run edge to edge.
+ */
+const CONTENT_MAX_WIDTH = 1280;
 
 /**
  * The bottom hairline of a top bar. Given the screen's scroll offset it appears only once
@@ -43,6 +49,7 @@ export function Header({
   onBack,
   title,
   scrollY,
+  maxWidth = CONTENT_MAX_WIDTH,
 }: {
   avatarUrl?: string | null;
   initial?: string;
@@ -50,39 +57,52 @@ export function Header({
   onBack?: () => void;
   title?: string;
   scrollY?: SharedValue<number>;
+  /** Width of the column the content sits in; a screen with a narrower column passes its own. */
+  maxWidth?: number;
 }) {
   const { colors } = useTheme();
   return (
-    <View className="flex-row items-center justify-between bg-canvas px-4" style={{ height: HEADER_HEIGHT }}>
-      {onBack ? (
-        <View className="-ml-3 flex-1 flex-row items-center">
-          <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={onBack} />
-          {title ? (
-            <Text numberOfLines={1} className="ml-1 flex-1 font-display-medium text-display-sm text-ink">
-              {title}
+    <View className="bg-canvas" style={{ height: HEADER_HEIGHT }}>
+      <View
+        className="w-full flex-1 flex-row items-center justify-between self-center px-4"
+        style={{ maxWidth }}
+      >
+        {onBack ? (
+          <View className="-ml-3 flex-1 flex-row items-center">
+            <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={onBack} />
+            {title ? (
+              <Text
+                numberOfLines={1}
+                maxFontSizeMultiplier={1.3}
+                className="ml-1 flex-1 font-display-medium text-display-sm text-ink"
+              >
+                {title}
+              </Text>
+            ) : null}
+          </View>
+        ) : (
+          <View className="flex-row items-center">
+            <Image source={LOGO} style={{ width: 26, height: 26, borderRadius: 7 }} />
+            <Text maxFontSizeMultiplier={1.3} className="ml-2 font-display-medium text-display-sm text-ink">
+              Lately
             </Text>
-          ) : null}
+          </View>
+        )}
+        <View className="-mr-2 flex-row items-center">
+          <IconButton label="Account" onPress={onAvatar}>
+            {avatarUrl ? (
+              <Image
+                source={{ uri: avatarUrl }}
+                transition={IMAGE_FADE}
+                style={{ width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: colors.hairline }}
+              />
+            ) : (
+              <View className="items-center justify-center rounded-full bg-raised" style={{ width: 30, height: 30 }}>
+                <Text className="font-sans-semibold text-meta text-ink">{initial}</Text>
+              </View>
+            )}
+          </IconButton>
         </View>
-      ) : (
-        <View className="flex-row items-center">
-          <Image source={LOGO} style={{ width: 26, height: 26, borderRadius: 7 }} />
-          <Text className="ml-2 font-display-medium text-display-sm text-ink">Lately</Text>
-        </View>
-      )}
-      <View className="-mr-2 flex-row items-center">
-        <IconButton label="Account" onPress={onAvatar}>
-          {avatarUrl ? (
-            <Image
-              source={{ uri: avatarUrl }}
-              transition={IMAGE_FADE}
-              style={{ width: 30, height: 30, borderRadius: 15, borderWidth: 1, borderColor: colors.hairline }}
-            />
-          ) : (
-            <View className="items-center justify-center rounded-full bg-raised" style={{ width: 30, height: 30 }}>
-              <Text className="font-sans-semibold text-meta text-ink">{initial}</Text>
-            </View>
-          )}
-        </IconButton>
       </View>
       <ScrollHairline scrollY={scrollY} />
     </View>

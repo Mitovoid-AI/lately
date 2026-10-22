@@ -9,10 +9,15 @@ import { Reveal } from "../motion/Reveal";
 import { Skeleton, SkeletonGroup } from "../Skeleton";
 import { Thumb } from "../Thumb";
 
-/** A memory tile is a small 3:4 poster: a row of them shows the next one peeking in. */
-const TILE_W = 132;
+/**
+ * A memory tile is a small 3:4 poster (120 x 160 on a phone): a row of them shows the next one
+ * peeking in. Home passes a wider `tileWidth` on a tablet (see `memoryTileWidth`).
+ */
+const TILE_W = 120;
 const TILE_ASPECT = 3 / 4;
 const GAP = 12;
+/** Space above the section (Home's top block to this row). */
+const SECTION_GAP = 16;
 /** Most tiles in the row, and the fewest that make it worth showing at all. */
 const MAX_TILES = 6;
 const MIN_TILES = 3;
@@ -30,8 +35,8 @@ export interface Memory {
   href: string;
 }
 
-/** "THIS WEEKEND" → "This weekend": the feed's labels are shouted, a tile's should not be. */
-const sentence = (label: string) => (label ? label.charAt(0) + label.slice(1).toLowerCase() : label);
+/** "THIS WEEK" → "This week": the feed's labels are shouted, a tile's (and Curated's hero) should not be. */
+export const sentence = (label: string) => (label ? label.charAt(0) + label.slice(1).toLowerCase() : label);
 
 /**
  * The tiles for Back for you: the hero pick first, then saves from the feed's sections, with
@@ -87,21 +92,22 @@ const SCRIM: ViewStyle = {
   ...(Platform.OS === "web" ? { backgroundImage: scrims.tile.light } : { experimental_backgroundImage: scrims.tile.light }),
 } as ViewStyle;
 
-function Tile({ memory, onOpen }: { memory: Memory; onOpen: (href: string) => void }) {
+function Tile({ memory, width, onOpen }: { memory: Memory; width: number; onOpen: (href: string) => void }) {
   return (
     <PressableScale
       accessibilityRole="button"
       accessibilityLabel={`${memory.title}, ${memory.kicker}`}
       onPress={() => onOpen(memory.href)}
-      containerStyle={{ width: TILE_W }}
+      containerStyle={{ width }}
     >
       <Thumb uri={memory.uri} aspect={TILE_ASPECT} radius={12}>
         <View style={SCRIM} />
         <View style={styles.text}>
-          <Text numberOfLines={1} className="font-sans text-caption text-on-media-muted" style={styles.kicker}>
+          {/* Full white, not the muted tone: this 11 pt line sits over a photo and has to stay readable. */}
+          <Text numberOfLines={1} className="font-sans text-caption text-on-media" style={styles.kicker}>
             {memory.kicker}
           </Text>
-          <Text numberOfLines={3} className="font-display text-on-media" style={styles.title}>
+          <Text numberOfLines={2} className="font-display text-on-media" style={styles.title}>
             {memory.title}
           </Text>
         </View>
@@ -114,15 +120,15 @@ function Tile({ memory, onOpen }: { memory: Memory; onOpen: (href: string) => vo
  * While the feed loads: a bar where the title will be and three tile shapes, so the grid below
  * does not jump when the row arrives. (If the feed turns out empty the block then goes away.)
  */
-function LoadingRow() {
+function LoadingRow({ tileWidth }: { tileWidth: number }) {
   return (
-    <SkeletonGroup style={{ marginTop: 24 }}>
-      <View className="h-11 justify-center px-4">
+    <SkeletonGroup style={{ marginTop: SECTION_GAP }}>
+      <View className="h-10 justify-center px-4">
         <Skeleton style={{ height: 16, width: 110, borderRadius: 8 }} />
       </View>
       <View style={[styles.row, { marginTop: 4 }]}>
         {[0, 1, 2].map((i) => (
-          <Skeleton key={i} style={{ width: TILE_W, aspectRatio: TILE_ASPECT, borderRadius: 12 }} />
+          <Skeleton key={i} style={{ width: tileWidth, aspectRatio: TILE_ASPECT, borderRadius: 12 }} />
         ))}
       </View>
     </SkeletonGroup>
@@ -134,39 +140,46 @@ function LoadingRow() {
  * reason on them. It never shows an error or an empty box: when the feed fails, is empty or has
  * too little to say, the whole block is simply not there. See all opens the Curated screen.
  */
-export function BackForYou({ onOpen, onSeeAll }: { onOpen: (href: string) => void; onSeeAll: () => void }) {
+export function BackForYou({
+  onOpen,
+  onSeeAll,
+  tileWidth = TILE_W,
+}: {
+  onOpen: (href: string) => void;
+  onSeeAll: () => void;
+  /** Tile width in pt (Home scales it with its grid on tablets). */
+  tileWidth?: number;
+}) {
   const api = useApi();
   // The same key as the Curated screen, so the two share one request.
   const feed = useQuery({ queryKey: ["curated"], queryFn: () => api.getCurated() });
+  // By design a failed feed is not an error here: Home is complete without this row, and the
+  // Curated screen (See all) is where a failed load says so and offers Try again.
   if (feed.isError && !feed.data) return null;
-  if (feed.isLoading) return <LoadingRow />;
+  if (feed.isLoading) return <LoadingRow tileWidth={tileWidth} />;
   const tiles = memoriesFrom(feed.data);
   if (tiles.length === 0) return null;
   return (
-    <Reveal style={{ marginTop: 24 }}>
-      <View className="flex-row items-center justify-between pl-4 pr-2">
-        <Text className="font-display text-display-sm text-ink">Back for you</Text>
-        <PressableScale
-          accessibilityRole="button"
-          accessibilityLabel="See all picks"
-          onPress={onSeeAll}
-          scaleTo={0.96}
-          className="h-11 justify-center px-2"
-        >
-          <Text className="font-sans-semibold text-body text-accent-text">See all</Text>
+    <Reveal style={{ marginTop: SECTION_GAP }}>
+      <View className="h-10 flex-row items-center justify-between pl-4 pr-2">
+        <Text accessibilityRole="header" className="font-display text-display-sm text-ink">
+          Back for you
+        </Text>
+        <PressableScale accessibilityRole="button" onPress={onSeeAll} scaleTo={0.96} className="h-10 justify-center px-2">
+          <Text className="font-sans-semibold text-body text-ink">See all</Text>
         </PressableScale>
       </View>
       <ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
         decelerationRate="fast"
-        snapToInterval={TILE_W + GAP}
+        snapToInterval={tileWidth + GAP}
         snapToAlignment="start"
         className="mt-1"
         contentContainerStyle={styles.row}
       >
         {tiles.map((m) => (
-          <Tile key={m.key} memory={m} onOpen={onOpen} />
+          <Tile key={m.key} memory={m} width={tileWidth} onOpen={onOpen} />
         ))}
       </ScrollView>
     </Reveal>
@@ -177,6 +190,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: "row", gap: GAP, paddingHorizontal: 16 },
   text: { position: "absolute", left: 10, right: 10, bottom: 10 },
   kicker: { marginBottom: 2 },
-  // Android: no font padding, so the title sits on its 18 pt lines over the photo.
+  // Android: no font padding, so the title sits on its 18 pt lines over the photo (two at most).
   title: { fontSize: 14, lineHeight: 18, letterSpacing: -0.1, includeFontPadding: false },
 });

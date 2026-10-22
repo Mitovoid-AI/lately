@@ -5,7 +5,7 @@ import { ApiError } from "../../api/contract";
 import { enqueueSave, queueKey, readQueue } from "../../lib/saveQueue";
 import { createMemoryStore } from "../../test/memoryStore";
 import { demoApi, renderWithProviders } from "../../test/render";
-import { useSaveQueue } from "../useSaveQueue";
+import { droppedMessage, useSaveQueue } from "../useSaveQueue";
 
 const KEY = queueKey("demo-user");
 const LINK = "https://www.instagram.com/reel/QUEUED1/";
@@ -83,4 +83,25 @@ test("signed out, nothing is queued or sent", async () => {
   await fireEvent.press(screen.getByText("enqueue"));
   expect(screen.getByText("queued: 0")).toBeTruthy();
   expect(await readQueue(queueStore, KEY)).toEqual([]);
+});
+
+test("a queued share the server refuses for good says why", async () => {
+  const queueStore = createMemoryStore();
+  await enqueueSave(queueStore, KEY, LINK);
+  const api = demoApi();
+  jest.spyOn(api, "createSave").mockRejectedValueOnce(new ApiError("QUOTA_EXCEEDED", 429));
+  await renderWithProviders(<Probe />, { api, queueStore });
+  expect(await screen.findByText("1 reel you shared offline didn't save: you've used this month's free saves.")).toBeTruthy();
+  expect(await screen.findByText("queued: 0")).toBeTruthy();
+});
+
+test("the refusal says the reason for each kind, and counts each", () => {
+  expect(droppedMessage(["QUOTA_EXCEEDED"])).toBe(
+    "1 reel you shared offline didn't save: you've used this month's free saves.",
+  );
+  expect(droppedMessage(["BAD_URL"])).toBe("1 share had no reel link, so nothing was saved.");
+  expect(droppedMessage(["BAD_URL", "BAD_URL"])).toBe("2 shares had no reel link, so nothing was saved.");
+  expect(droppedMessage(["QUOTA_EXCEEDED", "QUOTA_EXCEEDED", "BAD_URL"])).toBe(
+    "2 reels you shared offline didn't save: you've used this month's free saves. 1 share had no reel link, so nothing was saved.",
+  );
 });

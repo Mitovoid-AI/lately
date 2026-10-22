@@ -25,7 +25,7 @@ function Marker({ state }: { state: StepState }) {
   if (state === "active") {
     return (
       <View style={{ width: INDICATOR, height: INDICATOR, alignItems: "center", justifyContent: "center" }}>
-        <ActivityIndicator size="small" color={colors.accentText} style={{ transform: [{ scale: 0.8 }] }} />
+        <ActivityIndicator size="small" color={colors.ink2} style={{ transform: [{ scale: 0.8 }] }} />
       </View>
     );
   }
@@ -52,7 +52,8 @@ export function SaveTracker({
   unreachable?: boolean;
   /** The first card this person has ever saved: the line says so. */
   first?: boolean;
-  onOpenCard: () => void;
+  /** Pressed on "Open card" once the card is ready. Without it (the card's own screen) there is no button. */
+  onOpenCard?: () => void;
 }) {
   const { colors } = useTheme();
   const steps = trackerSteps(status, stage);
@@ -90,7 +91,7 @@ export function SaveTracker({
       <Text accessibilityLiveRegion="polite" className="mt-3 font-sans text-meta text-ink-2">
         {note}
       </Text>
-      {ready ? (
+      {ready && onOpenCard ? (
         <Reveal>
           <Button title="Open card" onPress={onOpenCard} size="lg" className="mt-3" />
         </Reveal>

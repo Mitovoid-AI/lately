@@ -35,6 +35,13 @@ test("shows Home, Search, Save and Stacks, and no Curated", async () => {
   expect(screen.queryByText("Library")).toBeNull();
 });
 
+test("the labels stop growing with the text size at 1.2x, so the fourth tab stays in the bar", async () => {
+  await render(<TabBar {...barProps().props} />);
+  for (const label of ["Home", "Search", "Save", "Stacks"]) {
+    expect(screen.getByText(label).props.maxFontSizeMultiplier).toBe(1.2);
+  }
+});
+
 test("the current place is selected; Save is an action, never selected", async () => {
   await render(<TabBar {...barProps(1).props} />);
   expect(screen.getByRole("tab", { name: "Search" })).toBeSelected();

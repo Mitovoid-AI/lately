@@ -24,7 +24,10 @@ export function ErrorState({
     <Reveal>
       <View className="items-center px-6 pt-16">
         <Icon name={icon} size={40} color={colors.ink3} />
-        <Text className="mt-4 text-center font-display text-display-md text-ink">{title}</Text>
+        {/* A live region: Android does not speak role "alert", so the error is announced as it appears. */}
+        <Text accessibilityLiveRegion="polite" className="mt-4 text-center font-display text-display-md text-ink">
+          {title}
+        </Text>
         <Text className="mt-2 text-center font-sans text-body text-ink-2">{body}</Text>
         {onRetry ? (
           <Button title="Try again" variant="secondary" onPress={onRetry} loading={retrying} className="mt-6 w-full max-w-[320px]" />

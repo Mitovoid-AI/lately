@@ -4,6 +4,7 @@ import { Keyboard, Platform, StyleSheet, View } from "react-native";
 import Animated, {
   interpolateColor,
   useAnimatedStyle,
+  useReducedMotion,
   useSharedValue,
   withTiming,
 } from "react-native-reanimated";
@@ -29,6 +30,10 @@ const ICONS: Record<string, { name: IconName; active?: IconName }> = {
 const MARK_W = 20;
 /** Bar height above the home indicator (native tab bars are 49-56 pt). */
 export const TAB_BAR_HEIGHT = 56;
+/** On a tablet the four tabs stay a phone-sized group in the middle, not spread across the screen. */
+const BAR_MAX_WIDTH = 640;
+/** Labels grow with the text size, but not past this: at 2x the fourth tab would leave the bar. */
+const LABEL_MAX_SCALE = 1.2;
 
 function TabItem({
   label,
@@ -63,22 +68,30 @@ function TabItem({
       onLayout={(e) => onLayout(e.nativeEvent.layout.x, e.nativeEvent.layout.width)}
       className="min-h-12 min-w-16 items-center justify-center"
     >
+      {/* Every icon sits in the same 32 x 56 slot, so all four labels share one baseline. */}
       {action ? (
         // The one filled shape in the bar: saving is what Lately is for.
         <View className="h-8 w-14 items-center justify-center rounded-full bg-accent">
           <Icon name={icon.name} size={24} color={colors.onAccent} />
         </View>
       ) : (
-        <AnimatedIcon
-          active={focused}
-          name={icon.name}
-          activeName={icon.active ?? icon.name}
-          color={colors.ink2}
-          activeColor={colors.accentText}
-          size={23}
-        />
+        <View className="h-8 w-14 items-center justify-center">
+          <AnimatedIcon
+            active={focused}
+            name={icon.name}
+            activeName={icon.active ?? icon.name}
+            color={colors.ink2}
+            activeColor={colors.accentText}
+            size={23}
+          />
+        </View>
       )}
-      <Animated.Text style={[styles.label, focused ? styles.labelOn : null, labelStyle]}>{label}</Animated.Text>
+      <Animated.Text
+        maxFontSizeMultiplier={LABEL_MAX_SCALE}
+        style={[styles.label, focused ? styles.labelOn : null, labelStyle]}
+      >
+        {label}
+      </Animated.Text>
     </PressableScale>
   );
 }
@@ -115,6 +128,7 @@ export function TabBar({ state, descriptors, navigation, insets }: TabBarProps) 
   const markOn = useSharedValue(0);
   const placed = useRef(false);
   const keyboardOpen = useKeyboardOpen();
+  const reduced = useReducedMotion();
   const activeKey = state.routes[state.index]?.key;
 
   useEffect(() => {
@@ -124,11 +138,12 @@ export function TabBar({ state, descriptors, navigation, insets }: TabBarProps) 
     if (!placed.current) {
       placed.current = true;
       markX.set(target);
-      markOn.set(withTiming(1, { duration: DURATION.enter, easing: EASE_OUT }));
+      markOn.set(reduced ? 1 : withTiming(1, { duration: DURATION.enter, easing: EASE_OUT }));
       return;
     }
-    markX.set(withTiming(target, { duration: 260, easing: EASE_IN_OUT }));
-  }, [activeKey, layouts, markX, markOn]);
+    // Reduce Motion: the marker jumps to the new tab instead of gliding.
+    markX.set(reduced ? target : withTiming(target, { duration: 260, easing: EASE_IN_OUT }));
+  }, [activeKey, layouts, markX, markOn, reduced]);
 
   const markStyle = useAnimatedStyle(() => ({
     opacity: markOn.get(),
@@ -139,35 +154,40 @@ export function TabBar({ state, descriptors, navigation, insets }: TabBarProps) 
 
   return (
     <View
-      className="flex-row items-center justify-around border-t border-hairline bg-canvas"
+      className="border-t border-hairline bg-canvas"
       style={{ paddingBottom: insets.bottom, height: TAB_BAR_HEIGHT + insets.bottom }}
     >
-      <Animated.View style={[styles.mark, { backgroundColor: colors.accent }, markStyle]} />
-      {state.routes.map((route, index) => {
-        const focused = state.index === index;
-        const label = descriptors[route.key].options.title ?? route.name;
-        const onPress = () => {
-          const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
-          // Save is an action (light tap); switching tabs is navigation, which stays silent.
-          if (route.name === "save") haptic.light();
-          if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
-        };
-        return (
-          <TabItem
-            key={route.key}
-            label={label}
-            icon={ICONS[route.name] ?? { name: "circle" }}
-            focused={focused}
-            action={route.name === "save"}
-            onPress={onPress}
-            onLayout={(x, width) =>
-              setLayouts((prev) =>
-                prev[route.key]?.x === x && prev[route.key]?.width === width ? prev : { ...prev, [route.key]: { x, width } },
-              )
-            }
-          />
-        );
-      })}
+      <View
+        className="w-full flex-1 flex-row items-center justify-around self-center"
+        style={{ maxWidth: BAR_MAX_WIDTH }}
+      >
+        <Animated.View style={[styles.mark, { backgroundColor: colors.accent }, markStyle]} />
+        {state.routes.map((route, index) => {
+          const focused = state.index === index;
+          const label = descriptors[route.key].options.title ?? route.name;
+          const onPress = () => {
+            const event = navigation.emit({ type: "tabPress", target: route.key, canPreventDefault: true });
+            // Save is an action (light tap); switching tabs is navigation, which stays silent.
+            if (route.name === "save") haptic.light();
+            if (!focused && !event.defaultPrevented) navigation.navigate(route.name);
+          };
+          return (
+            <TabItem
+              key={route.key}
+              label={label}
+              icon={ICONS[route.name] ?? { name: "circle" }}
+              focused={focused}
+              action={route.name === "save"}
+              onPress={onPress}
+              onLayout={(x, width) =>
+                setLayouts((prev) =>
+                  prev[route.key]?.x === x && prev[route.key]?.width === width ? prev : { ...prev, [route.key]: { x, width } },
+                )
+              }
+            />
+          );
+        })}
+      </View>
     </View>
   );
 }

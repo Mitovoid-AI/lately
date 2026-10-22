@@ -11,7 +11,7 @@ import { useTheme } from "../theme/ThemeProvider";
 
 const MESSAGES: Record<AuthFailure, string> = {
   cancelled: "Sign-in was canceled.",
-  provider_disabled: "That sign-in method isn't turned on yet.",
+  provider_disabled: "Google sign-in isn't available right now. Use email instead.",
   rate_limited: "Too many attempts. Wait a minute and try again.",
   invalid_code: "This sign-in link has expired or was already used. Ask for a new one.",
   network: "Couldn't reach the sign-in service. Check your connection.",
@@ -44,13 +44,15 @@ export function AuthCallbackScreen() {
           <View className="h-16 w-16 items-center justify-center rounded-full bg-raised">
             <Icon name="link-off" size={30} color={colors.ink2} />
           </View>
-          <Text className="mt-5 text-center font-display text-display-md text-ink">{"Couldn't sign you in"}</Text>
+          <Text accessibilityRole="header" accessibilityLiveRegion="polite" className="mt-5 text-center font-display text-display-md text-ink">
+            {"Couldn't sign you in"}
+          </Text>
           <Text className="mt-2 text-center font-sans text-body text-ink-2">{MESSAGES[failed]}</Text>
           <Button title="Back to sign in" onPress={() => router.replace("/sign-in")} className="mt-6 w-full" />
         </Reveal>
       ) : (
         <>
-          <ActivityIndicator color={colors.accentText} />
+          <ActivityIndicator color={colors.ink2} accessibilityLabel="Signing you in" />
           <Text className="mt-3 font-sans text-body text-ink-2">Signing you in…</Text>
         </>
       )}

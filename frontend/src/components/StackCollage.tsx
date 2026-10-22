@@ -11,8 +11,11 @@ function Cell({ uri, flex = 1 }: { uri: string; flex?: number }) {
   return <Image source={{ uri }} contentFit="cover" style={{ flex, backgroundColor: colors.raised }} />;
 }
 
-/** Stack cover: 0–4 thumbnails arranged in one rounded square frame (Stitch "07 Stacks"). */
-export function StackCollage({ covers, radius = 14, size }: { covers: string[]; radius?: number; size?: number }) {
+/**
+ * Stack cover: 0–4 thumbnails arranged in one rounded square frame (Stitch "07 Stacks"). The
+ * radius is the thumbnail radius (12); an empty stack shows the albums glyph, the Stacks tab's own.
+ */
+export function StackCollage({ covers, radius = 12, size }: { covers: string[]; radius?: number; size?: number }) {
   const { colors } = useTheme();
   const frame: ViewStyle = {
     width: size ?? "100%",
@@ -26,7 +29,7 @@ export function StackCollage({ covers, radius = 14, size }: { covers: string[]; 
   if (!a) {
     body = (
       <View className="flex-1 items-center justify-center">
-        <Icon name="folder-open" size={size && size < 60 ? 18 : 32} color={colors.ink3} />
+        <Icon name="folder-special" size={size && size < 60 ? 18 : 32} color={colors.ink3} />
       </View>
     );
   } else if (!b) {

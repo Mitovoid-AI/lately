@@ -7,6 +7,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { CuratedSection, Save } from "../api/contract";
 import { useApi } from "../api/index";
 import { Header } from "../components/Header";
+import { sentence } from "../components/home/BackForYou";
 import { PressableScale } from "../components/motion/PressableScale";
 import { Reveal } from "../components/motion/Reveal";
 import { ReelCard, ZoomLink, cardTitle } from "../components/ReelCard";
@@ -24,6 +25,12 @@ import { ErrorState } from "../components/ErrorState";
 const ROW_CARD = 136;
 /** The hero picture: a wide 16:9 band, not half the screen. */
 const HERO_ASPECT = 16 / 9;
+/** The column the page sits in; the header above it uses the same width. */
+const CONTENT_WIDTH = 720;
+/** Space between the blocks of the page (the hero and each section). */
+const SECTION_GAP = 24;
+/** Media radius by role: 12 for tiles and thumbs, 16 for this hero (like the search best match). */
+const HERO_RADIUS = 16;
 
 function ListRow({ save, now }: { save: Save; now: number }) {
   const { colors } = useTheme();
@@ -37,7 +44,7 @@ function ListRow({ save, now }: { save: Save; now: number }) {
       >
         <View style={{ width: 64 }}>
           <Link.AppleZoom>
-            <Thumb uri={save.status === "enriched" ? save.thumbnail_url : null} aspect={64 / 80} radius={10} />
+            <Thumb uri={save.status === "enriched" ? save.thumbnail_url : null} aspect={64 / 80} radius={12} />
           </Link.AppleZoom>
         </View>
         <View className="ml-3 flex-1">
@@ -57,8 +64,8 @@ function ListRow({ save, now }: { save: Save; now: number }) {
 function Section({ section, now, index }: { section: CuratedSection; now: number; index: number }) {
   if (section.saves.length === 0) return null;
   return (
-    <Reveal index={index} style={{ marginTop: 28 }}>
-      <Text className="px-4 font-display text-display-sm text-ink">
+    <Reveal index={index} style={{ marginTop: SECTION_GAP }}>
+      <Text accessibilityRole="header" className="px-4 font-display text-display-sm text-ink">
         {section.title}
       </Text>
       {section.subtitle ? <Text className="mt-0.5 px-4 font-sans text-meta text-ink-2">{section.subtitle}</Text> : null}
@@ -91,7 +98,10 @@ function Section({ section, now, index }: { section: CuratedSection; now: number
   );
 }
 
-/** Built to the "06 Curated — light" generation brief: picks resurfaced from your own saves. */
+/**
+ * Picks resurfaced from your own saves (Home's "Back for you" > See all): one hero pick, then
+ * rows and lists. Its sections are whatever the feed sends (it shapes them server-side).
+ */
 export function CuratedScreen() {
   const { colors } = useTheme();
   const router = useRouter();
@@ -117,6 +127,7 @@ export function CuratedScreen() {
         // Curated is a stack screen now (Home's "See all"), no longer a tab.
         onBack={() => goBack(router)}
         scrollY={scrollY}
+        maxWidth={CONTENT_WIDTH}
       />
       <Animated.ScrollView
         onScroll={onScroll}
@@ -135,9 +146,11 @@ export function CuratedScreen() {
           />
         }
       >
-        <View className="w-full max-w-[720px] self-center">
+        <View className="w-full self-center" style={{ maxWidth: CONTENT_WIDTH }}>
           <View className="px-4 pt-3">
-            <Text className="font-display text-display-lg text-ink">Curated for you</Text>
+            <Text accessibilityRole="header" className="font-display text-display-lg text-ink">
+              Back for you
+            </Text>
             {feed.data ? (
               <Reveal>
                 <Text className="mt-0.5 font-sans text-meta text-ink-2">{`${feed.data.date_label} · picked from your saves`}</Text>
@@ -146,12 +159,12 @@ export function CuratedScreen() {
           </View>
 
           {feed.isLoading ? (
-            <SkeletonGroup style={{ paddingHorizontal: 16, marginTop: 24 }}>
+            <SkeletonGroup style={{ paddingHorizontal: 16, marginTop: SECTION_GAP }}>
               <Skeleton style={{ height: 12, width: 110, borderRadius: 6 }} />
-              <Skeleton style={{ marginTop: 12, aspectRatio: HERO_ASPECT, borderRadius: 14 }} />
+              <Skeleton style={{ marginTop: 12, aspectRatio: HERO_ASPECT, borderRadius: HERO_RADIUS }} />
               <Skeleton style={{ marginTop: 12, height: 22, width: "70%", borderRadius: 8 }} />
               <Skeleton style={{ marginTop: 8, height: 12, width: "45%", borderRadius: 6 }} />
-              <View className="mt-8">
+              <View className="mt-6">
                 <SkeletonRow />
                 <SkeletonRow />
               </View>
@@ -164,19 +177,25 @@ export function CuratedScreen() {
 
           {feed.data && !hero?.save_ids.length && feed.data.sections.every((s) => s.saves.length === 0) ? (
             <ErrorState
-              icon="auto-awesome"
+              icon="history"
               title="Nothing to resurface yet"
-              body="Save a few reels and Lately will bring the best ones back here."
+              body="Save a few reels and Lately will bring back ones you haven't looked at in a while."
             />
           ) : null}
 
           {hero && hero.save_ids.length > 0 ? (
-            <Reveal index={1} style={{ marginTop: 20, paddingHorizontal: 16 }}>
-              <Text className="font-sans-semibold text-label text-ink-2">{hero.label}</Text>
+            <Reveal index={1} style={{ marginTop: SECTION_GAP, paddingHorizontal: 16 }}>
+              {/* The feed's label is shouted ("THIS WEEK"); here it reads as a sentence, like Home's tiles. */}
+              <Text className="font-sans-semibold text-meta text-ink-2">{sentence(hero.label)}</Text>
               <ZoomLink href={`/reel/${hero.save_ids[0]}`}>
-                <PressableScale accessibilityRole="button" scaleTo={0.98} containerClassName="mt-3">
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel={hero.title}
+                  scaleTo={0.98}
+                  containerClassName="mt-3"
+                >
                   <Link.AppleZoom>
-                    <Thumb uri={hero.image_url} aspect={HERO_ASPECT} className="border border-hairline" />
+                    <Thumb uri={hero.image_url} aspect={HERO_ASPECT} radius={HERO_RADIUS} className="border border-hairline" />
                   </Link.AppleZoom>
                 </PressableScale>
               </ZoomLink>
@@ -189,7 +208,7 @@ export function CuratedScreen() {
                 containerClassName="mt-2 self-start"
                 className="h-10 justify-center"
               >
-                <Text className="font-sans-semibold text-body text-accent-text">{`See all ${hero.save_ids.length}`}</Text>
+                <Text className="font-sans-semibold text-body text-ink">{`See all ${hero.save_ids.length}`}</Text>
               </PressableScale>
             </Reveal>
           ) : null}

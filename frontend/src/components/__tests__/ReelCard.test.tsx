@@ -4,8 +4,9 @@ import type { Save } from "../../api/contract";
 import { buildDemoSeed } from "../../api/demo-data";
 import { relativeShort } from "../../lib/dates";
 import { displayLink } from "../../lib/instagram";
+import { stageLabel } from "../../lib/saveOutcome";
 import { NOW } from "../../test/fixtures";
-import { cardTitle, ReelCard } from "../ReelCard";
+import { cardTitle, PENDING_TITLE, ReelCard } from "../ReelCard";
 
 const seed = buildDemoSeed(NOW).saves;
 const byId = (id: string): Save => seed.find((s) => s.id === id)!;
@@ -19,12 +20,24 @@ test("a ready card shows title, quoted note, the category pill and the date", as
   expect(screen.getByText(relativeShort(save.created_at, NOW))).toBeTruthy();
 });
 
-test("a pending card shows the processing state and the link, and no category pill", async () => {
+test("a pending card is called New reel, says Getting details until a step is known, and has no category pill", async () => {
   const save = byId("s-pending");
   await render(<ReelCard save={save} now={NOW} onPress={() => {}} />);
-  expect(screen.getByText("Getting details…")).toBeTruthy();
-  expect(screen.getByText(displayLink(save.source_url))).toBeTruthy();
+  expect(PENDING_TITLE).toBe("New reel");
+  expect(screen.getByText("New reel")).toBeTruthy();
+  expect(screen.getByText("Getting details")).toBeTruthy();
+  expect(screen.queryByText(displayLink(save.source_url))).toBeNull();
   expect(screen.queryByText("Food")).toBeNull();
+});
+
+test("a pending card names the step the server is on, in the tracker's words", async () => {
+  const save = { ...byId("s-pending"), stage: "transcribe" as const };
+  await render(<ReelCard save={save} now={NOW} onPress={() => {}} />);
+  expect(screen.getByText(stageLabel("transcribe"))).toBeTruthy();
+  expect(screen.getByText("Listening to it")).toBeTruthy();
+  expect(screen.queryByText("Getting details")).toBeNull();
+  // The step is part of the one screen-reader stop too.
+  expect(screen.getByRole("button").props.accessibilityLabel).toContain("Listening to it");
 });
 
 test("a partial card says the preview is unavailable and shows the caption", async () => {

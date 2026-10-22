@@ -1,5 +1,5 @@
 import type { Ref } from "react";
-import { Platform, StyleSheet, TextInput, View } from "react-native";
+import { Platform, StyleSheet, TextInput, View, type TextStyle } from "react-native";
 import Animated, {
   FadeIn,
   FadeOut,
@@ -21,8 +21,9 @@ const CLEAR_OUT = FadeOut.duration(120);
 export const SEARCH_FIELD_HEIGHT = 52;
 
 /**
- * The Search tab's field: 52 pt, rounded, raised fill (like the one on Home). Focus warms the
- * border to marigold and blooms the soft ring, on the UI thread (no re-render on focus).
+ * The Search tab's field: 52 pt, rounded, raised fill (like the one on Home) with a `control`
+ * outline at rest (the boundary of a control, 3:1). Focus warms the border to marigold and
+ * blooms the soft ring, on the UI thread (no re-render on focus).
  */
 export function SearchField({
   value,
@@ -44,7 +45,7 @@ export function SearchField({
   const to = (v: number) => focus.set(withTiming(v, { duration: DURATION.state, easing: EASE_OUT }));
 
   const boxStyle = useAnimatedStyle(() => ({
-    borderColor: interpolateColor(focus.get(), [0, 1], [colors.raised, colors.accentText]),
+    borderColor: interpolateColor(focus.get(), [0, 1], [colors.control, colors.accentText]),
   }));
   const ringStyle = useAnimatedStyle(() => ({
     opacity: focus.get(),
@@ -81,6 +82,11 @@ export function SearchField({
   );
 }
 
+// `outlineStyle: "none"` is web-only (React Native's own type lists solid, dotted and dashed).
+const WEB_NO_OUTLINE = (
+  Platform.OS === "web" ? { outlineWidth: 0, outlineColor: "transparent", outlineStyle: "none" } : null
+) as TextStyle | null;
+
 const styles = StyleSheet.create({
   wrap: { flex: 1 },
   box: {
@@ -102,6 +108,7 @@ const styles = StyleSheet.create({
     borderRadius: 19,
     borderWidth: 3,
   },
-  // The field draws its own focus ring, so the browser's outline is switched off on web.
-  input: { paddingVertical: 0, ...(Platform.OS === "web" ? { outlineWidth: 0, outlineColor: "transparent" } : null) },
+  // The box draws the border and the focus ring, so the input itself has neither: no fill, no
+  // border, and the browser's own outline is switched off on web.
+  input: { paddingVertical: 0, backgroundColor: "transparent", borderWidth: 0, ...WEB_NO_OUTLINE },
 });

@@ -19,7 +19,7 @@ import { Stack } from "expo-router";
 import { ShareIntentProvider, useShareIntentContext } from "expo-share-intent";
 import { StatusBar } from "expo-status-bar";
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
-import { LogBox, Platform, Text, View } from "react-native";
+import { ActivityIndicator, LogBox, Platform, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useReducedMotion } from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -111,7 +111,14 @@ function RootStack() {
   // Navigation keeps the platform's own transitions (and the iOS back swipe); with Reduce
   // Motion every push becomes a cross-fade.
   const reduced = useReducedMotion();
-  if (status === "loading") return <View className="flex-1 bg-canvas" />;
+  // Restoring the saved session: a centered, named spinner rather than a blank screen.
+  if (status === "loading") {
+    return (
+      <View className="flex-1 items-center justify-center bg-canvas">
+        <ActivityIndicator color={colors.ink2} accessibilityLabel="Loading Lately" />
+      </View>
+    );
+  }
   const signedIn = status === "signed-in";
   return (
     <Stack

@@ -44,6 +44,17 @@ export function deriveFacts(card: Pick<SaveDetail, "places" | "steps">): Fact[] 
   return facts.slice(0, 3);
 }
 
+/**
+ * The steps still worth listing under "Tips": the ones a chip does not already show whole. A step
+ * that became a chip word for word (a short tip, a short price) is left out; one the chip only
+ * quotes part of ("Tickets are $15 for two, cash only" as "$15 for two") stays, because the list
+ * has the rest.
+ */
+export function stepsBeyondFacts(steps: readonly string[] | null | undefined, facts: readonly Fact[]): string[] {
+  const shown = new Set(facts.filter((f) => f.kind !== "place").map((f) => f.text));
+  return (steps ?? []).filter((step) => !shown.has(step.trim()));
+}
+
 /** Where Directions goes: the place's own maps link, else a maps search for its name and address. */
 export function mapsUrl(place: Place): string {
   return (

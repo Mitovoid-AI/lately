@@ -1,7 +1,10 @@
 """GET /curated — contract CuratedFeed built from the user's own saves (no LLM)."""
 
+from datetime import UTC, datetime
+
 import pytest
 
+from app.routers.curated import date_label
 from app.search.seed import seed_card
 from tests.fixtures import CARDS
 
@@ -52,6 +55,7 @@ async def test_feed_hero_is_the_biggest_category_cluster(client, db, make_user, 
         str(ids["GOA1"]), str(ids["PASTA1"])]
     no_note = sections["No note yet"]
     assert no_note["kind"] == "list"
+    assert no_note["subtitle"] == "Add a note so search can find them"
     assert {s["id"] for s in no_note["saves"]} == {str(ids[c]) for c in ("MOMO1", "JOBS1", "PASTA1")}
     assert [t for t in _titles(feed) if t.startswith("Revisit")] == [
         "Revisit · Food & Places", "Revisit · Career & Jobs", "Revisit · Dev & Tools"]
@@ -69,14 +73,21 @@ async def test_a_shared_tag_beats_a_category(client, db, make_user, jwt_for):
     assert hero["query"] == "trek" and len(hero["save_ids"]) == 2
 
 
-async def test_old_saves_show_as_forgotten_gems(client, db, make_user, jwt_for):
+def test_date_label_is_us_order():
+    # "Thursday, Oct 22": weekday, month name, day (not "22 Oct").
+    assert date_label(datetime(2026, 10, 22, 9, 0, tzinfo=UTC)) == "Thursday, Oct 22"
+    assert date_label(datetime(2026, 1, 5, tzinfo=UTC)) == "Monday, Jan 5"
+
+
+async def test_old_saves_show_as_a_month_ago_list(client, db, make_user, jwt_for):
     uid = await make_user()
     ids = await _seed_all(db, uid)
     await db.execute("update public.reels set created_at = now() - interval '45 days' "
                      "where id = $1", ids["JOBS1"])
     feed = (await client.get("/curated", headers=auth(jwt_for(uid)))).json()
-    gems = next(s for s in feed["sections"] if s["title"] == "Forgotten gems")
-    assert [s["id"] for s in gems["saves"]] == [str(ids["JOBS1"])]
+    old = next(s for s in feed["sections"] if s["title"] == "From over a month ago")
+    assert old["kind"] == "list" and old["subtitle"] is None
+    assert [s["id"] for s in old["saves"]] == [str(ids["JOBS1"])]
 
 
 async def test_pending_only_account_still_gets_a_feed(client, make_user, jwt_for):

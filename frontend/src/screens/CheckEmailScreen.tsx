@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useState } from "react";
-import { Text, View } from "react-native";
+import { ScrollView, Text, View } from "react-native";
 import Animated from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -52,39 +52,50 @@ export function CheckEmailScreen() {
     <View className="flex-1 items-center bg-canvas" style={{ paddingTop: insets.top }}>
       <View className="w-full max-w-[440px] flex-1 px-4">
         <IconButton icon="arrow-back" size={22} color={colors.ink} label="Back" onPress={() => goBack(router, "/sign-in")} />
-        <View className="mt-8 items-center">
-          <PopIn>
-            <View className="h-16 w-16 items-center justify-center rounded-full bg-raised">
-              <Icon name="mail-outline" size={30} color={colors.accentText} />
-            </View>
-          </PopIn>
-          <Reveal index={2} style={{ alignItems: "center" }}>
-            <Text className="mt-5 font-display text-display-lg text-ink">Check your inbox</Text>
-            <Text className="mt-2 text-center font-sans text-body text-ink-2">
-              {`We sent a sign-in link to ${email}. Open it on this phone, or enter the 6-digit code below.`}
-            </Text>
+        {/* Scrolls, so the code field and the buttons stay reachable above the number pad at large text sizes. */}
+        <ScrollView
+          className="flex-1"
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ flexGrow: 1, paddingBottom: insets.bottom + 16 }}
+        >
+          <View className="mt-5 items-center">
+            <PopIn>
+              <View className="h-16 w-16 items-center justify-center rounded-full bg-raised">
+                <Icon name="mail-outline" size={30} color={colors.ink2} />
+              </View>
+            </PopIn>
+            <Reveal index={2} style={{ alignItems: "center" }}>
+              <Text accessibilityRole="header" maxFontSizeMultiplier={1.3} className="mt-5 text-center font-display text-display-lg text-ink">
+                Check your inbox
+              </Text>
+              <Text className="mt-2 text-center font-sans text-body text-ink-2">
+                {`We sent a sign-in link to ${email}. Open it on this phone, or enter the 6-digit code below.`}
+              </Text>
+            </Reveal>
+          </View>
+          <Reveal index={4}>
+            <Animated.View style={shake.style}>
+              <TextField
+                value={code}
+                onChangeText={(t) => setCode(t.replace(/\D/g, "").slice(0, 6))}
+                placeholder="000000"
+                accessibilityLabel="6-digit code"
+                keyboardType="number-pad"
+                autoComplete="one-time-code"
+                maxLength={6}
+                size="lg"
+                tone="card"
+                inputClassName="text-center font-sans-semibold"
+                inputStyle={{ fontSize: 24, letterSpacing: 8 }}
+                className="mt-5"
+              />
+            </Animated.View>
+            <Button title="Verify" onPress={verify} disabled={code.length !== 6} loading={busy} className="mt-4" />
+            <Button title="Resend link" variant="ghost" onPress={resend} className="mt-2" />
+            <Button title="Use a different email" variant="ghost" onPress={() => goBack(router, "/sign-in")} />
           </Reveal>
-        </View>
-        <Reveal index={4}>
-          <Animated.View style={shake.style}>
-            <TextField
-              value={code}
-              onChangeText={(t) => setCode(t.replace(/\D/g, "").slice(0, 6))}
-              placeholder="000000"
-              keyboardType="number-pad"
-              autoComplete="one-time-code"
-              maxLength={6}
-              size="lg"
-              tone="card"
-              inputClassName="text-center font-sans-semibold"
-              inputStyle={{ fontSize: 24, letterSpacing: 8 }}
-              className="mt-8"
-            />
-          </Animated.View>
-          <Button title="Verify" onPress={verify} disabled={code.length !== 6} loading={busy} className="mt-4" />
-          <Button title="Resend link" variant="ghost" onPress={resend} className="mt-2" />
-          <Button title="Use a different email" variant="ghost" onPress={() => goBack(router, "/sign-in")} />
-        </Reveal>
+        </ScrollView>
       </View>
     </View>
   );

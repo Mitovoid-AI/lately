@@ -1,14 +1,13 @@
 import { useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
-import { Image } from "expo-image";
 import { Link, useLocalSearchParams, useRouter } from "expo-router";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Linking, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   Extrapolation,
   FadeIn,
   FadeOut,
   interpolate,
-  LinearTransition,
+  useAnimatedRef,
   useAnimatedScrollHandler,
   useAnimatedStyle,
   useReducedMotion,
@@ -25,18 +24,18 @@ import { CategoryPill } from "../components/Chip";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ActionBar, type PrimaryAction } from "../components/detail/ActionBar";
 import { FactChips } from "../components/detail/FactChips";
-import { deriveFacts, mapsUrl } from "../components/detail/facts";
+import { deriveFacts, mapsUrl, stepsBeyondFacts } from "../components/detail/facts";
 import { NoteBlock } from "../components/detail/NoteBlock";
 import { PlaceCard } from "../components/detail/PlaceCard";
-import { ProgressTracker } from "../components/detail/ProgressTracker";
 import { StackPicker } from "../components/detail/StackPicker";
-import { HEADER_HEIGHT, LOGO, ScrollHairline } from "../components/Header";
+import { HEADER_HEIGHT, ScrollHairline } from "../components/Header";
 import { Icon } from "../components/Icon";
 import { IconButton } from "../components/motion/IconButton";
 import { PressableScale } from "../components/motion/PressableScale";
 import { Reveal } from "../components/motion/Reveal";
 import { usePop } from "../components/motion/feedback";
 import { cardTitle } from "../components/ReelCard";
+import { SaveTracker } from "../components/save/SaveTracker";
 import { Sheet } from "../components/Sheet";
 import { Skeleton, SkeletonGroup } from "../components/Skeleton";
 import { Thumb } from "../components/Thumb";
@@ -47,22 +46,24 @@ import { useReadingStyle } from "../hooks/usePreferences";
 import { savedAgo } from "../lib/dates";
 import { haptic } from "../lib/haptics";
 import { displayLink } from "../lib/instagram";
+import { PARTIAL_NOTICE } from "../lib/saveOutcome";
 import { shareOrCopy } from "../lib/share";
 import { DURATION, EASE_IN_OUT, EASE_OUT } from "../theme/motion";
 import { useTheme } from "../theme/ThemeProvider";
 import { goBack } from "../lib/navigation";
 import { refreshSaveViews } from "../lib/queryClient";
 
-const CHANNEL = { app_share: "Share", web: "Web", meta_dm: "DM" } as const;
-
-// Expanding the caption: the text dissolves in and everything below glides down to make room.
+// Expanding the caption: the text dissolves in.
 const CAPTION_IN = FadeIn.duration(DURATION.enter).easing(EASE_OUT);
 const CAPTION_OUT = FadeOut.duration(DURATION.exit);
-const REFLOW = LinearTransition.duration(240).easing(EASE_OUT);
 
-/** A section heading in display type ("Good to know", "Places"). */
+/** A section heading in display type ("Tips", "Places"). */
 function SectionTitle({ children }: { children: string }) {
-  return <Text className="font-display text-display-sm text-ink">{children}</Text>;
+  return (
+    <Text accessibilityRole="header" className="font-display text-display-sm text-ink">
+      {children}
+    </Text>
+  );
 }
 
 /**
@@ -74,8 +75,8 @@ const HERO_ASPECT = 1;
 /** Content column: full width minus 16 pt sides, at most 560 wide (tablets, web). */
 const COLUMN_MAX = 560;
 
-/** Stages in which the server is past fetching the reel and is reading or writing it up. */
-const WRITING_STAGES = new Set(["transcribe", "vision", "structure", "finalize"]);
+/** Hero and best-match media use the larger media radius; tiles and thumbnails use 12. */
+const HERO_RADIUS = 16;
 
 /**
  * Back on the left, More on the right. Once the hero and title scroll away the title fades
@@ -103,12 +104,15 @@ function TopBar({
   return (
     <View className="flex-row items-center bg-canvas px-1" style={{ height: HEADER_HEIGHT }}>
       <IconButton icon="arrow-back" size={24} color={colors.ink} label="Back" onPress={onBack} />
+      {/* Animated.Text takes no className, so its type and flex come through `style`. */}
       <Animated.Text
         numberOfLines={1}
         accessibilityElementsHidden
         importantForAccessibility="no-hide-descendants"
-        className="mx-1 flex-1 font-sans-semibold text-body text-ink"
-        style={titleStyle}
+        style={[
+          { flex: 1, marginHorizontal: 4, fontFamily: "Inter_600SemiBold", fontSize: 15, lineHeight: 22, color: colors.ink },
+          titleStyle,
+        ]}
       >
         {title ?? ""}
       </Animated.Text>
@@ -157,20 +161,22 @@ function Hero({
       onPress={() => Linking.openURL(card.source_url)}
       scaleTo={0.95}
       containerClassName="absolute bottom-3 left-3"
-      className="h-11 flex-row items-center rounded-full border px-4"
+      className="min-h-11 flex-row items-center rounded-full border px-4 py-2"
       style={{ backgroundColor: colors.scrim, borderColor: colors.mediaHairline }}
     >
       <Text className="font-sans-semibold text-meta text-on-media">Open in Instagram</Text>
-      <Icon name="north-east" size={16} color={colors.onMedia} />
+      <View className="ml-1.5">
+        <Icon name="open-in-new" size={16} color={colors.onMedia} />
+      </View>
     </PressableScale>
   ) : null;
   if (card.status === "pending") {
+    // No words here: the step tracker under the title says what is happening.
     return (
-      <Thumb uri={null} aspect={HERO_ASPECT} className="border border-hairline">
+      <Thumb uri={null} aspect={HERO_ASPECT} radius={HERO_RADIUS} className="border border-hairline">
         <Skeleton style={{ position: "absolute", top: 0, right: 0, bottom: 0, left: 0 }} />
         <View className="flex-1 items-center justify-center">
           <Icon name="movie" size={40} color={colors.ink3} />
-          <Text className="mt-2 font-sans-medium text-body text-ink-2">Getting details…</Text>
         </View>
         {openIg}
       </Thumb>
@@ -178,7 +184,7 @@ function Hero({
   }
   if (card.status === "partial" || !card.thumbnail_url) {
     return (
-      <Thumb uri={null} aspect={HERO_ASPECT} className="border border-hairline">
+      <Thumb uri={null} aspect={HERO_ASPECT} radius={HERO_RADIUS} className="border border-hairline">
         <View className="flex-1 items-center justify-center bg-raised">
           <Icon name="image-not-supported" size={40} color={colors.ink3} />
           <Text className="mt-2 font-sans-medium text-body text-ink-2">Preview unavailable</Text>
@@ -188,7 +194,13 @@ function Hero({
     );
   }
   return (
-    <Thumb uri={card.thumbnail_url} aspect={HERO_ASPECT} mediaStyle={mediaStyle} className="border border-hairline">
+    <Thumb
+      uri={card.thumbnail_url}
+      aspect={HERO_ASPECT}
+      radius={HERO_RADIUS}
+      mediaStyle={mediaStyle}
+      className="border border-hairline"
+    >
       {openIg}
     </Thumb>
   );
@@ -217,10 +229,12 @@ function CaptionToggle({ open, onPress }: { open: boolean; onPress: () => void }
   return (
     <PressableScale
       accessibilityRole="button"
+      accessibilityLabel="Original caption"
+      accessibilityState={{ expanded: open }}
       onPress={onPress}
       scaleTo={1}
       highlightColor={colors.raised}
-      className="-mx-2 h-14 flex-row items-center rounded-xl px-2"
+      className="-mx-2 min-h-14 flex-row items-center rounded-xl px-2 py-2"
     >
       <Icon name="description" size={20} color={colors.ink2} />
       <Text className="ml-3 flex-1 font-sans text-body text-ink-2">Original caption</Text>
@@ -249,10 +263,13 @@ export function CardDetailScreen() {
   const [retrying, setRetrying] = useState(false);
   // While the note editor is open the keyboard needs the room, so the action bar steps aside.
   const [noteEditing, setNoteEditing] = useState(false);
-  const bookmark = usePop();
+  const stackPop = usePop();
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({ onScroll: (e) => scrollY.set(e.contentOffset.y) });
+  // Opening the note editor brings it into view, clear of the keyboard that comes up with it.
+  const scrollRef = useAnimatedRef<Animated.ScrollView>();
+  const noteTop = useRef(0);
   const parallax = useHeroParallax(scrollY);
   // The page title sits under the hero (category row above it); once its first line passes the
   // bar, the bar shows it.
@@ -269,6 +286,12 @@ export function CardDetailScreen() {
   const card = query.data;
   const preview = useCachedSave(id);
   const back = () => goBack(router);
+
+  useEffect(() => {
+    if (!noteEditing) return;
+    const t = setTimeout(() => scrollRef.current?.scrollTo?.({ y: Math.max(0, noteTop.current - 16), animated: true }), 150);
+    return () => clearTimeout(t);
+  }, [noteEditing, scrollRef]);
 
   async function share() {
     if (!card) return;
@@ -337,9 +360,9 @@ export function CardDetailScreen() {
             </View>
           </Link.AppleZoomTarget>
         ) : (
-          <Skeleton style={{ aspectRatio: HERO_ASPECT, borderRadius: 14 }} />
+          <Skeleton style={{ aspectRatio: HERO_ASPECT, borderRadius: HERO_RADIUS }} />
         )}
-        <SkeletonGroup>
+        <SkeletonGroup label="Loading card">
           <Skeleton style={{ marginTop: 16, height: 28, width: 120, borderRadius: 999 }} />
           {preview ? (
             <Text className="mt-2 font-display text-display-lg text-ink">{cardTitle(preview)}</Text>
@@ -349,7 +372,7 @@ export function CardDetailScreen() {
           <Skeleton style={{ marginTop: 16, height: 32, width: 160, borderRadius: 999 }} />
           <Skeleton style={{ marginTop: 20, height: 14, width: "92%", borderRadius: 7 }} />
           <Skeleton style={{ marginTop: 8, height: 14, width: "76%", borderRadius: 7 }} />
-          <Skeleton style={{ marginTop: 24, height: 96, borderRadius: 16 }} />
+          <Skeleton style={{ marginTop: 24, height: 96, borderRadius: HERO_RADIUS }} />
         </SkeletonGroup>
       </View>
     );
@@ -359,7 +382,7 @@ export function CardDetailScreen() {
       <Reveal>
         <View className="items-center px-6 pt-16">
           <Icon name={gone ? "search-off" : "cloud-off"} size={40} color={colors.ink3} />
-          <Text className="mt-4 text-center font-display text-display-md text-ink">
+          <Text accessibilityLiveRegion="polite" className="mt-4 text-center font-display text-display-md text-ink">
             {gone ? "This card isn't here anymore" : "Couldn't load this card"}
           </Text>
           {gone ? null : (
@@ -384,19 +407,13 @@ export function CardDetailScreen() {
       </Reveal>
     );
   } else {
-    const status =
-      card.status === "pending"
-        ? { text: "GETTING DETAILS", color: colors.accentText }
-        : card.status === "partial"
-          ? { text: "PREVIEW UNAVAILABLE", color: colors.ink3 }
-          : null;
-    const title = card.title ?? (card.status === "pending" ? displayLink(card.source_url) : card.caption?.split("\n")[0] ?? displayLink(card.source_url));
+    const pending = card.status === "pending";
+    const title = cardTitle(card);
     const showCaption = card.status === "partial" || captionOpen;
     const stale = isStalePending(card, now);
     const place = card.places[0];
     const facts = deriveFacts(card);
-    // The server says which step a pending card is on once it is past fetching the reel.
-    const stage = card.stage;
+    const tips = stepsBeyondFacts(card.steps, facts);
     primary = place
       ? { label: "Directions", icon: "place", onPress: () => Linking.openURL(mapsUrl(place)) }
       : { label: "Open in Instagram", icon: "instagram", onPress: () => Linking.openURL(card.source_url) };
@@ -414,24 +431,33 @@ export function CardDetailScreen() {
         </Link.AppleZoomTarget>
 
         <Reveal index={next()}>
-          <View className="mt-4 flex-row flex-wrap items-center gap-x-3 gap-y-2">
-            {card.category ? <CategoryPill category={card.category} /> : null}
-            {status ? (
-              <View className="flex-row items-center">
-                <View className="h-1.5 w-1.5 rounded-full" style={{ backgroundColor: status.color }} />
-                <Text className="ml-1.5 font-sans-semibold text-label text-ink-2">{status.text}</Text>
-              </View>
-            ) : null}
-          </View>
-          <Text className="mt-2 font-display text-display-lg text-ink">{title}</Text>
-          <View className="mt-2 flex-row flex-wrap items-center">
-            <Text className="font-sans text-meta text-ink-2">
+          {card.category ? (
+            <View className="mt-4 flex-row flex-wrap items-center">
+              <CategoryPill category={card.category} />
+            </View>
+          ) : null}
+          <Text
+            accessibilityRole="header"
+            className={`${card.category ? "mt-2" : "mt-4"} font-display text-display-lg text-ink`}
+          >
+            {title}
+          </Text>
+          <View className="mt-2 flex-row items-center">
+            {/* A card still being read has no creator yet: its link is the meta, shortened in the middle. */}
+            <Text numberOfLines={1} ellipsizeMode="middle" className="shrink font-sans text-meta text-ink-2">
               {card.creator ? `@${card.creator}` : displayLink(card.source_url)}
             </Text>
             <Text className="mx-1.5 font-sans text-meta text-ink-3">·</Text>
             <Text className="font-sans text-meta text-ink-2">{savedAgo(card.created_at, now)}</Text>
           </View>
         </Reveal>
+
+        {pending ? (
+          // The server's real step, named the way Home and the save sheet name it.
+          <Reveal index={next()}>
+            <SaveTracker status="pending" stage={card.stage} slow={stale} />
+          </Reveal>
+        ) : null}
 
         {facts.length ? (
           <Reveal index={next()} style={{ marginTop: 16 }}>
@@ -447,21 +473,25 @@ export function CardDetailScreen() {
           </Reveal>
         ) : null}
 
-        <Reveal index={next()} style={{ marginTop: 20 }}>
-          <NoteBlock
-            note={card.note}
-            onSave={saveNote}
-            onEditingChange={setNoteEditing}
-            textStyle={{ fontSize: readingStyle.fontSize, lineHeight: readingStyle.lineHeight }}
-          />
-        </Reveal>
+        <View
+          onLayout={(e) => {
+            noteTop.current = e.nativeEvent.layout.y;
+          }}
+        >
+          <Reveal index={next()} style={{ marginTop: 20 }}>
+            <NoteBlock
+              note={card.note}
+              onSave={saveNote}
+              onEditingChange={setNoteEditing}
+              textStyle={{ fontSize: readingStyle.fontSize, lineHeight: readingStyle.lineHeight }}
+            />
+          </Reveal>
+        </View>
 
         {card.status === "partial" || stale ? (
           <Reveal index={next()} style={{ marginTop: 16 }}>
             <Text className="font-sans text-meta text-ink-2">
-              {stale
-                ? "This is taking longer than usual. Lately can try again."
-                : "Lately couldn't read this reel's video. It can try again."}
+              {stale ? "This is taking longer than usual. Lately can try again." : `${PARTIAL_NOTICE} It can try again.`}
             </Text>
             <Button
               title="Try getting details again"
@@ -474,19 +504,13 @@ export function CardDetailScreen() {
           </Reveal>
         ) : null}
 
-        {card.status === "pending" ? (
-          <Reveal index={next()} style={{ marginTop: 20 }}>
-            <ProgressTracker current={stage && WRITING_STAGES.has(stage) ? 2 : 1} />
-          </Reveal>
-        ) : null}
-
-        {card.steps?.length ? (
+        {tips.length ? (
           <Reveal index={next()} style={{ marginTop: 28 }}>
-            <SectionTitle>Good to know</SectionTitle>
-            {card.steps.map((step) => (
+            <SectionTitle>Tips</SectionTitle>
+            {tips.map((step) => (
               <View key={step} className="mt-3 flex-row items-center">
                 <View className="h-8 w-8 items-center justify-center rounded-full bg-raised">
-                  <Icon name="check" size={16} color={colors.accentText} />
+                  <Icon name="check" size={16} color={colors.ink2} />
                 </View>
                 <Text className="ml-3 flex-1 font-sans text-body text-ink">{step}</Text>
               </View>
@@ -509,9 +533,17 @@ export function CardDetailScreen() {
           <Reveal index={next()} style={{ marginTop: 24 }}>
             <View className="flex-row flex-wrap gap-2">
               {card.tags.map((t) => (
-                <View key={t} className="h-9 justify-center rounded-full border border-hairline bg-raised px-3">
-                  <Text className="font-sans text-body text-ink-2">{`#${t}`}</Text>
-                </View>
+                // A tag searches your saves for it, so it is a tappable chip: border and fill.
+                <PressableScale
+                  key={t}
+                  accessibilityRole="link"
+                  accessibilityLabel={`Search your saves for ${t}`}
+                  onPress={() => router.push(`/search?q=${encodeURIComponent(t)}`)}
+                  scaleTo={0.95}
+                  className="min-h-9 justify-center rounded-full border border-hairline bg-raised px-3 py-1.5"
+                >
+                  <Text className="font-sans text-body text-ink">{`#${t}`}</Text>
+                </PressableScale>
               ))}
             </View>
           </Reveal>
@@ -531,17 +563,6 @@ export function CardDetailScreen() {
             </View>
           </Reveal>
         ) : null}
-
-        <Animated.View layout={REFLOW}>
-          <Reveal index={next()}>
-            <View className="mt-2 flex-row items-center border-t border-hairline pt-5">
-              <Image source={LOGO} style={{ width: 20, height: 20, borderRadius: 5 }} />
-              <Text className="ml-2 flex-1 font-sans text-meta text-ink-2">
-                Saved to <Text className="font-sans-semibold text-ink">Lately</Text> via {CHANNEL[card.channel]}
-              </Text>
-            </View>
-          </Reveal>
-        </Animated.View>
       </View>
     );
   }
@@ -552,6 +573,7 @@ export function CardDetailScreen() {
         {card ? <IconButton icon="more-vert" label="More" onPress={() => setMenuOpen(true)} /> : null}
       </TopBar>
       <Animated.ScrollView
+        ref={scrollRef}
         onScroll={onScroll}
         scrollEventThrottle={16}
         keyboardShouldPersistTaps="handled"
@@ -565,7 +587,7 @@ export function CardDetailScreen() {
           primary={primary}
           onAddToStack={() => setPickerOpen(true)}
           onShare={share}
-          stackIconStyle={bookmark.style}
+          stackIconStyle={stackPop.style}
         />
       ) : null}
 
@@ -580,7 +602,7 @@ export function CardDetailScreen() {
               }}
               scaleTo={1}
               highlightColor={colors.raised}
-              className="-mx-2 h-12 flex-row items-center rounded-xl px-2"
+              className="-mx-2 min-h-12 flex-row items-center rounded-xl px-2 py-2"
             >
               <Icon name="open-in-new" size={22} color={colors.ink} />
               <Text className="ml-3 font-sans-medium text-body text-ink">Open in Instagram</Text>
@@ -593,7 +615,7 @@ export function CardDetailScreen() {
               }}
               scaleTo={1}
               highlightColor={colors.dangerSoft}
-              className="-mx-2 h-12 flex-row items-center rounded-xl px-2"
+              className="-mx-2 min-h-12 flex-row items-center rounded-xl px-2 py-2"
             >
               <Icon name="delete-outline" size={22} color={colors.danger} />
               <Text className="ml-3 font-sans-medium text-body text-danger">Delete</Text>
@@ -606,13 +628,13 @@ export function CardDetailScreen() {
         visible={pickerOpen}
         saveId={id}
         onClose={() => setPickerOpen(false)}
-        onAdded={() => bookmark.pop(DURATION.sheet)}
+        onAdded={() => stackPop.pop(DURATION.sheet)}
       />
 
       <ConfirmDialog
         visible={confirmOpen}
-        title="Delete this reel?"
-        message="It will be removed from your Lately."
+        title="Delete this save?"
+        message="Its card and note leave your saves and stacks. The reel stays on Instagram."
         confirmLabel="Delete"
         busy={deleting}
         onConfirm={remove}

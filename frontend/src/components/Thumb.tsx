@@ -6,11 +6,14 @@ import Animated from "react-native-reanimated";
 /** Images dissolve in over 250 ms once decoded (off the JS thread), so nothing pops. */
 export const IMAGE_FADE = { duration: 250, effect: "cross-dissolve", timing: "ease-out" } as const;
 
-/** Rounded media frame; the image fades in when it loads. */
+/**
+ * Rounded media frame; the image fades in when it loads. One radius per role: 12 for tiles and
+ * thumbnails (the default), 16 for a hero or a best match (pass `radius={16}`).
+ */
 export function Thumb({
   uri,
   aspect = 4 / 5,
-  radius = 14,
+  radius = 12,
   children,
   style,
   mediaStyle,

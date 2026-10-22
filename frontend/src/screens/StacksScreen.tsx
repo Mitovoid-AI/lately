@@ -8,6 +8,7 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { Stack } from "../api/contract";
 import { useApi } from "../api/index";
 import { CategoryDot } from "../components/CategoryDot";
+import { ErrorState } from "../components/ErrorState";
 import { Header } from "../components/Header";
 import { Icon } from "../components/Icon";
 import { PressableScale } from "../components/motion/PressableScale";
@@ -16,19 +17,19 @@ import { Skeleton, SkeletonGroup } from "../components/Skeleton";
 import { StackCollage } from "../components/StackCollage";
 import { useNow } from "../hooks/useNow";
 import { useMe } from "../hooks/useSaves";
+import { countOf } from "../lib/counts";
 import { relativeShort } from "../lib/dates";
+import { GRID_GAP, GRID_MAX_WIDTH, GRID_SIDE, gridLayout } from "../lib/grid";
 import { haptic } from "../lib/haptics";
+import { CATEGORY } from "../theme/categories";
 import { useTheme } from "../theme/ThemeProvider";
 import { NewStackSheet } from "./NewStackSheet";
-import { ErrorState } from "../components/ErrorState";
 
-const MAX_WIDTH = 1280;
-const GAP = 12;
-const NEW = "__new";
+/** "1 save", "4 saves": a stack holds the user's saves (the reel is the Instagram video). */
+export const savesCount = (n: number) => countOf(n, "save");
 
-export const reelsCount = (n: number) => (n === 1 ? "1 reel" : `${n} reels`);
-
-type Item = Stack | { id: typeof NEW };
+/** Media radius for a stack's cover: the same 12 as a card's tile. */
+const COVER_RADIUS = 12;
 
 export function StacksScreen() {
   const { colors } = useTheme();
@@ -44,53 +45,43 @@ export function StacksScreen() {
   const onScroll = useAnimatedScrollHandler({ onScroll: (e) => scrollY.set(e.contentOffset.y) });
   const entrance = useEntranceWindow("stacks", !stacks.isLoading);
 
-  const columns = width >= 1024 ? 4 : width >= 768 ? 3 : 2;
-  const itemWidth = (Math.min(width, MAX_WIDTH) - 32 - GAP * (columns - 1)) / columns;
-  const data: Item[] = [...(stacks.data ?? []), { id: NEW }];
+  const { columns, itemWidth } = gridLayout(width);
+  const loaded = stacks.data;
 
   const renderItem = useCallback(
-    ({ item, index }: { item: Item; index: number }) => (
-      <Reveal index={index} enabled={entrance}>
-        {item.id === NEW ? (
+    ({ item, index }: { item: Stack; index: number }) => {
+      // The category as a word, not only a colour dot: the dot is decoration, the word is the fact.
+      const category = item.category ? CATEGORY[item.category].short : null;
+      const meta = [savesCount(item.save_count), category, `updated ${relativeShort(item.updated_at, now)}`]
+        .filter(Boolean)
+        .join(" · ");
+      return (
+        <Reveal index={index} enabled={entrance}>
           <PressableScale
             accessibilityRole="button"
-            accessibilityLabel="New stack"
-            onPress={() => setNewOpen(true)}
-            highlightColor={colors.raised}
-            containerStyle={{ width: itemWidth, aspectRatio: 1 }}
-            className="grow items-center justify-center rounded-thumb border-2 border-dashed border-hairline"
-          >
-            <View className="h-12 w-12 items-center justify-center rounded-full bg-raised">
-              <Icon name="add" size={24} color={colors.ink2} />
-            </View>
-            <Text className="mt-3 font-sans-medium text-body text-ink">New stack</Text>
-            <Text className="mt-0.5 font-sans text-meta text-ink-2">Create collection</Text>
-          </PressableScale>
-        ) : (
-          <PressableScale
-            accessibilityRole="button"
+            accessibilityLabel={`${item.name}, ${meta}`}
             onPress={() => router.push(`/stack/${item.id}`)}
             containerStyle={{ width: itemWidth }}
           >
-            <StackCollage covers={(item as Stack).cover_urls} />
-            <Text numberOfLines={1} className="mt-2 font-sans-semibold text-body text-ink">
-              {(item as Stack).name}
+            <StackCollage covers={item.cover_urls} radius={COVER_RADIUS} />
+            <Text numberOfLines={2} className="mt-2 font-sans-semibold text-body text-ink">
+              {item.name}
             </Text>
-            <View className="mt-0.5 flex-row items-center">
-              {(item as Stack).category ? (
-                <View className="mr-1.5">
-                  <CategoryDot category={(item as Stack).category!} />
+            <View className="mt-0.5 flex-row items-start">
+              {item.category ? (
+                <View className="mr-1.5 mt-[6px]">
+                  <CategoryDot category={item.category} />
                 </View>
               ) : null}
-              <Text numberOfLines={1} className="flex-1 font-sans text-meta text-ink-2">
-                {`${reelsCount((item as Stack).save_count)} · updated ${relativeShort((item as Stack).updated_at, now)}`}
+              <Text numberOfLines={2} className="flex-1 font-sans text-meta text-ink-2">
+                {meta}
               </Text>
             </View>
           </PressableScale>
-        )}
-      </Reveal>
-    ),
-    [entrance, itemWidth, now, router, colors],
+        </Reveal>
+      );
+    },
+    [entrance, itemWidth, now, router],
   );
 
   return (
@@ -103,17 +94,19 @@ export function StacksScreen() {
       />
       <Animated.FlatList
         key={`stacks-${columns}`}
-        data={stacks.isLoading || (stacks.isError && !stacks.data) ? [] : data}
-        keyExtractor={(s: Item) => s.id}
+        data={loaded ?? []}
+        keyExtractor={(s: Stack) => s.id}
         numColumns={columns}
-        columnWrapperStyle={{ gap: GAP, paddingHorizontal: 16, alignSelf: "center", width: "100%", maxWidth: MAX_WIDTH }}
-        contentContainerStyle={{ paddingBottom: 48, gap: 16 }}
+        columnWrapperStyle={{ gap: GRID_GAP, paddingHorizontal: GRID_SIDE, alignSelf: "center", width: "100%", maxWidth: GRID_MAX_WIDTH }}
+        contentContainerStyle={{ paddingBottom: 48, gap: GRID_GAP }}
         onScroll={onScroll}
         scrollEventThrottle={16}
         ListHeaderComponent={
-          <View className="w-full flex-row items-center self-center px-4 pt-3" style={{ maxWidth: MAX_WIDTH }}>
+          <View className="w-full flex-row items-center self-center px-4 pt-3" style={{ maxWidth: GRID_MAX_WIDTH }}>
             <View className="flex-1">
-              <Text className="font-display text-display-lg text-ink">Stacks</Text>
+              <Text accessibilityRole="header" className="font-display text-display-lg text-ink">
+                Stacks
+              </Text>
               <Text className="mt-0.5 font-sans text-meta text-ink-2">Your saves, grouped your way.</Text>
             </View>
             <PressableScale
@@ -124,22 +117,42 @@ export function StacksScreen() {
               highlightColor={colors.raised}
               className="h-9 flex-row items-center justify-center rounded-full border border-hairline bg-card pl-2.5 pr-3.5"
             >
-              <Icon name="add" size={18} color={colors.accentText} />
-              <Text className="ml-1 font-sans-semibold text-meta text-accent-text">New stack</Text>
+              <Icon name="add" size={18} color={colors.ink} />
+              <Text className="ml-1 font-sans-semibold text-meta text-ink">New stack</Text>
             </PressableScale>
           </View>
         }
         ListEmptyComponent={
           stacks.isLoading ? (
-            <SkeletonGroup style={{ flexDirection: "row", flexWrap: "wrap", gap: GAP, paddingHorizontal: 16, alignSelf: "center", width: "100%", maxWidth: MAX_WIDTH }}>
+            <SkeletonGroup style={{ flexDirection: "row", flexWrap: "wrap", gap: GRID_GAP, paddingHorizontal: GRID_SIDE, alignSelf: "center", width: "100%", maxWidth: GRID_MAX_WIDTH }}>
               {Array.from({ length: columns * 2 }, (_, i) => (
                 <View key={i} style={{ width: itemWidth }}>
-                  <Skeleton style={{ aspectRatio: 1, borderRadius: 14 }} />
+                  <Skeleton style={{ aspectRatio: 1, borderRadius: COVER_RADIUS }} />
                   <Skeleton style={{ marginTop: 10, height: 14, width: "70%", borderRadius: 7 }} />
                   <Skeleton style={{ marginTop: 6, height: 11, width: "50%", borderRadius: 6 }} />
                 </View>
               ))}
             </SkeletonGroup>
+          ) : loaded ? (
+            // The only place the dashed tile shows. With stacks, the header button is the way in.
+            <Reveal>
+              <View className="w-full self-center px-4" style={{ maxWidth: GRID_MAX_WIDTH }}>
+                <PressableScale
+                  accessibilityRole="button"
+                  accessibilityLabel="New stack"
+                  onPress={() => setNewOpen(true)}
+                  highlightColor={colors.raised}
+                  containerStyle={{ width: itemWidth, aspectRatio: 1 }}
+                  className="grow items-center justify-center rounded-ctl border-2 border-dashed border-hairline"
+                >
+                  <View className="h-12 w-12 items-center justify-center rounded-full bg-raised">
+                    <Icon name="add" size={24} color={colors.ink2} />
+                  </View>
+                  <Text className="mt-3 font-sans-medium text-body text-ink">New stack</Text>
+                </PressableScale>
+                <Text className="mt-3 font-sans text-meta text-ink-2">Stacks group saves. Make one to start.</Text>
+              </View>
+            </Reveal>
           ) : null
         }
         ListFooterComponent={

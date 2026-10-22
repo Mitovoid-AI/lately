@@ -36,13 +36,19 @@ export const priceLine = (plan: PlanOffer) => `${plan.price}/${plan.period}`;
 /** "7 days free" */
 export const trialLabel = (days: number) => `${countOf(days, "day")} free`;
 
+/** The one line above the button: what happens at the end of any trial, and what it costs. "7 days free, then $29.99 a year" */
+export function priceSummary(plan: PlanOffer): string {
+  const cost = `${plan.price} a ${plan.period}`;
+  return plan.trialDays ? `${trialLabel(plan.trialDays)}, then ${cost}` : `Billed ${cost}`;
+}
+
 /** The button under the picker. */
 export function ctaLabel(plan: PlanOffer): string {
   return plan.trialDays ? `Try ${trialLabel(plan.trialDays)}` : `Subscribe for ${priceLine(plan)}`;
 }
 
-/** Google Play has the payment but the server (which enforces the limit) still reads the account as free. */
-export const PRO_CONFIRMING = "Google Play confirmed your purchase. Lately is turning Pro on. This can take a minute.";
+/** Google Play has the payment but the server (which enforces the limit) still reads the account as free. Short enough for a toast. */
+export const PRO_CONFIRMING = "Purchase confirmed. Pro turns on in a minute.";
 
 /** The auto-renewal disclosure Google Play's subscription policy wants beside the button. */
 export function disclosure(plan: PlanOffer): string {

@@ -4,7 +4,7 @@ import { ApiError, type LatelyApi } from "../../api/contract";
 import { createDemoApi, PENDING_MS } from "../../api/demo";
 import { PRO_CONFIRMING } from "../../billing/plans";
 import { PROGRESS_EASE_AFTER_MS, PROGRESS_POLL_MS } from "../../hooks/useSaves";
-import { TRACKER_SLOW, TRACKER_UNREACHABLE } from "../../lib/saveOutcome";
+import { TRACKER_ESTIMATE, TRACKER_SLOW, TRACKER_UNREACHABLE } from "../../lib/saveOutcome";
 import { queueKey, readQueue } from "../../lib/saveQueue";
 import { fakeBilling } from "../../test/fakeBilling";
 import { NOW } from "../../test/fixtures";
@@ -42,7 +42,7 @@ test("shared text is saved right away; a note can be added", async () => {
   const setNote = jest.spyOn(api, "setNote");
   await renderWithProviders(<SaveSheetScreen />, { api });
   expect(await screen.findByText("Saved")).toBeTruthy();
-  expect(screen.getByText("It's already in your saves")).toBeTruthy();
+  expect(screen.getByText("It's on Home now. Lately is writing its card.")).toBeTruthy();
   expect(screen.getByText("instagram.com/reel/NEW123")).toBeTruthy();
   await fireEvent.changeText(screen.getByPlaceholderText("e.g. cafe to try in June"), "for june");
   await fireEvent.press(screen.getByText("Save note"));
@@ -87,18 +87,35 @@ test("an already-saved reel shows when it was saved and its note", async () => {
   jest.useFakeTimers({ now: NOW });
   mockParams = { text: link("MomoPt1") };
   await renderWithProviders(<SaveSheetScreen />);
-  expect(await screen.findByText("Already in your Lately")).toBeTruthy();
+  expect(await screen.findByText("You saved this already")).toBeTruthy();
   expect(await screen.findByText("Saved 5 days ago.")).toBeTruthy();
   expect(screen.getByText("“dinner to try”")).toBeTruthy();
   await fireEvent.press(screen.getByText("Open card"));
   expect(mockRouter.replace).toHaveBeenCalledWith("/reel/s-momo");
 });
 
+test("an already-saved reel offers Try again if its details can't be loaded", async () => {
+  mockParams = { text: link("MomoPt1") };
+  const base = demoApi();
+  let failing = true;
+  const getSave = jest.fn(async (id: string) => {
+    if (failing) throw new ApiError("NETWORK", 0);
+    return base.getSave(id);
+  });
+  await renderWithProviders(<SaveSheetScreen />, { api: { ...base, getSave } });
+  expect(await screen.findByText("You saved this already")).toBeTruthy();
+  expect(await screen.findByText("Couldn't check your saves.")).toBeTruthy();
+  failing = false;
+  await fireEvent.press(screen.getByText("Try again"));
+  expect(await screen.findByText("“dinner to try”")).toBeTruthy();
+  expect(screen.queryByText("Couldn't check your saves.")).toBeNull();
+});
+
 test("text without a reel link", async () => {
   mockParams = { text: "hello" };
   await renderWithProviders(<SaveSheetScreen />);
   expect(await screen.findByText("No reel link found")).toBeTruthy();
-  expect(screen.getByText("Share the reel itself, not a profile or story.")).toBeTruthy();
+  expect(screen.getByText("Paste or share a link to an Instagram reel or post.")).toBeTruthy();
 });
 
 test("monthly limit shows the limit, the reset date and what Pro changes", async () => {
@@ -108,10 +125,10 @@ test("monthly limit shows the limit, the reset date and what Pro changes", async
   expect(await screen.findByText("Saves reset on Nov 1. Pro removes the monthly cap.")).toBeTruthy();
 });
 
-test("monthly limit: Go unlimited with Pro replaces the sheet with the paywall, and the reel goes along", async () => {
+test("monthly limit: Upgrade to Pro replaces the sheet with the paywall, and the reel goes along", async () => {
   mockParams = { text: link("QUOTA") };
   await renderWithProviders(<SaveSheetScreen />);
-  await fireEvent.press(await screen.findByRole("button", { name: "Go unlimited with Pro" }));
+  await fireEvent.press(await screen.findByRole("button", { name: "Upgrade to Pro" }));
   expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/pro", params: { text: link("QUOTA") } });
   expect(mockRouter.back).not.toHaveBeenCalled();
 });
@@ -120,7 +137,7 @@ test("a link pasted into the sheet goes along to the paywall too", async () => {
   await renderWithProviders(<SaveSheetScreen />);
   await fireEvent.changeText(screen.getByPlaceholderText("instagram.com/reel/…"), link("QUOTA"));
   await fireEvent.press(screen.getByText("Save"));
-  await fireEvent.press(await screen.findByRole("button", { name: "Go unlimited with Pro" }));
+  await fireEvent.press(await screen.findByRole("button", { name: "Upgrade to Pro" }));
   expect(mockRouter.replace).toHaveBeenCalledWith({ pathname: "/pro", params: { text: link("QUOTA") } });
 });
 
@@ -171,7 +188,7 @@ test("the retry happens only once: still over the limit after syncing says Pro i
   expect(await screen.findByText("Pro is turning on")).toBeTruthy();
   expect(screen.getByText(PRO_CONFIRMING)).toBeTruthy();
   expect(screen.queryByText(/free saves this month/)).toBeNull();
-  expect(screen.queryByRole("button", { name: "Go unlimited with Pro" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Upgrade to Pro" })).toBeNull();
   expect(createSave).toHaveBeenCalledTimes(2);
   expect(syncPlan).toHaveBeenCalledTimes(1);
 
@@ -215,7 +232,7 @@ test("a Pro member's save goes through in demo mode, where the free limit no lon
 test("rate limited: the save waits in the queue instead of being lost", async () => {
   mockParams = { text: link("RATE") };
   const { queueStore } = await renderWithProviders(<SaveSheetScreen />);
-  expect(await screen.findByText("Saved for later")).toBeTruthy();
+  expect(await screen.findByText("Waiting to save")).toBeTruthy();
   expect(screen.getByText("Lately is busy right now. It will save this reel in a moment.")).toBeTruthy();
   expect((await readQueue(queueStore, queueKey("demo-user"))).map((q) => q.text)).toEqual([link("RATE")]);
 });
@@ -224,7 +241,7 @@ test("a server error (5xx) queues the save", async () => {
   mockParams = { text: link("NEW500") };
   const api: LatelyApi = { ...demoApi(), createSave: jest.fn().mockRejectedValue(new ApiError("SERVER", 503)) };
   const { queueStore } = await renderWithProviders(<SaveSheetScreen />, { api });
-  expect(await screen.findByText("Saved for later")).toBeTruthy();
+  expect(await screen.findByText("Waiting to save")).toBeTruthy();
   expect(screen.getByText("Lately's server is having trouble. It will save this reel as soon as it's back.")).toBeTruthy();
   expect((await readQueue(queueStore, queueKey("demo-user"))).map((q) => q.text)).toEqual([link("NEW500")]);
 });
@@ -248,7 +265,7 @@ test("offline: the save is queued on the device and can be retried now", async (
       .mockResolvedValueOnce({ reel_id: "s-x", deduped: false, status: "pending" }),
   };
   const { queueStore } = await renderWithProviders(<SaveSheetScreen />, { api });
-  expect(await screen.findByText("Saved for later")).toBeTruthy();
+  expect(await screen.findByText("Waiting to save")).toBeTruthy();
   expect((await readQueue(queueStore, queueKey("demo-user"))).map((q) => q.text)).toEqual([link("NEW123")]);
   await fireEvent.press(screen.getByText("Try again now"));
   expect(await screen.findByText("Saved")).toBeTruthy();
@@ -343,10 +360,10 @@ test("a named-step tracker follows the server's stages, then offers Open card", 
   await renderWithProviders(<SaveSheetScreen firstCardStore={createMemoryStore(FIRST_CARD_SEEN)} />, { api });
   expect(await screen.findByText("Saved")).toBeTruthy();
 
-  // Just saved: the server is at its first stage and the only time given is a rough one.
+  // Just saved: the server is at its first stage and says what Lately is doing, with no time.
   expect(await screen.findByLabelText("Getting the reel, in progress")).toBeTruthy();
   expect(screen.getByLabelText("Card ready, up next")).toBeTruthy();
-  expect(screen.getByText("Usually about 30 s")).toBeTruthy();
+  expect(screen.getByText(TRACKER_ESTIMATE)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Open card" })).toBeNull();
 
   advance(PENDING_MS * 0.4); // the server is transcribing
@@ -475,7 +492,7 @@ test("the first card a person ever saves is celebrated once; the next one is not
 test("the Pro quota outcome still replaces the sheet with the paywall, and no tracker shows for a save that did not happen", async () => {
   mockParams = { text: link("QUOTA") };
   await renderWithProviders(<SaveSheetScreen firstCardStore={createMemoryStore(FIRST_CARD_SEEN)} />);
-  expect(await screen.findByRole("button", { name: "Go unlimited with Pro" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Upgrade to Pro" })).toBeTruthy();
   expect(screen.queryByText("Saved")).toBeNull();
   expect(screen.queryByLabelText(/in progress/)).toBeNull();
 });
@@ -497,8 +514,15 @@ test("a failed note save says so and keeps the sheet open", async () => {
   await screen.findByText("Saved");
   await fireEvent.changeText(screen.getByPlaceholderText("e.g. cafe to try in June"), "for june");
   await fireEvent.press(screen.getByText("Save note"));
-  expect(await screen.findByText("Couldn't save your note. Try again.")).toBeTruthy();
+  // Said under the note, as an alert, where the person is looking.
+  const alert = await screen.findByText("Couldn't save your note. Try again.");
+  expect(alert.props.accessibilityRole).toBe("alert");
   expect(mockRouter.back).not.toHaveBeenCalled();
+});
+
+test("the fields are named for a screen reader, not only by their placeholder", async () => {
+  await renderWithProviders(<SaveSheetScreen />);
+  expect(screen.getByLabelText("Reel link")).toBeTruthy();
 });
 
 test("a double tap on Save note sends one request", async () => {

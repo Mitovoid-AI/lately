@@ -12,7 +12,11 @@ export function SettingsSection({ icon, title, children }: { icon: IconName; tit
     <View className="mt-8">
       <View className="mb-3 flex-row items-center">
         <Icon name={icon} size={22} color={colors.ink2} />
-        <Text className="ml-2 flex-1 font-display text-ink" style={{ fontSize: 20, lineHeight: 26, letterSpacing: -0.3 }}>
+        <Text
+          accessibilityRole="header"
+          className="ml-2 flex-1 font-display text-ink"
+          style={{ fontSize: 20, lineHeight: 26, letterSpacing: -0.3 }}
+        >
           {title}
         </Text>
       </View>
@@ -59,9 +63,8 @@ export function SettingsRow({
         </View>
         <View className="ml-3 flex-1">
           <Text className="font-sans-semibold text-body text-ink">{title}</Text>
-          <Text numberOfLines={1} className="font-sans text-meta text-ink-2">
-            {subtitle}
-          </Text>
+          {/* Wraps instead of cutting off: "Already subscribed? Bring Pro back on this phone" is a sentence people need whole. */}
+          <Text className="font-sans text-meta text-ink-2">{subtitle}</Text>
         </View>
         {right}
       </PressableScale>

@@ -15,6 +15,10 @@ const THUMB = 20;
 /**
  * The A — A text-size track: four stops and one thumb that glides to the chosen stop
  * (ease-in-out, 240 ms) with a selection tick.
+ *
+ * To a screen reader it is one adjustable control ("Text size, Default": swipe up or down to
+ * change it), not four unlabelled buttons. The stops stay tappable for everyone else. The size
+ * name sits beside the title in Account; the track has no second row of labels.
  */
 export function TextSizeControl({
   sizes,
@@ -53,44 +57,58 @@ export function TextSizeControl({
     onChange(size);
   }
 
+  /** One step along the sizes (the adjustable control's increment and decrement). */
+  function nudge(by: 1 | -1) {
+    const next = sizes[Math.min(sizes.length - 1, Math.max(0, index + by))];
+    if (next) pick(next.size);
+  }
+
   return (
-    <View>
-      <View className="mt-4 flex-row items-center">
-        <Text className="font-newsreader text-ink-2" style={{ fontSize: 18 }}>
-          A
-        </Text>
-        <View className="mx-3 h-8 flex-1 justify-center" onLayout={(e) => setWidth(e.nativeEvent.layout.width)}>
-          <View className="h-1.5 rounded-full bg-hairline" />
-          <Animated.View style={[styles.thumb, { backgroundColor: colors.accentText, boxShadow: shadows.raised }, thumbStyle]} />
-          <View className="absolute inset-0 flex-row items-center justify-between">
-            {sizes.map((s) => (
-              <Pressable
-                key={s.size}
-                accessibilityRole="button"
-                accessibilityLabel={`${s.size}px`}
-                accessibilityState={{ selected: s.size === value }}
-                onPress={() => pick(s.size)}
-                hitSlop={8}
-                className="h-8 w-8 items-center justify-center"
-              >
-                {s.size === value ? null : <View className="h-2.5 w-2.5 rounded-full bg-control" />}
-              </Pressable>
-            ))}
-          </View>
+    <View className="mt-4 flex-row items-center">
+      <Text
+        accessible={false}
+        importantForAccessibility="no"
+        className="font-newsreader text-ink-2"
+        style={{ fontSize: 18 }}
+      >
+        A
+      </Text>
+      <View
+        accessible
+        accessibilityRole="adjustable"
+        accessibilityLabel="Text size"
+        accessibilityValue={{ text: sizes[index]?.name }}
+        accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
+        onAccessibilityAction={(e) => nudge(e.nativeEvent.actionName === "increment" ? 1 : -1)}
+        className="mx-3 h-8 flex-1 justify-center"
+        onLayout={(e) => setWidth(e.nativeEvent.layout.width)}
+      >
+        <View className="h-1.5 rounded-full bg-hairline" />
+        <Animated.View style={[styles.thumb, { backgroundColor: colors.accentText, boxShadow: shadows.raised }, thumbStyle]} />
+        <View className="absolute inset-0 flex-row items-center justify-between">
+          {sizes.map((s) => (
+            <Pressable
+              key={s.size}
+              testID={`text-size-${s.size}`}
+              accessible={false}
+              importantForAccessibility="no"
+              onPress={() => pick(s.size)}
+              hitSlop={8}
+              className="h-8 w-8 items-center justify-center"
+            >
+              {s.size === value ? null : <View className="h-2.5 w-2.5 rounded-full bg-control" />}
+            </Pressable>
+          ))}
         </View>
-        <Text className="font-newsreader text-ink" style={{ fontSize: 28 }}>
-          A
-        </Text>
       </View>
-      <View className="mt-1 flex-row justify-between px-5">
-        {sizes.map((s) => (
-          <Pressable key={s.size} onPress={() => pick(s.size)} hitSlop={8}>
-            <Text className={`text-caption ${s.size === value ? "font-sans-semibold text-ink" : "font-sans text-ink-2"}`}>
-              {`${s.size}px`}
-            </Text>
-          </Pressable>
-        ))}
-      </View>
+      <Text
+        accessible={false}
+        importantForAccessibility="no"
+        className="font-newsreader text-ink"
+        style={{ fontSize: 28 }}
+      >
+        A
+      </Text>
     </View>
   );
 }

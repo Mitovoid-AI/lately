@@ -19,6 +19,7 @@ import { DURATION, EASE_OUT, EASE_SHEET, SPRING } from "../theme/motion";
 import { useTheme } from "../theme/ThemeProvider";
 import { project, rubberband } from "./motion/physics";
 import { usePresence } from "./motion/usePresence";
+import { ToastLayer } from "./Toast";
 
 export type SheetMotion = {
   /** 0 = off screen, 1 = presented. */
@@ -130,7 +131,11 @@ export function SheetPanel({
   );
 }
 
-/** Bottom sheet in a modal: a backdrop that dims in step with the sheet (tap to close) + SheetPanel. */
+/**
+ * Bottom sheet in a modal: a backdrop that dims in step with the sheet (tap to close) + SheetPanel.
+ * Screen readers do not stop on the backdrop: Back (Android) and the escape gesture (iOS) close it.
+ * A toast raised while it is open shows above it, because a Modal is a window of its own.
+ */
 export function Sheet({
   visible,
   onClose,
@@ -152,14 +157,27 @@ export function Sheet({
     <Modal visible transparent animationType="none" statusBarTranslucent onRequestClose={onClose}>
       {/* Gestures need their own root inside a Modal on Android. */}
       <GestureHandlerRootView style={styles.fill}>
-        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={styles.end}>
+        {/* Android is edge-to-edge here, so nothing resizes for the keyboard on its own: "height" lifts the sheet. */}
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          style={styles.end}
+          onAccessibilityEscape={onClose}
+        >
           <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: colors.backdrop }, backdropStyle]}>
-            <Pressable accessibilityLabel="Close" onPress={onClose} style={styles.fill} />
+            <Pressable
+              accessible={false}
+              importantForAccessibility="no"
+              focusable={false}
+              accessibilityLabel="Close"
+              onPress={onClose}
+              style={styles.fill}
+            />
           </Animated.View>
           <SheetPanel motion={motion} onDismiss={onClose} layout={fluid ? SHEET_RESIZE : undefined}>
             {children}
           </SheetPanel>
         </KeyboardAvoidingView>
+        {visible ? <ToastLayer /> : null}
       </GestureHandlerRootView>
     </Modal>
   );

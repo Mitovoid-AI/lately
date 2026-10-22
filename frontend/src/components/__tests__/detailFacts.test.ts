@@ -1,5 +1,5 @@
 import type { Place, SaveDetail } from "../../api/contract";
-import { deriveFacts, mapsUrl } from "../detail/facts";
+import { deriveFacts, mapsUrl, stepsBeyondFacts } from "../detail/facts";
 import { pushedOnStack } from "../search/pushedOnStack";
 
 const card = (over: Partial<Pick<SaveDetail, "places" | "steps">>) => ({ places: [], steps: null, ...over });
@@ -54,6 +54,30 @@ describe("deriveFacts", () => {
     expect(facts).toHaveLength(3);
     expect(facts[0].text.length).toBeLessThanOrEqual(30);
     expect(facts[0].text.endsWith("…")).toBe(true);
+  });
+});
+
+describe("stepsBeyondFacts", () => {
+  test("a step a chip already shows whole is not listed again", () => {
+    const steps = ["Cash only", "Order the steamed momos", "$15 for two"];
+    const facts = deriveFacts(card({ places: [place()], steps }));
+    expect(stepsBeyondFacts(steps, facts)).toEqual(["Order the steamed momos"]);
+  });
+
+  test("a step a chip only quotes part of stays in the list", () => {
+    const steps = ["Tickets are $15 for two, and the line is long on weekends"];
+    const facts = deriveFacts(card({ steps }));
+    expect(facts).toEqual([{ kind: "price", text: "$15 for two" }]);
+    expect(stepsBeyondFacts(steps, facts)).toEqual(steps);
+  });
+
+  test("a place chip never hides a step that happens to share its words", () => {
+    expect(stepsBeyondFacts(["Go early"], [{ kind: "place", text: "Go early" }])).toEqual(["Go early"]);
+  });
+
+  test("no steps, no list", () => {
+    expect(stepsBeyondFacts(null, [])).toEqual([]);
+    expect(stepsBeyondFacts(undefined, [])).toEqual([]);
   });
 });
 

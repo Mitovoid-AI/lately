@@ -1,56 +1,34 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState, type ReactNode } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from "react-native";
-import Animated, {
-  FadeIn,
-  useAnimatedStyle,
-  useReducedMotion,
-  useSharedValue,
-  withDelay,
-  withSpring,
-  withTiming,
-} from "react-native-reanimated";
+import { useRef, useState } from "react";
+import { Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "../auth/AuthProvider";
 import { authErrorMessage } from "../auth/messages";
 import { Button } from "../components/Button";
+import { ExamplePair } from "../components/ExamplePair";
 import { LOGO } from "../components/Header";
-import { Icon, type IconName } from "../components/Icon";
+import { Icon } from "../components/Icon";
 import { PressableScale } from "../components/motion/PressableScale";
 import { Reveal } from "../components/motion/Reveal";
 import { Sheet } from "../components/Sheet";
 import { TextField } from "../components/TextField";
-import { Thumb } from "../components/Thumb";
 import { useToast } from "../components/Toast";
-import { haptic } from "../lib/haptics";
-import { DURATION, EASE_IN_OUT, EASE_OUT } from "../theme/motion";
 import { useTheme } from "../theme/ThemeProvider";
 import { usePendingShare } from "../share/ShareRouter";
 
-const IMG = {
-  trail: require("../../assets/stitch/signin-trail.jpg"),
-  desk: require("../../assets/stitch/signin-desk.jpg"),
-  cafe: require("../../assets/stitch/signin-cafe.jpg"),
-  kyoto: require("../../assets/stitch/signup-kyoto.jpg"),
-  toast: require("../../assets/stitch/signup-toast.jpg"),
-  living: require("../../assets/stitch/signup-living.jpg"),
-};
-
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 
-type Provider = "google" | "email";
+/** Room the Example picture needs: its tag, then the card, the taller of the pair (about 225 pt), and a little air. */
+const EXAMPLE_HEIGHT = 270;
+/** Padding the hero scroller adds around its content, besides the top inset. */
+const HERO_PAD_TOP = 8;
+const HERO_PAD_BOTTOM = 16;
+const EXAMPLE_GAP = 24;
 
-function Pill({ icon, label, iconColor }: { icon: IconName; label: string; iconColor?: string }) {
-  return (
-    <View className="h-8 flex-row items-center rounded-full bg-raised px-3">
-      <Icon name={icon} size={16} color={iconColor} />
-      <Text className="ml-1.5 font-sans-medium text-meta text-ink-2">{label}</Text>
-    </View>
-  );
-}
+type Provider = "google" | "email";
 
 function ProviderButton({
   label,
@@ -62,11 +40,11 @@ function ProviderButton({
   label: string;
   brand: Provider;
   onPress: () => void;
-  tone?: "accent" | "plain" | "soft";
+  tone?: "accent" | "plain";
   className?: string;
 }) {
   const { colors, shadows } = useTheme();
-  const box = tone === "accent" ? "bg-accent" : tone === "soft" ? "bg-raised" : "bg-card border border-control";
+  const box = tone === "accent" ? "bg-accent" : "bg-card border border-control";
   const text = tone === "accent" ? "text-on-accent" : "text-ink";
   const icon =
     brand === "google" ? (
@@ -79,246 +57,63 @@ function ProviderButton({
   return (
     <PressableScale
       accessibilityRole="button"
+      // The brand glyph is a font character; naming the button keeps it out of what a screen reader says.
+      accessibilityLabel={label}
       onPress={onPress}
       highlightColor={tone === "accent" ? colors.accentPressed : colors.raised}
       containerClassName={className}
-      className={`h-12 flex-row items-center justify-center rounded-ctl px-4 ${box}`}
+      className={`min-h-12 flex-row items-center justify-center rounded-ctl px-4 py-3 ${box}`}
       style={tone === "plain" ? { boxShadow: shadows.card } : undefined}
     >
       {icon}
-      <Text className={`ml-3 font-sans-semibold text-body ${text}`}>{label}</Text>
+      <Text maxFontSizeMultiplier={1.5} className={`ml-3 shrink font-sans-semibold text-body ${text}`}>
+        {label}
+      </Text>
     </PressableScale>
   );
 }
 
-function Tag({ icon, text, dark = true }: { icon?: IconName; text: string; dark?: boolean }) {
-  const { colors } = useTheme();
+/** "Terms" / "Privacy Policy" inside the consent sentence: its own pressable, so it can have a real touch target. */
+function LegalLink({ label, onPress }: { label: string; onPress: () => void }) {
   return (
-    <View
-      className="flex-row items-center rounded-full px-2 py-1"
-      style={{ backgroundColor: dark ? colors.scrim : colors.scrimLight }}
-    >
-      {icon ? <Icon name={icon} size={12} color={dark ? colors.onMedia : colors.ink} /> : null}
-      <Text className={`ml-1 font-sans-semibold text-caption ${dark ? "text-on-media" : "text-ink"}`}>{text}</Text>
-    </View>
+    <Pressable accessibilityRole="link" onPress={onPress} hitSlop={{ top: 12, bottom: 12, left: 8, right: 8 }} className="py-1">
+      <Text className="font-sans-medium text-meta text-ink-2 underline">{label}</Text>
+    </Pressable>
   );
 }
 
 /**
- * 0 → 1 once, a beat after mount, on a soft spring: the welcome visuals settle into place.
- * First-run only (the delight budget); with Reduce Motion they start settled.
+ * One screen for everyone: Lately's name, one line on what it does, Lately's own reel -> card
+ * Example, and Google and email as the two ways in, pinned at the bottom where the thumb is.
+ * The Example gives way when the screen is too short for it (small phones, large text).
  */
-function useSettle(delay: number) {
-  const reduced = useReducedMotion();
-  const t = useSharedValue(reduced ? 1 : 0);
-  useEffect(() => {
-    if (!reduced) t.set(withDelay(delay, withSpring(1, { duration: 900, dampingRatio: 0.72 })));
-  }, [delay, reduced, t]);
-  return t;
-}
-
-/** A side reel that fans out from behind the centre one to its tilt. */
-function FanCard({ side, style, children }: { side: -1 | 1; style: ViewStyle; children: ReactNode }) {
-  const t = useSettle(160);
-  const fan = useAnimatedStyle(() => ({
-    opacity: Math.min(t.get() * 1.6, 1),
-    transform: [{ translateX: -side * 44 * (1 - t.get()) }, { rotate: `${side * 8 * t.get()}deg` }],
-  }));
-  return <Animated.View style={[style, fan]}>{children}</Animated.View>;
-}
-
-/** The centre reel rises into place first. */
-function LeadCard({ children }: { children: ReactNode }) {
-  const t = useSettle(40);
-  const rise = useAnimatedStyle(() => ({
-    opacity: Math.min(t.get() * 2, 1),
-    transform: [{ translateY: 18 * (1 - t.get()) }, { scale: 0.94 + 0.06 * t.get() }],
-  }));
-  return <Animated.View style={rise}>{children}</Animated.View>;
-}
-
-/** The tilted three-reel stack from "01 Sign in — light". */
-function ReelStack() {
-  const { colors, shadows } = useTheme();
-  return (
-    <View className="mt-3 h-[272px] w-full items-center justify-center">
-      <FanCard side={-1} style={{ position: "absolute", left: "7%", top: 22, width: 118 }}>
-        <Thumb uri={null} aspect={9 / 16} radius={18}>
-          <Image source={IMG.trail} contentFit="cover" style={{ position: "absolute", width: "100%", height: "100%" }} />
-          <View className="absolute left-2 top-2">
-            <Tag icon="play-circle-outline" text="Reels" />
-          </View>
-          <Text className="absolute bottom-8 left-3 font-sans-semibold text-meta text-on-media">@alpine.days</Text>
-          <Text className="absolute bottom-3 left-3 font-sans text-caption text-on-media">♪ Original audio</Text>
-        </Thumb>
-      </FanCard>
-      <FanCard side={1} style={{ position: "absolute", right: "7%", top: 22, width: 118 }}>
-        <Thumb uri={null} aspect={9 / 16} radius={18}>
-          <Image source={IMG.desk} contentFit="cover" style={{ position: "absolute", width: "100%", height: "100%" }} />
-          <View className="absolute right-2 top-2">
-            <Tag icon="play-arrow" text="0:34" />
-          </View>
-          <View className="absolute bottom-12 right-2 items-center">
-            <Icon name="favorite-border" size={20} color={colors.onMedia} />
-            <Text className="font-sans-semibold text-caption text-on-media">42.1k</Text>
-          </View>
-        </Thumb>
-      </FanCard>
-      <LeadCard>
-      <View
-        style={{
-          width: 144,
-          boxShadow: shadows.overlay,
-        }}
-      >
-        <Thumb uri={null} aspect={9 / 16} radius={20}>
-          <Image source={IMG.cafe} contentFit="cover" style={{ position: "absolute", width: "100%", height: "100%" }} />
-          <View className="absolute left-2 top-2">
-            <Tag icon="play-circle-outline" text="Reels" />
-          </View>
-          <View className="absolute right-2 top-2 h-7 w-7 items-center justify-center rounded-full" style={{ backgroundColor: colors.scrim }}>
-            <Icon name="volume-up" size={14} color={colors.onMedia} />
-          </View>
-          <View className="absolute right-2 items-center" style={{ top: "44%" }}>
-            <Icon name="favorite" size={22} color={colors.onMedia} />
-            <Text className="mb-2 font-sans-semibold text-caption text-on-media">64.2k</Text>
-            <Icon name="chat-bubble-outline" size={20} color={colors.onMedia} />
-            <Text className="font-sans-semibold text-caption text-on-media">328</Text>
-          </View>
-          <View className="absolute bottom-[64px] left-2 flex-row items-center">
-            <View className="h-5 w-5 items-center justify-center rounded-full bg-accent">
-              <Icon name="local-cafe" size={12} color={colors.onAccent} />
-            </View>
-            <Text className="ml-1.5 font-sans-semibold text-meta text-on-media">@cafestory</Text>
-          </View>
-          <View className="absolute bottom-2 left-2 right-2 rounded-xl bg-card px-2.5 py-2">
-            <View className="flex-row items-center justify-between">
-              <View className="flex-row items-center">
-                <Icon name="edit-note" size={14} color={colors.accentText} />
-                <Text className="ml-1 font-sans-semibold text-caption text-accent-text">Your note</Text>
-              </View>
-              <Text numberOfLines={1} className="font-sans text-caption text-ink-3">2m</Text>
-            </View>
-            <Text numberOfLines={1} className="mt-0.5 font-sans-italic text-meta text-ink">
-              “Quiet spot for Sunday…”
-            </Text>
-          </View>
-        </Thumb>
-      </View>
-      </LeadCard>
-    </View>
-  );
-}
-
-function StripTile({ index, rotate, children }: { index: number; rotate: number; children: ReactNode }) {
-  const t = useSettle(60 + index * 60);
-  const tip = useAnimatedStyle(() => ({
-    opacity: Math.min(t.get() * 1.6, 1),
-    transform: [{ translateY: 14 * (1 - t.get()) }, { rotate: `${rotate * t.get()}deg` }],
-  }));
-  return <Animated.View style={[{ flex: 1 }, tip]}>{children}</Animated.View>;
-}
-
-/** The three-image strip from "00 Sign up — light". */
-function ImageStrip() {
-  const tiles: { src: number; label: string; icon: IconName; rotate: number }[] = [
-    { src: IMG.kyoto, label: "Coffee bar", icon: "local-cafe", rotate: -4 },
-    { src: IMG.toast, label: "Brunch", icon: "restaurant", rotate: 0 },
-    { src: IMG.living, label: "Home ideas", icon: "home", rotate: 4 },
-  ];
-  return (
-    <View className="mt-6 h-[140px] w-full flex-row items-center gap-3 overflow-hidden rounded-2xl bg-raised px-2">
-      {tiles.map((t, i) => (
-        <StripTile key={t.label} index={i} rotate={t.rotate}>
-          <Thumb uri={null} aspect={0.9} radius={14}>
-            <Image source={t.src} contentFit="cover" style={{ position: "absolute", width: "100%", height: "100%" }} />
-            <View className="absolute bottom-2 left-2">
-              <Tag icon={t.icon} text={t.label} dark={false} />
-            </View>
-          </Thumb>
-        </StripTile>
-      ))}
-    </View>
-  );
-}
-
-type Mode = "sign-in" | "sign-up";
-
-/**
- * Sign in | Sign up: one white pill glides between the two (ease-in-out, 260 ms) instead of
- * each tab switching its own background.
- */
-function ModeToggle({ value, onChange, wide }: { value: Mode; onChange: (m: Mode) => void; wide: boolean }) {
-  const { colors, shadows } = useTheme();
-  const [layouts, setLayouts] = useState<Partial<Record<Mode, { x: number; width: number }>>>({});
-  const x = useSharedValue(0);
-  const w = useSharedValue(0);
-  const placed = useRef(false);
-
-  useEffect(() => {
-    const l = layouts[value];
-    if (!l) return;
-    if (!placed.current) {
-      placed.current = true;
-      x.set(l.x);
-      w.set(l.width);
-      return;
-    }
-    x.set(withTiming(l.x, { duration: 260, easing: EASE_IN_OUT }));
-    w.set(withTiming(l.width, { duration: 260, easing: EASE_IN_OUT }));
-  }, [value, layouts, x, w]);
-
-  const pill = useAnimatedStyle(() => ({ width: w.get(), transform: [{ translateX: x.get() }] }));
-
-  return (
-    <View className={`mt-6 flex-row rounded-full bg-raised p-1 ${wide ? "w-full" : "w-[240px]"}`}>
-      <Animated.View style={[styles.modePill, { backgroundColor: colors.card, boxShadow: shadows.card }, pill]} />
-      {(["sign-in", "sign-up"] as const).map((t) => (
-        <Pressable
-          key={t}
-          accessibilityRole="tab"
-          accessibilityState={{ selected: value === t }}
-          onPress={() => {
-            if (value !== t) haptic.selection();
-            onChange(t);
-          }}
-          onLayout={(e) => {
-            const { x: lx, width } = e.nativeEvent.layout;
-            setLayouts((prev) => (prev[t]?.x === lx && prev[t]?.width === width ? prev : { ...prev, [t]: { x: lx, width } }));
-          }}
-          className="h-10 flex-1 items-center justify-center rounded-full"
-        >
-          <Text className={`text-body ${value === t ? "font-sans-semibold text-ink" : "font-sans text-ink-2"}`}>
-            {t === "sign-in" ? "Sign in" : "Sign up"}
-          </Text>
-        </Pressable>
-      ))}
-    </View>
-  );
-}
-
-const SWAP_IN = FadeIn.duration(DURATION.enter).easing(EASE_OUT);
-
 export function SignInScreen() {
   const { colors } = useTheme();
   const auth = useAuth();
   const router = useRouter();
   const toast = useToast();
   const insets = useSafeAreaInsets();
-  const [tab, setTab] = useState<Mode>("sign-in");
   const [emailOpen, setEmailOpen] = useState(false);
   const [email, setEmail] = useState("");
+  const [emailError, setEmailError] = useState("");
   const [sending, setSending] = useState(false);
   const googleInFlight = useRef(false);
-  const signUp = tab === "sign-up";
   const pendingShare = usePendingShare();
+  // Measured, not guessed: the scroller's height and the heading's. Unmeasured (0) shows the Example.
+  const [areaHeight, setAreaHeight] = useState(0);
+  const [headHeight, setHeadHeight] = useState(0);
+  const room = areaHeight - insets.top - HERO_PAD_TOP - HERO_PAD_BOTTOM - headHeight - EXAMPLE_GAP;
+  const showExample = areaHeight === 0 || room >= EXAMPLE_HEIGHT;
 
   async function choose(provider: Provider) {
     if (auth.mode === "demo") {
       await auth.signInDemo();
       return;
     }
-    if (provider === "email") return setEmailOpen(true);
+    if (provider === "email") {
+      setEmailError("");
+      return setEmailOpen(true);
+    }
     // One Google window at a time: a second tap while it opens is ignored.
     if (googleInFlight.current) return;
     googleInFlight.current = true;
@@ -335,12 +130,14 @@ export function SignInScreen() {
   async function sendLink() {
     const address = email.trim();
     setSending(true);
+    setEmailError("");
     try {
       await auth.signInWithEmail(address);
       setEmailOpen(false);
       router.push(`/check-email?email=${encodeURIComponent(address)}`);
     } catch (e) {
-      toast.show(authErrorMessage(e, "email"));
+      // Inline, in the sheet: a toast would sit behind the sheet's own window.
+      setEmailError(authErrorMessage(e, "email"));
     } finally {
       setSending(false);
     }
@@ -349,122 +146,98 @@ export function SignInScreen() {
   return (
     <View className="flex-1 bg-canvas">
       <ScrollView
-        contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: insets.bottom + 20, alignItems: "center" }}
+        className="flex-1"
+        onLayout={(e) => setAreaHeight(e.nativeEvent.layout.height)}
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          paddingTop: insets.top + HERO_PAD_TOP,
+          paddingBottom: HERO_PAD_BOTTOM,
+        }}
       >
-        <View className="w-full max-w-[440px] items-center px-4">
-          <Reveal index={0}>
-            <View className="h-8 flex-row items-center rounded-full bg-raised px-4">
-              <View className="mr-2 h-1.5 w-1.5 rounded-full bg-accent" />
-              <Text className="font-sans-semibold text-label uppercase text-ink-2">Free to start</Text>
-            </View>
-          </Reveal>
-          <Reveal index={1} style={{ alignItems: "center" }}>
-            <Image
-              source={LOGO}
-              style={{ width: 60, height: 60, borderRadius: 16, marginTop: 14 }}
-              accessibilityLabel="Lately logo"
-            />
-            <Text className="mt-2 font-display-heavy text-ink" style={{ fontSize: 36, lineHeight: 42, letterSpacing: -1 }}>
-              Lately
-            </Text>
-          </Reveal>
-          <Reveal index={2}>
-            <Animated.View key={tab} entering={SWAP_IN}>
+        <View className="w-full max-w-[440px] px-4">
+          <View className="items-center" onLayout={(e) => setHeadHeight(e.nativeEvent.layout.height)}>
+            <Reveal index={0} style={{ alignItems: "center" }}>
+              <Image
+                source={LOGO}
+                style={{ width: 60, height: 60, borderRadius: 16 }}
+                accessibilityLabel="Lately logo"
+              />
+              <Text
+                accessibilityRole="header"
+                maxFontSizeMultiplier={1.3}
+                className="mt-2 font-display-heavy text-ink"
+                style={{ fontSize: 36, lineHeight: 42, letterSpacing: -1 }}
+              >
+                Lately
+              </Text>
+            </Reveal>
+            <Reveal index={1}>
               <Text className="mt-2 text-center font-sans text-body text-ink-2">
-                {signUp
-                  ? "Sign up to keep every reel you save in one place you can search."
-                  : "Save reels from Instagram.\nFind them again by typing what you remember."}
+                Save reels from Instagram. Find them again by typing what you remember.
               </Text>
-            </Animated.View>
-          </Reveal>
-
-          <Reveal index={3} style={{ width: "100%", alignItems: "center" }}>
-            <ModeToggle value={tab} onChange={setTab} wide={signUp} />
-          </Reveal>
-
-          {signUp ? <ImageStrip /> : <ReelStack />}
-
-          {pendingShare ? (
-            <Reveal index={6} style={{ width: "100%" }}>
-              <View className="mt-6 w-full flex-row items-center rounded-2xl border border-hairline bg-card px-4 py-3">
-                <Icon name="ios-share" size={20} color={colors.accentText} />
-                <Text className="ml-3 flex-1 font-sans-medium text-body text-ink">
-                  Sign in to finish saving the reel you shared.
-                </Text>
-              </View>
             </Reveal>
-          ) : null}
-
-          <Reveal index={6} style={{ width: "100%" }}>
-          <View className="mt-5 w-full gap-2.5">
-            <ProviderButton
-              tone="accent"
-              brand="google"
-              label={signUp ? "Sign up with Google" : "Continue with Google"}
-              onPress={() => choose("google")}
-            />
-            {/* Google and email are the only sign-ins Lately has; no placeholder providers. */}
-            <ProviderButton
-              brand="email"
-              label={signUp ? "Sign up with email" : "Continue with email"}
-              onPress={() => choose("email")}
-            />
-          </View>
-          </Reveal>
-
-          {signUp ? (
-            <Reveal index={7}>
-              <View className="mt-6 flex-row flex-wrap justify-center gap-2">
-                <Pill icon="check-circle-outline" label="Reels become cards" iconColor={colors.success} />
-                <Pill icon="search" label="Search what you remember" iconColor={colors.accentText} />
-                <Pill icon="lock-outline" label="Private to your account" />
-              </View>
-            </Reveal>
-          ) : null}
-
-          <View className="mt-6 flex-row items-center">
-            <Text className="font-sans text-body text-ink-2">
-              {signUp ? "Already have an account? " : "Don't have an account? "}
-            </Text>
-            <Pressable accessibilityRole="link" onPress={() => setTab(signUp ? "sign-in" : "sign-up")}>
-              <Text className="font-sans-semibold text-body underline" style={{ color: colors.accentText }}>
-                {signUp ? "Sign in" : "Sign up"}
-              </Text>
-            </Pressable>
           </View>
 
-          <Text className="mt-4 text-center font-sans text-meta text-ink-3">
-            {"By continuing you agree to Lately's "}
-            <Text accessibilityRole="link" onPress={() => router.push("/legal/terms")} className="font-sans-medium text-ink-2 underline">
-              Terms
-            </Text>
-            {" and "}
-            <Text
-              accessibilityRole="link"
-              onPress={() => router.push("/legal/privacy")}
-              className="font-sans-medium text-ink-2 underline"
-            >
-              Privacy Policy
-            </Text>
-            .
-          </Text>
+          {showExample ? (
+            <Reveal index={2} style={{ marginTop: EXAMPLE_GAP }}>
+              <ExamplePair centered />
+            </Reveal>
+          ) : null}
         </View>
       </ScrollView>
 
+      <Reveal index={3}>
+        <View className="w-full max-w-[440px] self-center px-4 pt-3" style={{ paddingBottom: insets.bottom + 16 }}>
+          {pendingShare ? (
+            <View
+              testID="pending-share-notice"
+              accessibilityLiveRegion="polite"
+              className="mb-3 w-full flex-row items-center rounded-2xl border border-hairline bg-card px-4 py-3"
+            >
+              <Icon name="ios-share" size={20} color={colors.ink2} />
+              <Text className="ml-3 flex-1 font-sans-medium text-body text-ink">Sign in to finish saving the reel you shared.</Text>
+            </View>
+          ) : null}
+
+          <View className="w-full gap-2.5">
+            <ProviderButton tone="accent" brand="google" label="Continue with Google" onPress={() => choose("google")} />
+            {/* Google and email are the only sign-ins Lately has; no placeholder providers. */}
+            <ProviderButton brand="email" label="Continue with email" onPress={() => choose("email")} />
+          </View>
+
+          <View className="mt-3 flex-row flex-wrap items-center justify-center">
+            <Text className="mr-1 text-center font-sans text-meta text-ink-3">{"By continuing you agree to Lately's"}</Text>
+            <LegalLink label="Terms" onPress={() => router.push("/legal/terms")} />
+            <Text className="mx-1 font-sans text-meta text-ink-3">and</Text>
+            <LegalLink label="Privacy Policy" onPress={() => router.push("/legal/privacy")} />
+            <Text className="font-sans text-meta text-ink-3">.</Text>
+          </View>
+        </View>
+      </Reveal>
+
       <Sheet visible={emailOpen} onClose={() => setEmailOpen(false)}>
         <Text className="font-display text-display-sm text-ink">Continue with email</Text>
-        <Text className="mt-1 font-sans text-body text-ink-2">
-          {"We'll email you a sign-in link and a 6-digit code."}
-        </Text>
+        <Text className="mt-1 font-sans text-body text-ink-2">{"We'll email you a sign-in link and a 6-digit code."}</Text>
         <TextField
           value={email}
-          onChangeText={setEmail}
+          onChangeText={(t) => {
+            setEmail(t);
+            if (emailError) setEmailError("");
+          }}
           placeholder="you@example.com"
+          accessibilityLabel="Email address"
           autoCapitalize="none"
           autoComplete="email"
           keyboardType="email-address"
           className="mt-4"
         />
+        {emailError ? (
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="mt-2 font-sans text-meta text-danger">
+            {emailError}
+          </Text>
+        ) : null}
         <Button
           title="Send sign-in link"
           onPress={sendLink}
@@ -476,14 +249,3 @@ export function SignInScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  modePill: {
-    pointerEvents: "none",
-    position: "absolute",
-    top: 4,
-    bottom: 4,
-    left: 0,
-    borderRadius: 999,
-  },
-});

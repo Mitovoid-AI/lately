@@ -1,20 +1,20 @@
 import type { Category } from "../api/contract";
-import type { IconName } from "../components/Icon";
 import type { Scheme } from "./ThemeProvider";
 
 /**
- * Category wayfinding: the dot colour, its icon, and a one-word label for tight spots (a tile's
- * pill). Dots are graphics, so they need 3:1 on white and on raised: light ones measure 3.4 to
- * 5.2:1 on white and 3.1 to 4.6:1 on raised (Food is the lowest). `dark` is the same hue lifted
- * for espresso surfaces (5.0:1+ on canvas, card and raised).
+ * Category wayfinding: the dot colour and a one-word label for tight spots (a tile's pill). The
+ * colour is wayfinding and the word carries the meaning, so there is no icon per category.
+ * Dots are graphics, so they need 3:1 on white and on raised: light ones measure 3.4 to 5.2:1
+ * on white and 3.1 to 4.6:1 on raised (Food is the lowest). `dark` is the same hue lifted for
+ * espresso surfaces (5.0:1+ on canvas, card and raised).
  */
-export const CATEGORY: Record<Category, { color: string; dark: string; icon: IconName; short: string }> = {
-  "Dev & Tools": { color: "#2F6BDB", dark: "#6E9CF0", icon: "code", short: "Dev" },
-  "Food & Places": { color: "#E36529", dark: "#EC7B3F", icon: "restaurant", short: "Food" },
-  "Career & Jobs": { color: "#7A55D6", dark: "#A98BEB", icon: "work", short: "Career" },
-  Fitness: { color: "#1E9A62", dark: "#45C48B", icon: "hiking", short: "Fitness" },
-  "Style & Vibes": { color: "#CF3F7A", dark: "#EA6A9E", icon: "checkroom", short: "Style" },
-  "Watch Later": { color: "#726C64", dark: "#A0968A", icon: "schedule", short: "Watch" },
+export const CATEGORY: Record<Category, { color: string; dark: string; short: string }> = {
+  "Dev & Tools": { color: "#2F6BDB", dark: "#6E9CF0", short: "Dev" },
+  "Food & Places": { color: "#E36529", dark: "#EC7B3F", short: "Food" },
+  "Career & Jobs": { color: "#7A55D6", dark: "#A98BEB", short: "Career" },
+  Fitness: { color: "#1E9A62", dark: "#45C48B", short: "Fitness" },
+  "Style & Vibes": { color: "#CF3F7A", dark: "#EA6A9E", short: "Style" },
+  "Watch Later": { color: "#726C64", dark: "#A0968A", short: "Watch" },
 };
 
 export function categoryColor(category: Category, scheme: Scheme): string {

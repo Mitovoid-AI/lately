@@ -1,4 +1,15 @@
-import { ctaLabel, disclosure, FALLBACK_PLANS, formatMoney, planName, priceLine, savingsPercent, trialLabel } from "../plans";
+import {
+  ctaLabel,
+  disclosure,
+  FALLBACK_PLANS,
+  formatMoney,
+  planName,
+  priceLine,
+  priceSummary,
+  PRO_CONFIRMING,
+  savingsPercent,
+  trialLabel,
+} from "../plans";
 import type { PlanOffer } from "../types";
 
 const [yearly, monthly] = FALLBACK_PLANS;
@@ -37,6 +48,18 @@ test("button and disclosure copy follow the plan", () => {
     "$3.99 a month. Renews automatically until you cancel. Cancel anytime in Google Play > Subscriptions.",
   );
   expect(disclosure(plan({ trialDays: null }))).toMatch(/^\$29\.99 a year\. Renews automatically/);
+});
+
+test("the line above the button gives the trial and the price in one breath", () => {
+  expect(priceSummary(yearly)).toBe("7 days free, then $29.99 a year");
+  expect(priceSummary(monthly)).toBe("Billed $3.99 a month");
+  expect(priceSummary(plan({ trialDays: null }))).toBe("Billed $29.99 a year");
+  expect(priceSummary(plan({ trialDays: 1 }))).toBe("1 day free, then $29.99 a year");
+});
+
+test("the Pro-is-turning-on message is short enough for a toast", () => {
+  expect(PRO_CONFIRMING).toBe("Purchase confirmed. Pro turns on in a minute.");
+  expect(PRO_CONFIRMING.length).toBeLessThanOrEqual(50);
 });
 
 test("small helpers", () => {

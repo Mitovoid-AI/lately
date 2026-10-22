@@ -5,21 +5,23 @@ import Animated, { FadeIn } from "react-native-reanimated";
 
 import type { Stack } from "../../api/contract";
 import { useApi } from "../../api/index";
+import { countOf } from "../../lib/counts";
 import { haptic } from "../../lib/haptics";
 import { DURATION } from "../../theme/motion";
 import { useTheme } from "../../theme/ThemeProvider";
+import { Button } from "../Button";
 import { Icon } from "../Icon";
 import { PressableScale } from "../motion/PressableScale";
 import { Reveal } from "../motion/Reveal";
 import { NewStackForm } from "../NewStackForm";
 import { Sheet } from "../Sheet";
-import { Skeleton } from "../Skeleton";
+import { Skeleton, SkeletonGroup } from "../Skeleton";
 import { StackCollage } from "../StackCollage";
 import { useToast } from "../Toast";
 
 const MODE_IN = FadeIn.duration(DURATION.state);
 
-/** "Add to stack" sheet opened from a card's bookmark. */
+/** "Add to stack" sheet opened from a card's Add to stack button. */
 export function StackPicker({
   visible,
   saveId,
@@ -29,7 +31,7 @@ export function StackPicker({
   visible: boolean;
   saveId: string;
   onClose: () => void;
-  /** Called after the save lands in a stack (the bookmark answers with a pop). */
+  /** Called after the save lands in a stack (the button's glyph answers with a pop). */
   onAdded?: (stack: Stack) => void;
 }) {
   const { colors } = useTheme();
@@ -80,30 +82,50 @@ export function StackPicker({
         </Animated.View>
       ) : (
         <View>
-          <Text className="font-display text-display-md text-ink">Add to stack</Text>
+          <Text accessibilityRole="header" className="font-display text-display-md text-ink">
+            Add to stack
+          </Text>
           {stacks.isLoading ? (
-            <View className="mt-3 gap-2">
+            <SkeletonGroup label="Loading your stacks" style={{ marginTop: 12, gap: 8 }}>
               {[0, 1, 2].map((i) => (
                 <View key={i} className="h-14 flex-row items-center">
                   <Skeleton style={{ width: 40, height: 40, borderRadius: 8 }} />
                   <Skeleton style={{ marginLeft: 12, height: 14, width: "45%", borderRadius: 7 }} />
                 </View>
               ))}
+            </SkeletonGroup>
+          ) : null}
+          {stacks.isError && !stacks.data ? (
+            <View className="mt-3 items-center py-2">
+              <Text accessibilityLiveRegion="polite" className="text-center font-sans-semibold text-body text-ink">
+                Couldn&apos;t load your stacks
+              </Text>
+              <Text className="mt-1 text-center font-sans text-meta text-ink-2">Check your connection and try again.</Text>
+              <Button
+                title="Try again"
+                variant="secondary"
+                onPress={() => stacks.refetch()}
+                loading={stacks.isRefetching}
+                className="mt-4 w-full"
+              />
             </View>
           ) : null}
-          <ScrollView style={{ maxHeight: 360 }} className="mt-3">
+          <ScrollView style={{ maxHeight: 360 }} className="mt-3" keyboardShouldPersistTaps="handled">
             {(stacks.data ?? []).map((s, i) => (
               <Reveal key={s.id} index={i}>
                 <PressableScale
                   accessibilityRole="button"
+                  accessibilityLabel={`${s.name}, ${countOf(s.save_count, "save")}`}
                   onPress={() => add(s)}
                   scaleTo={1}
                   highlightColor={colors.raised}
-                  className="-mx-2 h-14 flex-row items-center rounded-xl px-2"
+                  className="-mx-2 min-h-14 flex-row items-center rounded-xl px-2 py-2"
                 >
                   <StackCollage covers={s.cover_urls} size={40} radius={8} />
-                  <Text className="ml-3 flex-1 font-sans-medium text-body text-ink">{s.name}</Text>
-                  <Text className="font-sans text-meta text-ink-2">{s.save_count}</Text>
+                  <Text numberOfLines={2} className="ml-3 flex-1 font-sans-medium text-body text-ink">
+                    {s.name}
+                  </Text>
+                  <Text className="ml-2 font-sans text-meta text-ink-2">{s.save_count}</Text>
                 </PressableScale>
               </Reveal>
             ))}
@@ -113,12 +135,12 @@ export function StackPicker({
             onPress={() => setCreating(true)}
             scaleTo={1}
             highlightColor={colors.raised}
-            className="-mx-2 mt-1 h-14 flex-row items-center rounded-xl px-2"
+            className="-mx-2 mt-1 min-h-14 flex-row items-center rounded-xl px-2 py-2"
           >
             <View className="h-10 w-10 items-center justify-center rounded-lg border border-dashed border-ink-3">
               <Icon name="add" size={20} color={colors.ink2} />
             </View>
-            <Text className="ml-3 font-sans-semibold text-body text-accent-text">New stack</Text>
+            <Text className="ml-3 font-sans-semibold text-body text-ink">New stack</Text>
           </PressableScale>
         </View>
       )}

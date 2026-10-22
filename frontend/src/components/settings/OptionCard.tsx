@@ -20,7 +20,8 @@ const CHECK_OUT = FadeOut.duration(140);
 /**
  * One of a row of choices (reading font, theme). Selected = raised fill + a dark-marigold check
  * (accent-text, 5.3:1 on the raised fill; plain marigold would be 2.2:1). The fill, border and
- * corner check all dissolve between states.
+ * corner check all dissolve between states. Unselected, the border is the 3:1 `control` tone, so
+ * each choice is findable on the canvas (a hairline is 1.3:1).
  */
 export function OptionCard({
   selected,
@@ -42,7 +43,7 @@ export function OptionCard({
   }, [selected, on]);
   const boxStyle = useAnimatedStyle(() => ({
     backgroundColor: interpolateColor(on.get(), [0, 1], [colors.canvas, colors.raised]),
-    borderColor: interpolateColor(on.get(), [0, 1], [colors.hairline, colors.ink3]),
+    borderColor: interpolateColor(on.get(), [0, 1], [colors.control, colors.ink3]),
   }));
 
   return (
@@ -74,7 +75,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     borderRadius: 12,
     borderWidth: 1,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     paddingVertical: 12,
   },
   check: { position: "absolute", right: 8, top: 8 },

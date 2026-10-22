@@ -2,6 +2,9 @@ import { ApiError } from "../../api/contract";
 import {
   outcomeFromError,
   outcomeFromResult,
+  PARTIAL_NOTICE,
+  stageLabel,
+  STAGE_FALLBACK,
   TRACKER_ESTIMATE,
   TRACKER_LATE,
   TRACKER_PARTIAL,
@@ -59,11 +62,37 @@ test("an enriched or partial card has finished every step", () => {
   }
 });
 
-test("the line under the steps is an honest estimate early, then plain words, never a percentage", () => {
+test("stageLabel names what the server is doing in the tracker's own words", () => {
+  expect(stageLabel("resolve")).toBe("Getting the reel");
+  expect(stageLabel("fetch")).toBe("Getting the reel");
+  expect(stageLabel("transcribe")).toBe("Listening to it");
+  expect(stageLabel("vision")).toBe("Listening to it");
+  expect(stageLabel("structure")).toBe("Finding places and steps");
+  expect(stageLabel("finalize")).toBe("Finding places and steps");
+});
+
+test("stageLabel says Getting details until the server names a step it knows", () => {
+  expect(STAGE_FALLBACK).toBe("Getting details");
+  expect(stageLabel(null)).toBe(STAGE_FALLBACK);
+  expect(stageLabel(undefined)).toBe(STAGE_FALLBACK);
+  expect(stageLabel("brand-new-stage" as Parameters<typeof stageLabel>[0])).toBe(STAGE_FALLBACK);
+  // The tracker treats an unknown stage as the first step, not as a broken one.
+  expect(states(trackerSteps("pending", "brand-new-stage" as Parameters<typeof stageLabel>[0]))).toEqual([
+    "active",
+    "todo",
+    "todo",
+    "todo",
+  ]);
+});
+
+test("the line under the steps says what Lately is doing early, then plain words, never a time or a percentage", () => {
   expect(trackerNote({ status: "pending", stage: "resolve" })).toBe(TRACKER_ESTIMATE);
   expect(trackerNote({ status: "pending", stage: "vision" })).toBe(TRACKER_ESTIMATE);
   expect(trackerNote({ status: "pending" })).toBe(TRACKER_ESTIMATE);
-  expect(TRACKER_ESTIMATE).toContain("about 30 s");
+  // Nothing measures how long a card takes in production, so no number is promised.
+  expect(TRACKER_ESTIMATE).toBe("Lately is reading the reel. You can close this.");
+  expect(TRACKER_ESTIMATE).not.toMatch(/\d/);
+  expect(TRACKER_PARTIAL.startsWith(PARTIAL_NOTICE)).toBe(true);
   expect(trackerNote({ status: "pending", stage: "structure" })).toBe(TRACKER_LATE);
   expect(trackerNote({ status: "pending", stage: "finalize" })).toBe(TRACKER_LATE);
   expect(trackerNote({ status: "pending", stage: "vision", slow: true })).toBe(TRACKER_SLOW);

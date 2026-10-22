@@ -85,6 +85,11 @@ export function TextField({
   );
 }
 
+// `outlineStyle: "none"` is what react-native-web needs to drop the browser's focus outline; React
+// Native's own outline types do not list it, hence the cast.
+const WEB_NO_OUTLINE: TextStyle =
+  Platform.OS === "web" ? ({ outlineStyle: "none", outlineWidth: 0, outlineColor: "transparent" } as unknown as TextStyle) : {};
+
 const styles = StyleSheet.create({
   box: {
     flexDirection: "row",
@@ -105,11 +110,6 @@ const styles = StyleSheet.create({
     borderWidth: 3,
   },
   // The field draws its own focus ring, so the browser's outline is switched off on web.
-  input: { paddingVertical: 0, ...(Platform.OS === "web" ? { outlineWidth: 0, outlineColor: "transparent" } : null) },
-  multilineInput: {
-    paddingVertical: 0,
-    textAlignVertical: "top",
-    minHeight: 24,
-    ...(Platform.OS === "web" ? { outlineWidth: 0, outlineColor: "transparent" } : null),
-  },
+  input: { paddingVertical: 0, ...WEB_NO_OUTLINE },
+  multilineInput: { paddingVertical: 0, textAlignVertical: "top", minHeight: 24, ...WEB_NO_OUTLINE },
 });

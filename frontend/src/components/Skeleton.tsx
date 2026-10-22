@@ -39,13 +39,32 @@ export function Skeleton({ style }: { style?: StyleProp<ViewStyle> }) {
   );
 }
 
+/** What a screen reader says for a placeholder that does not say what is loading. */
+export const LOADING_LABEL = "Loading";
+
 /**
  * Wraps a group of skeletons: it fades in only after 150 ms, so a fast load never flashes a
- * placeholder before the real content arrives.
+ * placeholder before the real content arrives. It is one stop for a screen reader, a progress
+ * bar named `label` ("Loading" unless the screen says more), so the blocks inside are not read.
  */
-export function SkeletonGroup({ children, style }: { children: ReactNode; style?: StyleProp<ViewStyle> }) {
+export function SkeletonGroup({
+  children,
+  style,
+  label = LOADING_LABEL,
+}: {
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  label?: string;
+}) {
   return (
-    <Animated.View entering={GROUP_IN} style={style}>
+    <Animated.View
+      entering={GROUP_IN}
+      style={style}
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={label}
+      accessibilityState={{ busy: true }}
+    >
       {children}
     </Animated.View>
   );
@@ -68,10 +87,16 @@ function SkeletonCard({ width }: { width: number }) {
 }
 
 /** A list-row placeholder: small thumbnail, title, a line of chips. */
-export function SkeletonRow() {
+export function SkeletonRow({ label = LOADING_LABEL }: { label?: string }) {
   return (
-    <View className="flex-row py-3">
-      <Skeleton style={{ width: 64, aspectRatio: 64 / 80, borderRadius: 10 }} />
+    <View
+      accessible
+      accessibilityRole="progressbar"
+      accessibilityLabel={label}
+      accessibilityState={{ busy: true }}
+      className="flex-row py-3"
+    >
+      <Skeleton style={{ width: 64, aspectRatio: 64 / 80, borderRadius: 12 }} />
       <View className="ml-3 flex-1">
         <Skeleton style={[styles.line, { width: "85%" }]} />
         <Skeleton style={[styles.line, { marginTop: 6, width: "55%" }]} />
@@ -88,15 +113,20 @@ export function SkeletonGrid({
   rows = 2,
   gap = 12,
   maxWidth = 1280,
+  label,
 }: {
   columns: number;
   itemWidth: number;
   rows?: number;
   gap?: number;
   maxWidth?: number;
+  label?: string;
 }) {
   return (
-    <SkeletonGroup style={{ width: "100%", maxWidth, alignSelf: "center", paddingHorizontal: 16, gap: 20, marginTop: 4 }}>
+    <SkeletonGroup
+      label={label}
+      style={{ width: "100%", maxWidth, alignSelf: "center", paddingHorizontal: 16, gap, marginTop: 4 }}
+    >
       {Array.from({ length: rows }, (_, r) => (
         <View key={r} style={{ flexDirection: "row", gap }}>
           {Array.from({ length: columns }, (_, c) => (

@@ -38,6 +38,9 @@ const PRESSED: Record<Variant, keyof Palette> = {
   danger: "dangerPressed",
 };
 
+/** The label may grow with the system text size up to here; past it the button wraps rather than balloons. */
+const LABEL_MAX_SCALE = 1.5;
+
 // Label ↔ spinner swap: a quick dissolve instead of a hard cut.
 const SWAP_IN = FadeIn.duration(150);
 
@@ -76,6 +79,8 @@ export function Button({
   return (
     <PressableScale
       accessibilityRole="button"
+      // The spinner replaces the label while loading; the button keeps its name for a screen reader.
+      accessibilityLabel={title}
       accessibilityState={{ disabled: inactive, busy: loading }}
       disabled={inactive}
       onPress={onPress}
@@ -83,21 +88,27 @@ export function Button({
       dimmed={disabled && !loading}
       highlightColor={colors[PRESSED[variant]]}
       containerClassName={className}
-      className={`${size === "lg" ? "h-14" : "h-12"} flex-row items-center justify-center rounded-ctl px-4 ${BOX[variant]}`}
+      // min-h, not h: a label that wraps (big text, a long name) grows the button instead of being clipped.
+      className={`${size === "lg" ? "min-h-14 py-4" : "min-h-12 py-3"} flex-row items-center justify-center rounded-ctl px-4 ${BOX[variant]}`}
     >
       {loading ? (
         <Animated.View key="busy" entering={entering}>
           <ActivityIndicator color={colors[ICON_COLOR[variant]]} />
         </Animated.View>
       ) : (
-        <Animated.View key="label" entering={entering}>
-          <View className="flex-row items-center">
+        <Animated.View key="label" entering={entering} style={{ flexShrink: 1 }}>
+          <View className="flex-row items-center justify-center">
             {icon ? (
               <View className="mr-2">
                 <Icon name={icon} size={20} color={colors[ICON_COLOR[variant]]} />
               </View>
             ) : null}
-            <Text className={`font-sans-semibold text-body ${LABEL[variant]}`}>{title}</Text>
+            <Text
+              maxFontSizeMultiplier={LABEL_MAX_SCALE}
+              className={`shrink text-center font-sans-semibold text-body ${LABEL[variant]}`}
+            >
+              {title}
+            </Text>
           </View>
         </Animated.View>
       )}

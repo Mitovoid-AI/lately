@@ -30,7 +30,7 @@ export function WhyChips({ chips, className = "" }: { chips: WhyChip[]; classNam
   return (
     <View className={`flex-row flex-wrap gap-1.5 ${className}`}>
       {chips.map((chip, i) => (
-        <View key={chip.text} className="h-7 max-w-full flex-row items-center rounded-full bg-raised px-2.5">
+        <View key={chip.text} className="min-h-7 max-w-full flex-row items-center rounded-full bg-raised px-2.5 py-1">
           {chip.kind === "place" ? (
             <View className="mr-1">
               <Icon name="place" size={13} color={colors.ink2} />
@@ -130,7 +130,7 @@ export const CompactRow = memo(function CompactRow({
       className="-mx-2 min-h-[88px] flex-row rounded-xl px-2 py-3"
     >
       <View style={{ width: 56 }}>
-        <Thumb uri={uri} aspect={56 / 72} radius={10}>
+        <Thumb uri={uri} aspect={56 / 72} radius={12}>
           {uri ? null : <NoImage size={20} />}
         </Thumb>
       </View>

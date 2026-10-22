@@ -102,11 +102,20 @@ test("the best match comes first with the reasons it matched, the rest under Als
   expect(screen.getByText("#soup")).toBeTruthy();
 });
 
+test("how many saves came back is a live region, so a screen reader says it", async () => {
+  const { api } = apiWith([BEST, SECOND, THIRD]);
+  await renderWithProviders(<SearchScreen />, { api });
+  await type("dumpling");
+  const count = await screen.findByText("3 saves found");
+  expect(count.props.accessibilityLiveRegion).toBe("polite");
+});
+
 test("a single result has no Also from your saves", async () => {
   const { api } = apiWith([BEST]);
   await renderWithProviders(<SearchScreen />, { api });
   await type("dumpling");
   expect(await screen.findByText("Best match")).toBeTruthy();
+  expect(screen.getByText("1 save found")).toBeTruthy();
   expect(screen.queryByText("Also from your saves")).toBeNull();
 });
 
@@ -164,8 +173,10 @@ test("no results says what was searched and how to widen it", async () => {
   const { api } = apiWith([BEST]);
   await renderWithProviders(<SearchScreen />, { api });
   await type("zzzz");
-  expect(await screen.findByText("Nothing matched “zzzz”")).toBeTruthy();
-  expect(screen.getByText("Try fewer words, or a place, dish or creator.")).toBeTruthy();
+  const nothing = await screen.findByText("Nothing matched “zzzz”");
+  // Announced when the results turn out to be none.
+  expect(nothing.props.accessibilityLiveRegion).toBe("polite");
+  expect(screen.getByText("Try fewer words, or a place, dish or topic.")).toBeTruthy();
   // It offers a few searches that do work.
   expect(screen.getAllByText(SEARCH_EXAMPLES[0]).length).toBeGreaterThan(0);
 });
@@ -255,6 +266,9 @@ test("a failed search says so with a retry that asks again", async () => {
   const api = { ...demoApi(), search };
   await renderWithProviders(<SearchScreen />, { api });
   expect(await screen.findByText("Couldn't search right now")).toBeTruthy();
+  // Not "check your connection": the phone is online, it is Lately's search that did not answer.
+  expect(screen.getByText("Lately's search isn't responding. Try again in a minute.")).toBeTruthy();
+  expect(screen.queryByText("Check your connection and try again.")).toBeNull();
   const calls = search.mock.calls.length;
   await fireEvent.press(screen.getByText("Try again"));
   await waitFor(() => expect(search.mock.calls.length).toBeGreaterThan(calls));

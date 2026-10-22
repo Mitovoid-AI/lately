@@ -5,6 +5,7 @@ import { Platform, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import type { Save } from "../api/contract";
 import { relativeShort } from "../lib/dates";
 import { displayLink } from "../lib/instagram";
+import { stageLabel } from "../lib/saveOutcome";
 import { CATEGORY } from "../theme/categories";
 import { useTheme, type Scheme } from "../theme/ThemeProvider";
 import { scrims } from "../theme/tokens";
@@ -23,9 +24,12 @@ const firstLine = (text: string | null) => text?.split("\n")[0]?.trim() || null;
  */
 export const CARD_ASPECT = 3 / 4;
 
-/** The title a card shows: real title → caption's first line → the link. */
+/** What a card is called until Lately has read the reel (the link, small, is shown as meta). */
+export const PENDING_TITLE = "New reel";
+
+/** The title a card shows: "New reel" while pending → real title → caption's first line → the link. */
 export function cardTitle(save: Save): string {
-  if (save.status === "pending") return displayLink(save.source_url);
+  if (save.status === "pending") return PENDING_TITLE;
   return save.title ?? firstLine(save.caption) ?? displayLink(save.source_url);
 }
 
@@ -93,7 +97,8 @@ export const ReelCard = memo(function ReelCard({
   const onImage = !!uri;
   const title = cardTitle(save);
   const note = save.note ? `“${save.note}”` : null;
-  const status = pending ? "Getting details…" : partial ? "Preview unavailable" : null;
+  // A pending tile says which step the server is on, in the tracker's words ("Getting details" until it says).
+  const status = pending ? stageLabel(save.stage) : partial ? "Preview unavailable" : null;
   // One screen-reader stop: title, note, meta, then the loading state if there is one.
   const label = [title, save.note, meta, status].filter(Boolean).join(", ");
 
@@ -108,7 +113,7 @@ export const ReelCard = memo(function ReelCard({
               maxFontSizeMultiplier={MAX_FONT_SCALE}
               className="mt-2 text-center font-sans-medium text-meta text-ink-2"
             >
-              Getting details…
+              {status}
             </Text>
           </View>
         </View>
@@ -160,7 +165,13 @@ export const ReelCard = memo(function ReelCard({
       </View>
       {category ? (
         <View className="absolute right-2 top-2 rounded-full" style={{ boxShadow: shadows.raised }}>
-          <CategoryPill category={category} label={CATEGORY[category].short} size="sm" maxFontSizeMultiplier={MAX_FONT_SCALE} />
+          <CategoryPill
+            category={category}
+            label={CATEGORY[category].short}
+            size="sm"
+            maxFontSizeMultiplier={MAX_FONT_SCALE}
+            onPhoto={onImage}
+          />
         </View>
       ) : null}
     </Thumb>

@@ -38,6 +38,19 @@ export function useSaveQueue() {
 const reels = (n: number) => (n === 1 ? "1 reel" : `${n} reels`);
 
 /**
+ * Why shares waiting on the queue were refused for good, one sentence per reason, so the toast
+ * says what went wrong and what to do about it instead of a bare "couldn't save".
+ */
+export function droppedMessage(codes: readonly string[]): string {
+  const quota = codes.filter((c) => c === "QUOTA_EXCEEDED").length;
+  const noLink = codes.length - quota;
+  const parts: string[] = [];
+  if (quota) parts.push(`${reels(quota)} you shared offline didn't save: you've used this month's free saves.`);
+  if (noLink) parts.push(`${noLink === 1 ? "1 share had" : `${noLink} shares had`} no reel link, so nothing was saved.`);
+  return parts.join(" ");
+}
+
+/**
  * The offline save queue for the signed-in account: retried when the app comes to the
  * foreground, on sign-in, and every 30 s while anything is waiting.
  */
@@ -75,7 +88,7 @@ export function SaveQueueProvider({
         refreshSaveViews(queryClient);
         toast.show(`Saved ${reels(r.saved.length)} you shared offline`);
       }
-      if (r.dropped.length) toast.show(`Couldn't save ${reels(r.dropped.length)} you shared offline`);
+      if (r.dropped.length) toast.show(droppedMessage(r.dropped.map((d) => d.code)));
     } finally {
       running.current = false;
       setFlushing(false);

@@ -12,28 +12,28 @@ import { Header } from "../components/Header";
 import { BackForYou } from "../components/home/BackForYou";
 import { QUOTA_BANNER_AT, QueuedBanner, QuotaBanner } from "../components/home/Banners";
 import { FirstRun } from "../components/home/FirstRun";
-import { LiveCardBar } from "../components/home/LiveCardBar";
 import { SearchFrontDoor } from "../components/home/SearchFrontDoor";
 import { Reveal, useEntranceWindow } from "../components/motion/Reveal";
 import { ReelCard } from "../components/ReelCard";
 import { SkeletonGrid } from "../components/Skeleton";
 import { useNow } from "../hooks/useNow";
 import { useSaveQueue } from "../hooks/useSaveQueue";
-import { isStalePending, useMe, useSaves } from "../hooks/useSaves";
+import { useMe, useSaves } from "../hooks/useSaves";
 import { countOf } from "../lib/counts";
+import { GRID_GAP, GRID_MAX_WIDTH, GRID_SIDE, gridLayout, memoryTileWidth } from "../lib/grid";
 import { haptic } from "../lib/haptics";
 import { CATEGORY_ORDER, categoryColor } from "../theme/categories";
 import { useTheme } from "../theme/ThemeProvider";
 
-const MAX_WIDTH = 1280;
-const GAP = 12;
-const SIDE = 16;
+/** The search field and the banners stay a phone-sized column on a tablet. */
+const TOP_WIDTH = 560;
 
 /**
  * Home, top to bottom: the search field that fronts the Search tab, the banners (Pro near the
- * limit, saves waiting offline), cards being written right now, "Back for you", then category
- * chips and the grid of everything saved. With nothing saved it shows the first-run picture
- * instead. Saving itself is the Save tab; there is no floating button here.
+ * limit, saves waiting offline), "Back for you", then category chips (when there is more than
+ * one category) and the grid of everything saved. A card being written is a tile in that grid
+ * (it carries the step it is on), not a bar of its own. With nothing saved it shows the
+ * first-run picture instead. Saving itself is the Save tab; there is no floating button here.
  */
 export function HomeScreen() {
   const { colors, scheme } = useTheme();
@@ -53,22 +53,17 @@ export function HomeScreen() {
     () => CATEGORY_ORDER.filter((c) => saves.some((s) => s.status !== "pending" && s.category === c)),
     [saves],
   );
-  // A job that has run for 10+ minutes has most likely died: it is not "live" any more (its
-  // card in the grid offers Try again), so it gets no row up here.
-  const pending = useMemo(
-    () => saves.filter((s) => s.status === "pending" && !isStalePending(s, now)),
-    [saves, now],
-  );
-  const active = filter !== "All" && !categories.includes(filter) ? "All" : filter;
+  // One category is no choice: chips need two or more, and a filter left over from before the
+  // library shrank to one falls back to everything.
+  const showChips = categories.length > 1;
+  const active = filter !== "All" && !(showChips && categories.includes(filter)) ? "All" : filter;
   const filtered = useSaves(active === "All" ? undefined : active);
   const list = active === "All" ? all : filtered;
   const { isLoading, fetchNextPage, refetch, isRefetching } = list;
   const shown = list.saves;
   const failed = list.isError;
 
-  const columns = width >= 1024 ? 4 : width >= 768 ? 3 : 2;
-  const inner = Math.min(width, MAX_WIDTH) - SIDE * 2;
-  const itemWidth = (inner - GAP * (columns - 1)) / columns;
+  const { columns, itemWidth } = gridLayout(width);
   const empty = !all.isLoading && !all.isError && saves.length === 0;
   const paste = useCallback(() => router.push("/save-sheet"), [router]);
 
@@ -92,8 +87,8 @@ export function HomeScreen() {
   );
 
   const listHeader = (
-    <View className="w-full self-center" style={{ maxWidth: MAX_WIDTH }}>
-      <View className="px-4 pt-1">
+    <View className="w-full self-center" style={{ maxWidth: GRID_MAX_WIDTH }}>
+      <View className="w-full self-center px-4 pt-1" style={{ maxWidth: TOP_WIDTH }}>
         {/* Nothing saved means nothing to search: the first-run picture takes the stage. */}
         {empty ? null : <SearchFrontDoor onPress={() => router.push("/search")} />}
         {me && me.plan === "free" && me.saves_limit - me.saves_this_month <= QUOTA_BANNER_AT ? (
@@ -102,19 +97,22 @@ export function HomeScreen() {
         {queue.queued.length > 0 ? (
           <QueuedBanner count={queue.queued.length} busy={queue.flushing} onRetry={() => queue.flush()} />
         ) : null}
-        <LiveCardBar saves={pending} now={now} onOpen={(id) => router.push(`/reel/${id}`)} />
       </View>
       {empty || failed ? null : (
-        <BackForYou onOpen={(href) => router.push(href)} onSeeAll={() => router.push("/curated")} />
+        <BackForYou
+          onOpen={(href) => router.push(href)}
+          onSeeAll={() => router.push("/curated")}
+          tileWidth={memoryTileWidth(itemWidth)}
+        />
       )}
       {empty ? null : (
         <>
-          {categories.length > 0 ? (
+          {showChips ? (
             <ScrollView
               horizontal
               showsHorizontalScrollIndicator={false}
-              contentContainerStyle={{ paddingHorizontal: SIDE, gap: 8 }}
-              className="mt-6"
+              contentContainerStyle={{ paddingHorizontal: GRID_SIDE, gap: 8 }}
+              className="mt-4"
             >
               <Chip label="All" active={active === "All"} haptic="selection" onPress={() => pick("All")} />
               {categories.map((c) => (
@@ -129,10 +127,12 @@ export function HomeScreen() {
               ))}
             </ScrollView>
           ) : null}
-          <View className="mt-5 flex-row items-baseline justify-between px-4">
-            <Text className="font-display text-display-sm text-ink">{active === "All" ? "Recently saved" : active}</Text>
+          <View className="mt-3 flex-row items-baseline justify-between px-4">
+            <Text accessibilityRole="header" className="font-display text-display-sm text-ink">
+              {active === "All" ? "Recently saved" : active}
+            </Text>
             {me && active === "All" ? (
-              <Text className="font-sans text-meta text-ink-2">{countOf(me.total_saves, "reel")}</Text>
+              <Text className="font-sans text-meta text-ink-2">{countOf(me.total_saves, "save")}</Text>
             ) : null}
           </View>
         </>
@@ -148,14 +148,14 @@ export function HomeScreen() {
         data={empty || failed ? [] : shown}
         keyExtractor={(s: Save) => `${active}:${s.id}`}
         numColumns={columns}
-        columnWrapperStyle={{ gap: GAP, paddingHorizontal: SIDE, alignSelf: "center", width: "100%", maxWidth: MAX_WIDTH }}
-        contentContainerStyle={{ paddingBottom: 32, gap: 16 }}
+        columnWrapperStyle={{ gap: GRID_GAP, paddingHorizontal: GRID_SIDE, alignSelf: "center", width: "100%", maxWidth: GRID_MAX_WIDTH }}
+        contentContainerStyle={{ paddingBottom: 32, gap: GRID_GAP }}
         ListHeaderComponent={listHeader}
         ListEmptyComponent={
           isLoading ? (
             <SkeletonGrid columns={columns} itemWidth={itemWidth} />
           ) : failed ? (
-            <ErrorState title="Couldn't load your reels" onRetry={() => refetch()} retrying={isRefetching} />
+            <ErrorState title="Couldn't load your saves" onRetry={() => refetch()} retrying={isRefetching} />
           ) : empty ? (
             <FirstRun onPaste={paste} />
           ) : null

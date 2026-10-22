@@ -8,9 +8,11 @@ type Glyph = ComponentProps<typeof Ionicons>["name"];
 
 /**
  * The app's one icon family: Ionicons (thin outline glyphs, filled twins for active states),
- * shipped as a font by @expo/vector-icons, so no native module and no SVG cost per icon.
- * Screens name icons by role (the names the Stitch design used); this table picks the glyph,
- * so the whole set is tuned here. Back and overflow follow each platform's convention.
+ * shipped as a font by @expo/vector-icons, so no native module and no SVG cost per icon. The
+ * thin outline is the brand's: it sits quietly beside the heavy display type and leaves the
+ * marigold fills (Save, selected, done) as the only solid shapes. Screens name icons by role
+ * (the names the Stitch design used); this table picks the glyph, so the whole set is tuned
+ * here. Back and overflow follow each platform's convention.
  */
 const GLYPHS = {
   add: "add",
@@ -18,10 +20,8 @@ const GLYPHS = {
   "add-circle-outline": "add-circle-outline",
   "all-inclusive": "infinite-outline",
   "arrow-back": Platform.OS === "ios" ? "chevron-back" : "arrow-back",
-  "auto-awesome": "sparkles-outline",
   "auto-stories": "book-outline",
   "auto-stories-filled": "book",
-  bolt: "flash-outline",
   bookmark: "bookmark",
   "bookmark-border": "bookmark-outline",
   "brightness-medium": "contrast-outline",
@@ -30,14 +30,12 @@ const GLYPHS = {
   check: "checkmark",
   "check-circle": "checkmark-circle",
   "check-circle-outline": "checkmark-circle-outline",
-  checkroom: "shirt-outline",
   "chevron-right": "chevron-forward",
   circle: "ellipse",
   close: "close",
   "cloud-download": "cloud-download-outline",
   "cloud-off": "cloud-offline-outline",
   "cloud-upload": "cloud-upload-outline",
-  code: "code-slash-outline",
   "dark-mode": "moon-outline",
   "delete-forever": "trash",
   "delete-outline": "trash-outline",
@@ -56,7 +54,6 @@ const GLYPHS = {
   google: "logo-google",
   "grid-view": "grid-outline",
   "grid-view-filled": "grid",
-  hiking: "barbell-outline",
   history: "time-outline",
   home: "home-outline",
   "home-filled": "home",
@@ -68,7 +65,6 @@ const GLYPHS = {
   link: "link-outline",
   "link-off": "unlink-outline",
   "local-cafe": "cafe-outline",
-  lightbulb: "bulb-outline",
   "lock-outline": "lock-closed-outline",
   logout: "log-out-outline",
   "mail-outline": "mail-outline",
@@ -76,7 +72,6 @@ const GLYPHS = {
   "menu-book": "book-outline",
   "more-vert": Platform.OS === "ios" ? "ellipsis-horizontal" : "ellipsis-vertical",
   movie: "film-outline",
-  "north-east": "arrow-up-outline",
   "notifications-none": "notifications-outline",
   "offline-pin": "cloud-done-outline",
   "open-in-new": "open-outline",
@@ -89,7 +84,6 @@ const GLYPHS = {
   "radio-button-unchecked": "ellipse-outline",
   refresh: "refresh-outline",
   "remove-circle-outline": "remove-circle-outline",
-  restaurant: "restaurant-outline",
   schedule: "time-outline",
   search: "search-outline",
   "search-filled": "search",
@@ -98,14 +92,24 @@ const GLYPHS = {
   shield: "shield-outline",
   "smart-display": "videocam-outline",
   tune: "options-outline",
-  verified: "ribbon-outline",
   "volume-up": "volume-high-outline",
-  work: "briefcase-outline",
 } as const satisfies Record<string, Glyph>;
 
 export type IconName = keyof typeof GLYPHS;
 
+/**
+ * A glyph is decoration: the button, row or label around it carries the name, so a screen reader
+ * skips the icon font's character instead of reading it out.
+ */
 export function Icon({ name, size = 22, color }: { name: IconName; size?: number; color?: string }) {
   const { colors } = useTheme();
-  return <Ionicons name={GLYPHS[name]} size={size} color={color ?? colors.ink2} />;
+  return (
+    <Ionicons
+      name={GLYPHS[name]}
+      size={size}
+      color={color ?? colors.ink2}
+      importantForAccessibility="no"
+      accessibilityElementsHidden
+    />
+  );
 }

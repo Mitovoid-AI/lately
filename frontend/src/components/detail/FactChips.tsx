@@ -6,7 +6,8 @@ import type { Fact } from "./facts";
 
 /**
  * The few things worth knowing before reading on: where, how much, one tip. Plain chips, not
- * buttons (Directions in the action bar is the place's tap target).
+ * buttons (Directions in the action bar is the place's tap target), so they are fill only: a
+ * border would make them look tappable. They are at least 32 high and grow with the text size.
  */
 export function FactChips({ facts }: { facts: Fact[] }) {
   const { colors } = useTheme();
@@ -16,7 +17,7 @@ export function FactChips({ facts }: { facts: Fact[] }) {
       {facts.map((fact) => (
         <View
           key={fact.kind}
-          className="h-8 max-w-full flex-row items-center rounded-full border border-hairline bg-raised px-3"
+          className="min-h-8 max-w-full flex-row items-center rounded-full bg-raised px-3 py-1"
         >
           {fact.kind === "place" ? (
             <View className="mr-1.5">

@@ -12,11 +12,11 @@ export function QueuedBanner({ count, busy, onRetry }: { count: number; busy: bo
   return (
     <Reveal>
       <View className="mt-3 flex-row items-center rounded-2xl border border-hairline bg-card py-2 pl-4 pr-2">
-        <Icon name="cloud-upload" size={22} color={colors.accentText} />
+        <Icon name="cloud-upload" size={22} color={colors.ink2} />
         <View className="ml-3 flex-1">
           <Text className="font-sans-semibold text-body text-ink">{`${countOf(count, "reel")} waiting to save`}</Text>
           <Text className="font-sans text-meta text-ink-2">
-            {`Lately saves ${count === 1 ? "it" : "them"} when you're back online.`}
+            {`Lately will send ${count === 1 ? "it" : "them"} as soon as it can.`}
           </Text>
         </View>
         <Button title="Retry" variant="ghost" onPress={onRetry} loading={busy} />
@@ -34,11 +34,11 @@ export function QuotaBanner({ left, onUpgrade }: { left: number; onUpgrade: () =
   return (
     <Reveal>
       <View className="mt-3 flex-row items-center rounded-2xl border border-hairline bg-card py-1 pl-4 pr-2">
-        <Icon name={left > 0 ? "bookmark-border" : "lock-outline"} size={20} color={colors.accentText} />
+        <Icon name={left > 0 ? "info-outline" : "lock-outline"} size={20} color={colors.ink2} />
         <Text className="ml-3 flex-1 font-sans-semibold text-body text-ink">
           {left > 0 ? `${countOf(left, "free save")} left this month` : "You've used this month's free saves"}
         </Text>
-        <Button title="Go Pro" variant="ghost" onPress={onUpgrade} />
+        <Button title="Upgrade to Pro" variant="ghost" onPress={onUpgrade} />
       </View>
     </Reveal>
   );

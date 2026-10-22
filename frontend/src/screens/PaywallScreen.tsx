@@ -7,11 +7,11 @@ import { useSafeAreaInsets } from "react-native-safe-area-context";
 import type { PlanSync } from "../api/contract";
 import { useBilling } from "../billing/BillingProvider";
 import { openManageSubscription } from "../billing/manage";
-import { ctaLabel, disclosure, planName, PRO_CONFIRMING, priceLine, savingsPercent, trialLabel } from "../billing/plans";
+import { ctaLabel, disclosure, planName, PRO_CONFIRMING, priceLine, priceSummary, savingsPercent, trialLabel } from "../billing/plans";
 import { BillingError, ENTITLEMENT_PENDING, UNAVAILABLE_MESSAGE, type PlanId, type PlanOffer } from "../billing/types";
 import { Button } from "../components/Button";
 import { HEADER_HEIGHT } from "../components/Header";
-import { Icon, type IconName } from "../components/Icon";
+import { Icon } from "../components/Icon";
 import { IconButton } from "../components/motion/IconButton";
 import { PressableScale } from "../components/motion/PressableScale";
 import { PopIn, Reveal } from "../components/motion/Reveal";
@@ -27,12 +27,6 @@ const HERO = { fontSize: 30, lineHeight: 34, letterSpacing: -0.8 } as const;
 
 const PENDING_TEXT = "Your payment is pending. Pro turns on when Google Play confirms it.";
 const GENERIC_ERROR = "Something went wrong. Try again.";
-
-const BENEFITS: { icon: IconName; text: string }[] = [
-  { icon: "all-inclusive", text: "Unlimited saves, every month" },
-  { icon: "calendar-today", text: "Cancel anytime in Google Play" },
-  { icon: "folder-special", text: "Search, cards and stacks stay the same" },
-];
 
 type Notice = { tone: "error" | "info"; text: string; retry?: "buy" | "restore" };
 
@@ -67,9 +61,9 @@ function TopBar({ onClose, onRestore, restoring }: { onClose: () => void; onRest
           className="h-11 min-w-[72px] items-center justify-center rounded-full px-3"
         >
           {restoring ? (
-            <ActivityIndicator color={colors.accentText} accessibilityLabel="Restoring" />
+            <ActivityIndicator color={colors.ink2} accessibilityLabel="Restoring" />
           ) : (
-            <Text className="font-sans-semibold text-body text-accent-text">Restore</Text>
+            <Text className="font-sans-semibold text-body text-ink">Restore</Text>
           )}
         </PressableScale>
       ) : null}
@@ -109,7 +103,9 @@ function PlanCard({ plan, checked, savePercent, onPress }: { plan: PlanOffer; ch
         <Text className="mt-0.5 font-sans text-meta text-ink-2">
           {yearly && plan.perMonth ? `${priceLine(plan)} · ${plan.perMonth}/month` : priceLine(plan)}
         </Text>
-        {plan.trialDays ? <Text className="mt-0.5 font-sans-medium text-meta text-accent-text">{trialLabel(plan.trialDays)}</Text> : null}
+        {plan.trialDays ? (
+          <Text className={`mt-0.5 font-sans-medium text-meta ${checked ? "text-accent-text" : "text-ink-2"}`}>{trialLabel(plan.trialDays)}</Text>
+        ) : null}
       </View>
     </PressableScale>
   );
@@ -152,10 +148,11 @@ function ProState({
   return (
     <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
       <TopBar onClose={onDone} />
-      <View className="flex-1 items-center justify-center px-6">
+      <View className="flex-1 items-center justify-center px-4">
         <PopIn>
           <View className="h-20 w-20 items-center justify-center rounded-full bg-warm">
-            <Icon name={confirming ? "schedule" : "check"} size={38} color={colors.accentText} />
+            {/* The done check keeps the marigold ink; the clock for "turning on" is quiet. */}
+            <Icon name={confirming ? "schedule" : "check"} size={38} color={confirming ? colors.ink2 : colors.accentText} />
           </View>
         </PopIn>
         <Reveal index={1}>
@@ -172,7 +169,7 @@ function ProState({
           ) : null}
         </Reveal>
       </View>
-      <View className="w-full self-center px-5" style={{ maxWidth: MAX_WIDTH, paddingBottom: Math.max(insets.bottom, 12) + 4 }}>
+      <View className="w-full self-center px-4" style={{ maxWidth: MAX_WIDTH, paddingBottom: Math.max(insets.bottom, 12) + 4 }}>
         {onManage ? <Button title="Manage subscription" variant="secondary" onPress={onManage} className="mb-3" /> : null}
         {confirming ? (
           <>
@@ -193,7 +190,6 @@ function ProState({
 }
 
 export function PaywallScreen() {
-  const { colors } = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { text: textParam } = useLocalSearchParams<{ text?: string }>();
@@ -340,29 +336,17 @@ export function PaywallScreen() {
       <TopBar onClose={close} onRestore={unavailable ? undefined : restore} restoring={busy === "restore"} />
 
       <ScrollView contentContainerStyle={{ paddingBottom: 16 }} showsVerticalScrollIndicator={false}>
-        <View className="w-full self-center px-5" style={{ maxWidth: MAX_WIDTH }}>
+        <View className="w-full self-center px-4" style={{ maxWidth: MAX_WIDTH }}>
           <Reveal index={0}>
-            <Text className="mt-2 font-display-heavy text-ink" style={HERO}>
+            <Text accessibilityRole="header" className="mt-2 font-display-heavy text-ink" style={HERO}>
               Save without limits
             </Text>
+            {/* The one benefit, said once. Cancelling is in the disclosure under the plans. */}
             <Text className="mt-2 font-sans text-body text-ink-2">{`Free covers ${limit} saves a month. Pro removes the cap.`}</Text>
           </Reveal>
 
           <Reveal index={1}>
-            <View className="mt-6 gap-3">
-              {BENEFITS.map((b) => (
-                <View key={b.text} className="flex-row items-center">
-                  <View className="h-9 w-9 items-center justify-center rounded-full bg-raised">
-                    <Icon name={b.icon} size={18} color={colors.accentText} />
-                  </View>
-                  <Text className="ml-3 flex-1 font-sans-medium text-body text-ink">{b.text}</Text>
-                </View>
-              ))}
-            </View>
-          </Reveal>
-
-          <Reveal index={2}>
-            <View className="mt-7">
+            <View className="mt-6">
               {loading ? (
                 <SkeletonGroup style={{ gap: 12 }}>
                   <Skeleton style={{ height: 92, borderRadius: 16 }} />
@@ -385,11 +369,23 @@ export function PaywallScreen() {
               )}
             </View>
           </Reveal>
+
+          {/* The full terms sit right under the plans, in the scroll, so the pinned footer stays small. */}
+          <Reveal index={2}>
+            {!unavailable && selected && !loading ? (
+              <Text className="mt-4 font-sans text-meta text-ink-2">{disclosure(selected)}</Text>
+            ) : null}
+            <View className="-ml-3 mt-1 flex-row items-center">
+              <LegalLink label="Terms" onPress={() => router.push("/legal/terms")} />
+              <Text className="font-sans text-meta text-ink-3">·</Text>
+              <LegalLink label="Privacy" onPress={() => router.push("/legal/privacy")} />
+            </View>
+          </Reveal>
         </View>
       </ScrollView>
 
       <View className="border-t border-hairline bg-canvas" style={{ paddingBottom: Math.max(insets.bottom, 12) + 4 }}>
-        <View className="w-full self-center px-5 pt-3" style={{ maxWidth: MAX_WIDTH }}>
+        <View className="w-full self-center px-4 pt-3" style={{ maxWidth: MAX_WIDTH }}>
           {notice ? (
             <View className={`mb-3 rounded-xl px-3 py-2.5 ${notice.tone === "error" ? "bg-danger-soft" : "bg-raised"}`}>
               <Text accessibilityRole="alert" className={`font-sans text-meta ${notice.tone === "error" ? "text-danger" : "text-ink-2"}`}>
@@ -411,6 +407,14 @@ export function PaywallScreen() {
             </>
           ) : (
             <>
+              {/* One line above the button: the trial and the price. Reserved while the plans load, so the button doesn't jump. */}
+              <View style={{ minHeight: 24 }}>
+                {unavailable ? (
+                  <Text className="mb-2 text-center font-sans text-meta text-ink-2">{UNAVAILABLE_MESSAGE}</Text>
+                ) : selected && !loading ? (
+                  <Text className="mb-2 text-center font-sans-medium text-meta text-ink">{priceSummary(selected)}</Text>
+                ) : null}
+              </View>
               <Button
                 title={selected && !loading ? ctaLabel(selected) : "Continue"}
                 size="lg"
@@ -418,20 +422,8 @@ export function PaywallScreen() {
                 loading={busy === "buy"}
                 disabled={loading || !selected || unavailable || busy === "restore"}
               />
-              <View style={{ minHeight: 56 }}>
-                {unavailable ? (
-                  <Text className="mt-3 text-center font-sans text-meta text-ink-2">{UNAVAILABLE_MESSAGE}</Text>
-                ) : selected && !loading ? (
-                  <Text className="mt-3 text-center font-sans text-meta text-ink-2">{disclosure(selected)}</Text>
-                ) : null}
-              </View>
             </>
           )}
-          <View className="flex-row items-center justify-center">
-            <LegalLink label="Terms" onPress={() => router.push("/legal/terms")} />
-            <Text className="font-sans text-meta text-ink-3">·</Text>
-            <LegalLink label="Privacy" onPress={() => router.push("/legal/privacy")} />
-          </View>
         </View>
       </View>
     </View>

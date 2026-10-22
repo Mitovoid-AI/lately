@@ -346,8 +346,8 @@ You need: Parts 1 to 6 done; a build on a testing track (the closed test you run
    (several accounts can break test purchases).
 2. Open the track's opt-in link, accept, and install Lately from Google Play. Products
    don't load in a copy that wasn't opted in.
-3. Sign in to Lately. Go to Account → **Upgrade to Pro** (the same screen opens from "Go
-   unlimited with Pro" when free saves run out, and from "Go Pro" in the Library).
+3. Sign in to Lately. Go to Account → **Upgrade to Pro** (the same screen opens from
+   "Upgrade to Pro" when free saves run out, and from the free-saves banner on Home).
 4. Yearly is preselected. Tap **Try 7 days free**. Google Play's sheet should offer a test
    card such as "Test card, always approves". **If it only offers your real card, stop:**
    the account isn't a license tester and you would be charged.

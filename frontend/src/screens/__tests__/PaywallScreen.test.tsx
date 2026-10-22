@@ -68,9 +68,10 @@ describe("the picker", () => {
     await openDemo();
     expect(screen.getByText("Save without limits")).toBeTruthy();
     expect(screen.getByText("Free covers 20 saves a month. Pro removes the cap.")).toBeTruthy();
-    expect(screen.getByText("Unlimited saves, every month")).toBeTruthy();
-    expect(screen.getByText("Cancel anytime in Google Play")).toBeTruthy();
-    expect(screen.getByText("Search, cards and stacks stay the same")).toBeTruthy();
+    // One pitch line; the filler benefit rows are gone (cancelling is in the disclosure under the plans).
+    expect(screen.queryByText("Unlimited saves, every month")).toBeNull();
+    expect(screen.queryByText("Cancel anytime in Google Play")).toBeNull();
+    expect(screen.queryByText("Search, cards and stacks stay the same")).toBeNull();
     const radios = screen.getAllByRole("radio");
     expect(radios).toHaveLength(2);
     expect(screen.getByRole("radio", { name: /Yearly/ })).toBeChecked();
@@ -79,6 +80,9 @@ describe("the picker", () => {
     expect(screen.getByText("7 days free")).toBeTruthy();
     expect(screen.getByText("Save 37%")).toBeTruthy();
     expect(screen.getByText("$3.99/month")).toBeTruthy();
+    // The one line above the button; the full disclosure is in the scroll under the plans.
+    expect(screen.getByText("7 days free, then $29.99 a year")).toBeTruthy();
+    expect(screen.getByText(YEARLY_DISCLOSURE)).toBeTruthy();
   });
 
   test("the pitch uses the server's real free limit", async () => {
@@ -92,17 +96,21 @@ describe("the picker", () => {
     await openDemo();
     expect(screen.getByRole("button", { name: "Try 7 days free" })).toBeTruthy();
     expect(screen.getByText(YEARLY_DISCLOSURE)).toBeTruthy();
+    expect(screen.getByText("7 days free, then $29.99 a year")).toBeTruthy();
 
     await fireEvent.press(screen.getByRole("radio", { name: /Monthly/ }));
     expect(screen.getByRole("radio", { name: /Monthly/ })).toBeChecked();
     expect(screen.getByRole("radio", { name: /Yearly/ })).not.toBeChecked();
     expect(screen.getByRole("button", { name: "Subscribe for $3.99/month" })).toBeTruthy();
     expect(screen.getByText(MONTHLY_DISCLOSURE)).toBeTruthy();
+    expect(screen.getByText("Billed $3.99 a month")).toBeTruthy();
     expect(screen.queryByText(YEARLY_DISCLOSURE)).toBeNull();
+    expect(screen.queryByText("7 days free, then $29.99 a year")).toBeNull();
 
     await fireEvent.press(screen.getByRole("radio", { name: /Yearly/ }));
     expect(screen.getByRole("button", { name: "Try 7 days free" })).toBeTruthy();
     expect(screen.getByText(YEARLY_DISCLOSURE)).toBeTruthy();
+    expect(screen.getByText("7 days free, then $29.99 a year")).toBeTruthy();
   });
 
   test("a yearly plan without a trial (not eligible) reads as a plain subscription", async () => {
@@ -114,6 +122,7 @@ describe("the picker", () => {
     expect(
       screen.getByText("$29.99 a year. Renews automatically until you cancel. Cancel anytime in Google Play > Subscriptions."),
     ).toBeTruthy();
+    expect(screen.getByText("Billed $29.99 a year")).toBeTruthy();
   });
 
   test("no savings pill when the two prices are in different currencies", async () => {
@@ -471,6 +480,9 @@ describe("a build without a store", () => {
     expect(screen.getByText("$29.99/year · $2.50/month")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Try 7 days free" })).toBeDisabled();
     expect(screen.getByText("Purchases aren't available in this build.")).toBeTruthy();
+    // Nothing to charge for, so no summary line and no renewal terms.
+    expect(screen.queryByText("7 days free, then $29.99 a year")).toBeNull();
+    expect(screen.queryByText(YEARLY_DISCLOSURE)).toBeNull();
     expect(screen.queryByRole("button", { name: "Restore" })).toBeNull();
     await fireEvent.press(screen.getByRole("button", { name: "Try 7 days free" }));
     expect(purchase).not.toHaveBeenCalled();

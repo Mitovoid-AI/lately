@@ -76,8 +76,8 @@ export function PlanSection({ me }: { me: Me }) {
   const used = me.saves_this_month;
   const limit = Math.max(me.saves_limit, 1);
 
-  // A bookmark while saves are capped, the infinity mark once they aren't.
-  const planIcon = me.plan === "free" ? "bookmark-border" : "all-inclusive";
+  // The calendar while saves are capped by the month, the infinity mark once they aren't.
+  const planIcon = me.plan === "free" ? "calendar-today" : "all-inclusive";
 
   return (
     <SettingsSection icon={planIcon} title={PLAN_TITLE[me.plan]}>

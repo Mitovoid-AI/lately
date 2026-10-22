@@ -78,3 +78,11 @@ test("an unknown document falls back to the privacy policy; back with no history
   await fireEvent.press(screen.getByLabelText("Back"));
   expect(mockRouter.replace).toHaveBeenCalledWith("/");
 });
+
+test("the header title stays on one line and its text scaling is capped, so the 52 pt header never wraps", async () => {
+  mockParams = { doc: "privacy" };
+  await renderWithProviders(<LegalScreen />);
+  const title = screen.getByText("Legal");
+  expect(title.props.numberOfLines).toBe(1);
+  expect(title.props.maxFontSizeMultiplier).toBe(1.3);
+});

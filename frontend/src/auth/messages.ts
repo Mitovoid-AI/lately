@@ -23,7 +23,7 @@ export function authErrorMessage(error: unknown, step: Step, dev: boolean = __DE
         : "";
     }
     case "provider_disabled":
-      return "Google sign-in isn't turned on yet.";
+      return "Google sign-in isn't available right now. Use email instead.";
     case "rate_limited":
       return step === "code" ? "Too many tries. Wait a minute, then try again." : "Too many emails just now. Wait a minute, then try again.";
     case "invalid_code":

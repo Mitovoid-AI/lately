@@ -13,8 +13,10 @@ import { BestMatch, CompactRow } from "../components/search/ResultRows";
 import { SearchField } from "../components/search/SearchField";
 import { IdleState, NoResults, SearchSkeleton } from "../components/search/SearchStates";
 import { useIsPushed } from "../components/search/useIsPushed";
+import { useSearchExamples } from "../components/search/useSearchExamples";
 import { pollWhilePending } from "../hooks/useSaves";
 import { useNow } from "../hooks/useNow";
+import { countOf } from "../lib/counts";
 import { goBack } from "../lib/navigation";
 import { clearRecent, loadRecent, pushRecent } from "../lib/recent";
 import { deviceStore } from "../lib/storage";
@@ -55,6 +57,7 @@ export function SearchScreen() {
   const insets = useSafeAreaInsets();
   const now = useNow();
   const pushed = useIsPushed();
+  const examples = useSearchExamples();
   const inputRef = useRef<TextInput>(null);
   const [query, setQuery] = useState(initial);
   const [debounced, setDebounced] = useState(initial.trim());
@@ -141,7 +144,7 @@ export function SearchScreen() {
   if (blank) {
     body = (
       <Scroll bottom={bottomPad}>
-        <IdleState recent={recent} onPick={pick} onClearRecent={forgetRecent} />
+        <IdleState recent={recent} examples={examples} onPick={pick} onClearRecent={forgetRecent} />
       </Scroll>
     );
   } else if (searching) {
@@ -155,12 +158,17 @@ export function SearchScreen() {
         retrying={results.isRefetching}
       />
     ) : (
-      <ErrorState title="Couldn't search right now" onRetry={() => results.refetch()} retrying={results.isRefetching} />
+      <ErrorState
+        title="Couldn't search right now"
+        body="Lately's search isn't responding. Try again in a minute."
+        onRetry={() => results.refetch()}
+        retrying={results.isRefetching}
+      />
     );
   } else if (!best) {
     body = (
       <Scroll bottom={bottomPad}>
-        <NoResults query={query.trim()} onPick={pick} />
+        <NoResults query={query.trim()} examples={examples} onPick={pick} />
       </Scroll>
     );
   } else {
@@ -174,13 +182,19 @@ export function SearchScreen() {
         ListHeaderComponent={
           <View className="pt-3">
             <Reveal index={0} enabled={entrance}>
-              <SectionLabel>Best match</SectionLabel>
+              <View className="flex-row items-baseline justify-between">
+                <SectionLabel>Best match</SectionLabel>
+                {/* A live region: a screen reader says how many came back when the results change. */}
+                <Text accessibilityLiveRegion="polite" className="font-sans text-meta text-ink-2">
+                  {`${countOf(hits.length, "save")} found`}
+                </Text>
+              </View>
               <View className="mt-3">
                 <BestMatch hit={best} now={now} onOpen={open} />
               </View>
             </Reveal>
             {rest.length ? (
-              <Reveal index={1} enabled={entrance} style={{ marginTop: 28 }}>
+              <Reveal index={1} enabled={entrance} style={{ marginTop: 24 }}>
                 <SectionLabel>Also from your saves</SectionLabel>
               </Reveal>
             ) : null}

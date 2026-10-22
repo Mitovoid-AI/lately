@@ -9,6 +9,7 @@ import { createDemoBilling } from "../../billing/demo";
 import { PRO_CONFIRMING } from "../../billing/plans";
 import { PLAY_SUBSCRIPTIONS_URL } from "../../billing/types";
 import { createUnavailableBilling } from "../../billing/unavailable";
+import { monthYear } from "../../lib/dates";
 import { queueKey } from "../../lib/saveQueue";
 import { fakeBilling } from "../../test/fakeBilling";
 import { PENDING_SHARE_KEY } from "../../share/ShareRouter";
@@ -42,25 +43,72 @@ async function open() {
 }
 
 test("shows the profile from the API", async () => {
-  await open();
+  const { api } = await open();
   expect(screen.getByText("@samcarter · sam.carter@example.com")).toBeTruthy();
-  expect(screen.getByText("13 saved reels")).toBeTruthy();
+  // A save is the person's item; a reel is the Instagram video.
+  expect(screen.getByText("13 saves")).toBeTruthy();
+  expect(screen.queryByText(/saved reels/)).toBeNull();
   expect(screen.getByText("6 stacks")).toBeTruthy();
-  expect(screen.getByText("Member since Oct 2023")).toBeTruthy();
+  expect(screen.getByText(`Member since ${monthYear((await api.getMe()).member_since)}`)).toBeTruthy();
   expect(screen.getByText("Google (sam.carter@example.com)")).toBeTruthy();
   // Lately never connects an Instagram account, so the profile never says it did.
   expect(screen.queryByText(/Connected to/)).toBeNull();
   expect(screen.queryByText(/Instagram \(/)).toBeNull();
+  // No status word nothing checks, and no dead camera badge over the avatar.
+  expect(screen.queryByText("Verified")).toBeNull();
+  expect(screen.queryByText("Active")).toBeNull();
+  expect(screen.queryByLabelText("Change photo")).toBeNull();
+});
+
+describe("while the profile loads or fails", () => {
+  test("a failure says so, with Try again, and the rest of the screen stays usable", async () => {
+    const base = demoApi();
+    const getMe = jest.fn<Promise<Me>, []>().mockRejectedValueOnce(new Error("down")).mockImplementation(() => base.getMe());
+    await renderWithProviders(<AccountScreen />, { api: { ...base, getMe } });
+    expect(await screen.findByText("Couldn't load your plan")).toBeTruthy();
+    expect(screen.getByText("Sign out")).toBeTruthy();
+    expect(screen.getByText("Privacy Policy")).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Free plan")).toBeTruthy();
+    expect(screen.queryByText("Couldn't load your plan")).toBeNull();
+  });
+
+  test("until it arrives there is a placeholder, not a blank gap or a wrong plan", async () => {
+    const base = demoApi();
+    await renderWithProviders(<AccountScreen />, { api: { ...base, getMe: () => new Promise<Me>(() => {}) } });
+    expect(screen.getByText("Account and settings")).toBeTruthy();
+    expect(screen.queryByText("Free plan")).toBeNull();
+    expect(screen.queryByText("Couldn't load your plan")).toBeNull();
+    expect(screen.queryByText("?")).toBeNull();
+  });
 });
 
 test("reading font and text size are saved", async () => {
   const { updatePreferences, client } = await open();
   await fireEvent.press(screen.getByText("Lora"));
   expect(updatePreferences).toHaveBeenCalledWith({ reading_font: "lora" });
-  expect(screen.getByText("Default (16px)")).toBeTruthy();
-  await fireEvent.press(screen.getByText("20px"));
+  // One adjustable control that says its value by name, not in pixels.
+  const size = screen.getByRole("adjustable", { name: "Text size" });
+  expect(size.props.accessibilityValue).toEqual({ text: "Default" });
+  expect(screen.queryByText(/\d+px/)).toBeNull();
+  await fireEvent.press(screen.getByTestId("text-size-20"));
   expect(updatePreferences).toHaveBeenCalledWith({ text_size: 20 });
-  expect(await screen.findByText("Extra large (20px)")).toBeTruthy();
+  expect(await screen.findByText("Extra large")).toBeTruthy();
+  expect(screen.getByRole("adjustable", { name: "Text size" }).props.accessibilityValue).toEqual({ text: "Extra large" });
+  await settled(client);
+});
+
+test("the text size can be changed a step at a time with the screen reader's adjust gesture", async () => {
+  const { updatePreferences, client } = await open();
+  const size = screen.getByRole("adjustable", { name: "Text size" });
+  await fireEvent(size, "accessibilityAction", { nativeEvent: { actionName: "increment" } });
+  expect(updatePreferences).toHaveBeenLastCalledWith({ text_size: 18 });
+  expect(await screen.findByText("Large")).toBeTruthy();
+  await settled(client);
+  await fireEvent(screen.getByRole("adjustable", { name: "Text size" }), "accessibilityAction", {
+    nativeEvent: { actionName: "decrement" },
+  });
+  expect(updatePreferences).toHaveBeenLastCalledWith({ text_size: 16 });
   await settled(client);
 });
 
@@ -104,7 +152,7 @@ test("download archive prepares a JSON export in the app, then offers Download",
   await screen.findByText("Sam Carter");
   expect(screen.queryByText(/email your archive/i)).toBeNull();
   expect(screen.queryByText(/markdown/i)).toBeNull();
-  expect(screen.getByText("Export your reels, notes and stacks as a JSON file")).toBeTruthy();
+  expect(screen.getByText("Your saves, notes, cards and stacks as a JSON file (links and text, no videos)")).toBeTruthy();
   await fireEvent.press(screen.getByText("Download your archive"));
   await waitFor(() => expect(requestExport).toHaveBeenCalled());
   expect(screen.getByText("Preparing…")).toBeTruthy();
@@ -132,20 +180,19 @@ test("no placeholder password row (Lately has no passwords)", async () => {
   expect(screen.queryByText("Reset")).toBeNull();
 });
 
-test("digests and offline reading are marked coming soon and can't be toggled", async () => {
-  const { updatePreferences } = await open();
-  expect(screen.getAllByText("Coming soon")).toHaveLength(2);
-  await fireEvent.press(screen.getByText("Weekly digest"));
-  await fireEvent.press(screen.getByText("Offline reading"));
-  expect(updatePreferences).not.toHaveBeenCalled();
-  const digests = screen.getByRole("switch", { name: "Weekly digest" });
-  expect(digests.props.accessibilityState).toEqual({ checked: false, disabled: true });
-  expect(screen.getByRole("switch", { name: "Offline reading" })).toBeTruthy();
+test("settings that aren't built yet (weekly digest, offline reading) aren't listed at all", async () => {
+  await open();
+  expect(screen.queryByText("Coming soon")).toBeNull();
+  expect(screen.queryByText("Notifications and offline")).toBeNull();
+  expect(screen.queryByText("Weekly digest")).toBeNull();
+  expect(screen.queryByText("Offline reading")).toBeNull();
+  expect(screen.queryByRole("switch")).toBeNull();
 });
 
-test("log out and back", async () => {
+test("sign out and back", async () => {
   const { auth } = await open();
-  await fireEvent.press(screen.getByText("Log out"));
+  expect(screen.queryByText("Log out")).toBeNull();
+  await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
   expect(auth.signOut).toHaveBeenCalled();
   await fireEvent.press(screen.getByLabelText("Back"));
   expect(mockRouter.back).toHaveBeenCalled();
@@ -163,10 +210,10 @@ async function expectDeviceDataCleared() {
   expect((await AsyncStorage.getItem(PENDING_SHARE_KEY)) ?? "").toBe("");
 }
 
-test("logging out forgets recent searches, the offline queue and a pending share", async () => {
+test("signing out forgets recent searches, the offline queue and a pending share", async () => {
   await seedDeviceData();
   const { auth } = await open();
-  await fireEvent.press(screen.getByText("Log out"));
+  await fireEvent.press(screen.getByText("Sign out"));
   await waitFor(() => expect(auth.signOut).toHaveBeenCalled());
   await expectDeviceDataCleared();
 });
