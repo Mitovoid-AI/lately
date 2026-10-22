@@ -23,7 +23,7 @@ export function FirstRun({ onPaste, onOpenInstagram = () => void openInstagram()
         <Text className="font-sans-medium text-body text-ink">In Instagram, tap Share, then Share to…, then Lately.</Text>
       </Reveal>
       <Reveal index={3} style={{ marginTop: 16, gap: 12 }}>
-        <Button title="Open Instagram" icon="instagram" onPress={onOpenInstagram} />
+        <Button title="Open Instagram" icon="open-in-new" onPress={onOpenInstagram} />
         <Button title="Paste a link instead" variant="secondary" icon="link" onPress={onPaste} />
       </Reveal>
     </View>

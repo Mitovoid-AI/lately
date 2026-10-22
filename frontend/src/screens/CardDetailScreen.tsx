@@ -416,7 +416,7 @@ export function CardDetailScreen() {
     const tips = stepsBeyondFacts(card.steps, facts);
     primary = place
       ? { label: "Directions", icon: "place", onPress: () => Linking.openURL(mapsUrl(place)) }
-      : { label: "Open in Instagram", icon: "instagram", onPress: () => Linking.openURL(card.source_url) };
+      : { label: "Open in Instagram", icon: "open-in-new", onPress: () => Linking.openURL(card.source_url) };
     // The hero sits at the same place in the tree while loading and once loaded, so it stays
     // mounted (the zoom lands on it, the image never re-fades); the text below it arrives in turn.
     let i = 0;

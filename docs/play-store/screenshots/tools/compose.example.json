@@ -1,0 +1,16 @@
+{
+  "fontsDir": "../../../../frontend/node_modules/@expo-google-fonts",
+  "outDir": "../../../../docs/play-store/screenshots",
+  "frames": [
+    { "raw": "raw/home-light.png", "caption": "Every reel you save, findable in one search", "out": "01-home.png" },
+    { "raw": "raw/search-light.png", "caption": "Type what you remember. Lately finds the reel.", "out": "02-search.png" },
+    { "raw": "raw/card-light.png", "caption": "Reels become cards with places, prices and tips", "out": "03-card.png" },
+    { "raw": "raw/pending-light.png", "caption": "Share a reel to Lately and watch its card get written", "out": "04-saving.png" },
+    { "raw": "raw/stacks-light.png", "caption": "Group saves into stacks for trips, food and workouts", "out": "05-stacks.png" },
+    { "raw": "raw/home-dark.png", "caption": "A dark theme for late-night scrolling", "out": "06-dark.png" }
+  ],
+  "feature": {
+    "tiles": ["../../../../frontend/assets/stitch/lib-momos.jpg", "../../../../frontend/assets/stitch/stacks-espresso-bar.jpg", "../../../../frontend/assets/stitch/lib-manali.jpg"],
+    "out": "feature-graphic.png"
+  }
+}
