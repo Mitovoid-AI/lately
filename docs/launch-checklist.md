@@ -1,74 +1,88 @@
-# Lately — Launch checklist (the steps only the founder can do)
+# Lately: launch checklist (the steps only the founder can do)
 
-Everything in the repo is built and tested by the team. These steps need your
-accounts, money, legal identity or signing keys, so they can't be done for you.
-Order matters: top to bottom.
+The app, backend, payments, release build and store kit are built and tested in the repo.
+What is left needs your accounts, money, legal identity or signing key, so nobody can do it
+for you. Work top to bottom: later steps use what earlier steps give you.
 
-## 1. Accounts and keys (one-time)
+Rough total: about 2 working days of your time spread over 3 weeks, because Google makes new
+personal developer accounts run a 14-day closed test before production.
 
-| # | Step | Where | Notes |
+## 1. Accounts (day 1, about 2 hours, $25)
+
+| # | Step | Cost | Guide |
 |---|---|---|---|
-| 1 | Supabase **prod** project (separate from the test one) | supabase.com | The current project `jsvgezmgvwnldcnrjdzg` is the disposable test DB; tests wipe it. Apply `supabase/migrations/*` to prod with `supabase db push` or the dashboard SQL editor. |
-| 2 | Supabase Auth settings | Dashboard → Auth | Follow `docs/auth-setup.md`: redirect URLs (`lately://auth-callback`), email templates with `{{ .Token }}`, custom SMTP (default mailer ≈ 2 emails/hour), Google OAuth client (Android + Web client IDs). |
-| 3 | Service-role key → backend only | Dashboard → API | Needed for thumbnail uploads. Never in the app. |
-| 4 | Fly.io account + card | fly.io | Backend hosting (`backend/fly.toml`, `docs/deploy.md`). |
-| 5 | OpenRouter: add ≈ $10 credit | openrouter.ai | Free models allow ~50 requests/day without credit, ~1000/day with it. Or pick a paid model; it's an env change (`LLM_MODEL`). |
-| 6 | Groq key (optional) | console.groq.com | Speech-to-text for reels with little caption. |
-| 7 | OpenAI key for embeddings | platform.openai.com | `text-embedding-3-small`: cents per thousands of cards. Set a monthly spend limit in the dashboard. |
-| 8 | Google Play Console developer account | play.google.com/console | $25 one-time, identity verification. |
-| 9 | Google Play payments profile (merchant account) | Play Console → Settings → Payments profile | Needed to sell Lately Pro. Business country can't change later. Steps in `docs/billing-setup.md` Part 1. |
-| 10 | RevenueCat account | app.revenuecat.com | Sits between the app, Google Play and the backend for Lately Pro. `docs/billing-setup.md`. |
+| 1.1 | Google Play Console developer account, identity verification | $25 once | [play.google.com/console](https://play.google.com/console) |
+| 1.2 | Play payments profile (merchant account). The business country can't change later. | free | `docs/billing-setup.md` Part 1 |
+| 1.3 | Supabase **prod** project. The current project `jsvgezmgvwnldcnrjdzg` is the disposable test database; tests wipe it. | free tier to start | `docs/deploy.md` §1 |
+| 1.4 | Fly.io account with a card on file | pay as you go | `docs/deploy.md` §2 |
+| 1.5 | RevenueCat account | free until revenue | `docs/billing-setup.md` Part 2 |
+| 1.6 | AI keys: OpenRouter (add about $10 credit, the free tier allows about 50 requests a day), OpenAI for search embeddings (set a monthly limit), Groq for speech to text (optional) | a few dollars a month at launch | `backend/.env.example` |
+| 1.7 | A support email address you will answer (it goes on the listing, the privacy policy and the deletion page) | free | |
 
-## 2. Deploy the backend (≈ 20 min)
+## 2. Backend live (day 1, about 1 hour)
 
-`docs/deploy.md` has the exact commands: `fly launch`, `fly secrets set ...`, `fly deploy`, then `python scripts/debug.py --live --api https://<app>.fly.dev` must print all PASS.
+1. Apply every migration, `0001` through `0013`, to the prod database (`supabase db push`). The API needs all of them. `docs/deploy.md` §1.
+2. Supabase Auth settings: redirect URL `lately://auth-callback`, the email template with `{{ .Token }}` so emails carry a 6-digit code, custom SMTP (the built-in mailer sends about 2 emails an hour), Google sign-in client IDs. `docs/auth-setup.md`.
+3. Deploy to Fly.io with the secrets, then check it: `python scripts/debug.py --live --api https://<app>.fly.dev` must print all PASS. `docs/deploy.md` §2.
+4. Your local dev database also needs migration `0013_billing.sql`, or the local backend's account page fails. From `backend/`: run `scripts/db_reset.py` only against a test database; for the dev database apply the one file in the Supabase SQL editor.
 
-**Instagram fetching from cloud IPs:** Instagram often blocks data-centre IPs. The app also sends what the phone can see at share time (device-side fetch), so cards still get built; if fetch quality drops, set `SCRAPER_API_URL`/`SCRAPER_API_KEY` (a paid scraper) as a fallback.
+Instagram often blocks data-centre IPs. The app also sends what the phone reads at share time, so cards still get built; if card quality drops, set `SCRAPER_API_URL` and `SCRAPER_API_KEY` (a paid scraper).
 
-## 3. Build the Android release
+## 3. Legal text and public pages (day 1, about 1 hour)
 
-1. Set five values: `EXPO_PUBLIC_API_MODE=live`, `EXPO_PUBLIC_API_URL` (the deployed API), `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` (the Supabase prod project), and the RevenueCat Google Play key `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` (`docs/billing-setup.md` Part 2). For EAS builds all five go in the EAS `production` environment (`npx eas-cli env:set ... --environment production`): EAS builds in the cloud and doesn't upload the git-ignored `frontend/.env`. That file is only for local Gradle builds.
-2. Signing key: `eas credentials` (Expo keeps it) **or** a local upload keystore. **Back it up** — losing it means you can't update the app (Play App Signing lets Google hold the app key; you keep the upload key).
-3. Build an `.aab` (Play requires App Bundles for new apps): `eas build -p android --profile production` (needs a free Expo account) or the local Gradle build in `docs/deploy.md`.
+1. Fill in the placeholders in `frontend/legal/privacy.md` and `terms.md`: who runs Lately (your name or company and country) and the support email. Proposed wording for a few more lines is in `docs/play-store/data-safety.md` §6 (email provider, sign-in records). Then run `node scripts/build-legal.js` in `frontend/`.
+2. Build the public pages with your real values: `LATELY_SUPPORT_EMAIL=... LATELY_DELETION_DAYS=30 node scripts/build-public-site.js --strict` (it stops if a placeholder is left).
+3. Publish `public-site/` on Netlify or Cloudflare Pages (drag and drop, free). The GitHub repo is private, so GitHub Pages is not an option on the free plan. `docs/play-store/hosting.md` has both routes and which two URLs go into Play Console (privacy policy, account deletion).
 
-## 4. Play Console listing
+## 4. Payments (day 2, about 2 hours)
 
-- **Testing first:** personal developer accounts created after Nov 2023 must run a **closed test with at least 12 testers for 14 days** before they can publish to production. Start this as early as possible.
-- **Store listing:** name, short + full description, 512×512 icon, 1024×500 feature graphic, ≥ 2 phone screenshots.
-- **Privacy policy URL:** host `frontend/legal/privacy.md` publicly (GitHub Pages / Supabase Storage public file / any site).
-- **Account deletion:** in-app deletion is built (Account → Delete account). Play **also requires a web link** where users can request deletion without the app: publish a page (or a form/email address) and put the URL in the Data safety section.
-- **Data safety form:** collected: email, user IDs, app content (saved links, notes), purchase history (Financial info, required by the RevenueCat SDK); processed by Supabase, LLM provider, Groq, OpenAI, RevenueCat; encrypted in transit; users can request deletion.
-- **Content rating** questionnaire, **target audience** (18+ is simplest), **ads** declaration (none).
-- **Branding:** don't use Instagram's logo or name in the app icon/title/screenshots in a way that implies affiliation (Meta trademark policy) — e.g. "Save reels you share" is fine, an Instagram glyph is not.
+Lately Pro is built: $3.99 a month, or $29.99 a year with a 7-day free trial, sold through Google Play Billing and RevenueCat, with a backend webhook that turns Pro on and off. Follow **`docs/billing-setup.md`** in order. Google won't let you create the subscription until a build with billing is uploaded, so Part 3 (first upload) comes before Part 4 (the subscription).
 
-## 5. Selling (Lately Pro)
+| Setting | Where | What it does |
+|---|---|---|
+| `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` | GitHub variable (release build) | RevenueCat's public Google Play key (`goog_...`). Release builds refuse to build without it. |
+| `REVENUECAT_WEBHOOK_AUTH` | Fly secret | The Authorization value you set on the RevenueCat webhook. Empty turns the webhook off. |
+| `REVENUECAT_SECRET_API_KEY` | Fly secret | RevenueCat secret key. Strongly recommended: instant unlock after purchase, transfers and refunds. |
+| `REVENUECAT_WEBHOOK_SIGNING_SECRET` | Fly secret, optional | Also checks RevenueCat's signature on each webhook. |
+| `REVENUECAT_ALLOW_SANDBOX` | Fly secret | `true` while testing with license testers; set `false` after launch. |
 
-Lately Pro ($3.99/month, $29.99/year with a 7-day trial on yearly) is built: Google Play
-Billing through RevenueCat, a paywall in the app, and a backend webhook that sets
-`profiles.plan`. What's left is your accounts and dashboard settings, step by step in
-**`docs/billing-setup.md`**: Play Console subscription `lately_pro`, RevenueCat entitlement
-`pro` and offering `default`, the webhook, and a test purchase with a license tester.
+## 5. Release build (day 2, about 1 hour)
 
-New settings:
+Follow **`docs/release-android.md`**:
 
-| Variable | Where | Needed? | What it does |
-|---|---|---|---|
-| `EXPO_PUBLIC_REVENUECAT_ANDROID_KEY` | App: EAS `production` environment, with the other four `EXPO_PUBLIC_*` values (or `frontend/.env` for local builds) | Yes for store builds: a production build refuses to build without a key starting with `goog_` | RevenueCat's public Google Play key. Without it the paywall shows prices but can't sell. |
-| `REVENUECAT_WEBHOOK_AUTH` | Backend (`fly secrets set`) | Yes, to receive purchases | The Authorization header value set on the RevenueCat webhook. Empty = webhook off (404). |
-| `REVENUECAT_SECRET_API_KEY` | Backend | Strongly recommended | RevenueCat V1 secret key (`sk_...`). The backend checks each user with RevenueCat instead of trusting events alone; needed for instant unlock after purchase/restore, transfers and refunds. |
-| `REVENUECAT_WEBHOOK_SIGNING_SECRET` | Backend | Optional | Also checks RevenueCat's HMAC signature on each webhook. |
-| `REVENUECAT_ALLOW_SANDBOX` | Backend | Default `true` | License-tester purchases unlock Pro through the webhook. Set `false` after launch. |
+1. Create the upload keystore and **back it up twice** (a password manager and an offline copy). Losing it means a support request to Google before you can ship an update.
+2. Add the GitHub secrets (the keystore and its passwords) and variables (the four `EXPO_PUBLIC_*` values).
+3. Run the **android-release** workflow by hand (Actions tab). It checks every secret, builds the signed `app-release.aab`, and checks the signature. Download the bundle from the run.
+4. Enrol in Play App Signing when you upload the first bundle.
 
-## 6. Before the first upload (found in the final review)
+The repo is private, so each build uses GitHub's private-repo minutes (2,000 a month on the free plan; a release build for every phone type can take 30 to 60 of them). The workflow never runs on its own.
 
-- **App icon:** the icon is rendered from `docs/design/stitch/logo-insta.svg` (the gradient egg used inside the app). If it reads as Instagram's logo, swap it: edit `frontend/scripts/render-icons.js` to use `logo-icon.svg` (or a new mark) and re-run it.
-- **Legal text:** `frontend/legal/privacy.md` and `terms.md` have no company name, contact email or governing law. Fill them in, then run `node scripts/build-legal.js` in `frontend/`.
-- **Release builds refuse to build without live settings** (`frontend/app.config.js`): `EXPO_PUBLIC_API_MODE=live`, an `https://` API URL, both Supabase values and a RevenueCat key starting with `goog_`. To test a release APK against your PC before Fly is up, expose the backend with `ngrok http 8001` and use that https URL.
-- **Supabase redirect allow-list** must include `lately://auth-callback` (sign-in now uses the PKCE code flow).
-- **LLM model:** `backend/.env` now uses `dots-studio/dots-3-note-preview:free` with `google/gemma-4-31b-it:free` as fallback (the old `qwen/qwen3.8-27b:free` doesn't exist on OpenRouter).
-- **Signing:** the generated `android/` signs release builds with the debug key. Use EAS credentials or your own upload keystore for the Play AAB (`docs/deploy.md`).
+## 6. Play Console listing and policy forms (day 2, about 2 hours)
 
-## 7. Legal / business risks to know
+Everything to paste is in **`docs/play-store/`**:
 
-- Reading Instagram pages automatically may conflict with Meta's terms. The product saves links users share and builds notes about them; keep thumbnails small, never store video, and link back to the original reel (all already true). Get advice before scaling.
-- You are the data controller: keep the privacy policy accurate when you add providers (Google Play Billing and RevenueCat are already in it).
+| Form | File |
+|---|---|
+| Store listing: name, short and full description (lengths counted), category, release notes | `listing.md` |
+| Data safety | `data-safety.md` (check every `[CONFIRM]`) |
+| Sign-in details for reviewers: create a dedicated Google account for Google's reviewers | `app-access.md` |
+| Content rating questionnaire | `content-rating.md` |
+| Target audience: 18 and over | `target-audience.md` |
+| Ads: none | `ads-declaration.md` |
+| Subscriptions | `subscriptions.md` (points to `billing-setup.md`) |
+| Screenshots and the 1024 x 500 feature graphic | `screenshots/` |
+
+**Decide on the icon before the first upload.** The current icon uses Instagram's purple, pink and orange gradient, which risks an impersonation review. `docs/play-store/brand-risk.md` sets out the risk and the two options.
+
+## 7. Testing and launch (weeks 1 to 3)
+
+1. **Internal testing** track: install from Play on your own phone, sign in, save a reel, search, and buy Pro as a license tester (`docs/billing-setup.md` Part 7).
+2. **Closed testing** with at least 12 testers who stay opted in for 14 days in a row. Google requires this for personal developer accounts created after November 2023. Start it as soon as the internal build works.
+3. Apply for **production** access from the dashboard when the 14 days are up, then roll out (start at 20% and watch for crashes and payment issues).
+4. After launch, set `REVENUECAT_ALLOW_SANDBOX=false`.
+
+## Legal and business risks to know
+
+- Reading Instagram pages automatically may conflict with Meta's terms. Lately saves links users share and builds notes about them; it keeps thumbnails small, never stores video, and links back to the original reel. Get advice before scaling.
+- You are the data controller: keep the privacy policy accurate when you add a provider (Google Play, RevenueCat and the AI providers are already in it).
+- Each free save costs you AI processing. The 20-a-month cap is enforced on the server; if people start creating many free accounts, add a captcha on sign-up or Google Play Integrity.
