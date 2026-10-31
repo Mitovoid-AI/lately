@@ -108,7 +108,7 @@ provider does not retain prompts (`LLM_MODEL` in the backend environment).
 
 | Question | Answer |
 |---|---|
-| Account deletion URL | `[PUBLIC SITE URL]/delete-account.html` (built from `public-site/delete-account.html`, see `hosting.md`) |
+| Account deletion URL | `[PUBLIC SITE URL]/delete-account.html` (built from `docs/site/delete-account.html`, see `hosting.md`) |
 | Can users delete their account in the app? | Yes. Tap the profile picture on the Home screen → Account and settings → Delete account → Continue → Delete forever. `DELETE /me` removes the auth user, which cascades to the profile, saves, notes, stacks, preferences, save counts and exports, and also deletes queued jobs and the user's `billing_events` rows (`backend/app/routers/me.py`). It happens at once. |
 | Can users ask to delete some data without deleting the account? | Yes. Delete a single save (card → ⋮ → Delete), clear a note, delete a stack. |
 | What is kept after deletion | Shared reel cards (no user data); Google's own purchase record; RevenueCat's customer record under the UUID until the developer deletes it (RevenueCat dashboard or REST API); provider backups for a limited period. Also **[CONFIRM]** Supabase Auth's audit log: it records user ID, IP address and user agent per sign-in event and may keep entries after the user is deleted ([Supabase: Auth audit logs](https://supabase.com/docs/guides/auth/audit-logs)). Either turn off "Write audit logs to the database" (Authentication → Audit Logs) or mention the log in `privacy.md` (proposed text in section 6). |
@@ -130,7 +130,7 @@ before publishing (`hosting.md`).
 
 These keep the policy, the Data safety answers and the public pages in step. They are
 suggestions for the founder; edit `frontend/legal/privacy.md`, then run
-`node scripts/build-legal.js` in `frontend/` (it updates the app's copy and `public-site/`, and
+`node scripts/build-legal.js` in `frontend/` (it updates the app's copy and `docs/site/`, and
 `src/legal/__tests__/legal.test.tsx` still has to pass).
 
 1. **Export button name.** "Your choices and rights" says "Download Vault Archive"; the

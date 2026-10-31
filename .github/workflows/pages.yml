@@ -1,0 +1,68 @@
+name: pages
+# The website on GitHub Pages (https://mitovoid-ai.github.io/lately/): the home page with the
+# test-APK download, plus the privacy, terms and account-deletion pages Google Play links to.
+# Built by frontend/scripts/build-public-site.js into docs/site/; only that folder is published.
+# It redeploys after every successful android-apk run, so the download button always names the
+# newest release. Releases made by Actions can't start workflows themselves, hence workflow_run.
+# Optional repository variables fill the policy pages: LATELY_SUPPORT_EMAIL, LATELY_DELETION_DAYS.
+on:
+  workflow_run:
+    workflows: [android-apk]
+    types: [completed]
+    branches: [main]
+  push:
+    branches: [main]
+    paths:
+      - "docs/site/**"
+      - "frontend/scripts/build-public-site.js"
+      - "frontend/legal/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+concurrency:
+  group: pages
+  cancel-in-progress: false
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+jobs:
+  deploy:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Find the latest release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # No release yet: the button falls back to GitHub's always-latest download link.
+          if release=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName,publishedAt,assets \
+              --jq '[.tagName, .publishedAt, ([.assets[] | select(.name == "lately.apk") | .size][0] // 0)] | @tsv'); then
+            IFS=$'\t' read -r tag date bytes <<< "$release"
+            {
+              echo "LATELY_RELEASE_TAG=$tag"
+              echo "LATELY_RELEASE_DATE=$date"
+              echo "LATELY_RELEASE_BYTES=$bytes"
+            } >> "$GITHUB_ENV"
+            echo "Latest release: $tag ($date, $bytes bytes)"
+          else
+            echo "No release found; using the always-latest link"
+          fi
+      - name: Build the site
+        working-directory: frontend
+        env:
+          LATELY_SUPPORT_EMAIL: ${{ vars.LATELY_SUPPORT_EMAIL }}
+          LATELY_DELETION_DAYS: ${{ vars.LATELY_DELETION_DAYS }}
+        run: node scripts/build-public-site.js
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/site
+      - id: deployment
+        uses: actions/deploy-pages@v4

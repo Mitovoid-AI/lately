@@ -1,15 +1,17 @@
 # Hosting the public pages (privacy, terms, account deletion)
 
 Google Play needs two public web addresses: a **privacy policy** URL (App content → Privacy
-policy) and an **account deletion** URL (Data safety → Data deletion). The GitHub repo is
-going private, so GitHub Pages is out. The pages are in `public-site/`, ready to upload to
-**Netlify** or **Cloudflare Pages**. Pick one; both are free for a site this small.
+policy) and an **account deletion** URL (Data safety → Data deletion). The pages are in
+`docs/site/` and **GitHub Pages** serves them at `https://mitovoid-ai.github.io/lately/`
+(`.github/workflows/pages.yml` deploys after every test-APK release and whenever the pages
+change). On GitHub's free plan Pages only works while the repository is **public**: if it goes
+private, upload `docs/site/` to **Netlify** or **Cloudflare Pages** instead (both free, below).
 
-## What is in `public-site/`
+## What is in `docs/site/`
 
 | File | What it is |
 |---|---|
-| `index.html` | One screen: what Lately is, links to the three pages below |
+| `index.html` | One screen: what Lately is, the test-APK download button (newest release), links to the three pages below |
 | `privacy.html` | The privacy policy, from `frontend/legal/privacy.md` (the same text the app shows) |
 | `terms.html` | The terms of service, from `frontend/legal/terms.md` |
 | `delete-account.html` | How to delete the account in the app or by email, what is deleted and kept, and the Google Play subscription step |
@@ -19,13 +21,16 @@ going private, so GitHub Pages is out. The pages are in `public-site/`, ready to
 
 Plain HTML and CSS: no build step, no server, no scripts, no web fonts, no analytics. The
 pages are made by `frontend/scripts/build-public-site.js`, which also runs every time
-`node scripts/build-legal.js` runs. Never edit the HTML by hand: edit the markdown or the
-script, rebuild, re-upload.
+`node scripts/build-legal.js` runs, and in the Pages workflow before each deploy (that run also
+fills in the newest release for the download button). Never edit the HTML by hand: edit the
+markdown or the script, rebuild, push.
 
 ## Before the first upload: two values
 
 The pages contain two placeholders, `[SUPPORT EMAIL]` and `[DAYS]` (how many days an emailed
-deletion request may take; 30 is common). Set them once, in
+deletion request may take; 30 is common). For GitHub Pages, set them as repository variables
+`LATELY_SUPPORT_EMAIL` and `LATELY_DELETION_DAYS` (Settings → Secrets and variables → Actions →
+Variables) and re-run the `pages` workflow. For the files in the repo and other hosts, set them once, in
 `frontend/scripts/build-public-site.js` lines 23-24, by replacing the text in quotes:
 
 ```js
@@ -43,7 +48,7 @@ node scripts/build-public-site.js --strict
 The email should be the same support email as on the Play listing (`listing.md`). Whatever
 number of days you write is a promise to users; meet it.
 
-## Option A: Netlify
+## Elsewhere, option A: Netlify
 
 ### Drag and drop (no tools to install)
 
@@ -51,11 +56,11 @@ number of days you write is a promise to users; meet it.
    without an account is temporary and is removed unless claimed within an hour
    ([Netlify: create deploys](https://docs.netlify.com/deploy/create-deploys/)).
 2. Open [app.netlify.com/drop](https://app.netlify.com/drop) and drag the whole
-   `public-site` folder onto the page.
+   `docs/site` folder onto the page.
 3. Netlify publishes it at an address like `https://<random-name>.netlify.app`. You can rename
    the project in its settings to get a nicer `netlify.app` address.
 
-To update later: open the project's **Deploys** page and drag the rebuilt `public-site`
+To update later: open the project's **Deploys** page and drag the rebuilt `docs/site`
 folder into the drop zone at the bottom.
 
 ### Command line (optional)
@@ -64,7 +69,7 @@ From the `frontend` folder (Node is already installed for the app):
 
 ```bash
 npx -p netlify-cli netlify login
-npx -p netlify-cli netlify deploy --dir ../public-site --prod
+npx -p netlify-cli netlify deploy --dir ../docs/site --prod
 ```
 
 (`npx -p netlify-cli netlify` runs the Netlify CLI without installing it globally; with a
@@ -75,13 +80,13 @@ The first `deploy` asks whether to create a new project or link an existing one.
 the folder to publish and `--prod` publishes to the live address instead of a draft
 ([Netlify CLI: deploy](https://cli.netlify.com/commands/deploy/)).
 
-## Option B: Cloudflare Pages
+## Elsewhere, option B: Cloudflare Pages
 
 ### Drag and drop
 
 1. Log in at [dash.cloudflare.com](https://dash.cloudflare.com) (a free account is enough).
 2. **Workers & Pages** → **Create application** → **Get started** → **Drag and drop your files**.
-3. Enter a project name (for example `lately`), drag the `public-site` folder in, and select
+3. Enter a project name (for example `lately`), drag the `docs/site` folder in, and select
    **Deploy site**. The site is served at `https://<project-name>.pages.dev`.
 
 To update later: open the project → **Create a new deployment** → Production → drag the
@@ -96,7 +101,7 @@ drag-and-drop project cannot be switched to Git deploys later, which does not ma
 ```bash
 npx wrangler login
 npx wrangler pages project create
-npx wrangler pages deploy ../public-site
+npx wrangler pages deploy ../docs/site
 ```
 
 Cloudflare serves `privacy.html` at `/privacy` and redirects `/privacy.html` there
@@ -107,11 +112,11 @@ Cloudflare serves `privacy.html` at `/privacy` and redirects `/privacy.html` the
 Replace the host with yours. Open each one on a phone, in a private window, before pasting:
 it must load without signing in.
 
-| Play Console field | Netlify | Cloudflare Pages |
-|---|---|---|
-| Store settings → Website | `https://<name>.netlify.app/` | `https://<project>.pages.dev/` |
-| App content → Privacy policy | `https://<name>.netlify.app/privacy.html` | `https://<project>.pages.dev/privacy` |
-| App content → Data safety → Data deletion (delete account URL) | `https://<name>.netlify.app/delete-account.html` | `https://<project>.pages.dev/delete-account` |
+| Play Console field | GitHub Pages | Netlify | Cloudflare Pages |
+|---|---|---|---|
+| Store settings → Website | `https://mitovoid-ai.github.io/lately/` | `https://<name>.netlify.app/` | `https://<project>.pages.dev/` |
+| App content → Privacy policy | `https://mitovoid-ai.github.io/lately/privacy.html` | `https://<name>.netlify.app/privacy.html` | `https://<project>.pages.dev/privacy` |
+| App content → Data safety → Data deletion (delete account URL) | `https://mitovoid-ai.github.io/lately/delete-account.html` | `https://<name>.netlify.app/delete-account.html` | `https://<project>.pages.dev/delete-account` |
 
 Also put these in `listing.md` and `data-safety.md` where they say `[PUBLIC SITE URL]`.
 
@@ -134,6 +139,6 @@ fields above to the new address the same day.
 ## When the legal text changes
 
 1. Edit `frontend/legal/privacy.md` or `terms.md` (and its "Last updated" date).
-2. From `frontend`: `node scripts/build-legal.js` (updates the app's copy and `public-site/`).
-3. Upload `public-site/` again (Deploys page on Netlify, Create a new deployment on
-   Cloudflare). The app and the website then show the same text.
+2. From `frontend`: `node scripts/build-legal.js` (updates the app's copy and `docs/site/`).
+3. Push to `main`: the `pages` workflow redeploys GitHub Pages. On Netlify or Cloudflare, upload
+   `docs/site/` again instead. The app and the website then show the same text.

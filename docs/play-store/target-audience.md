@@ -44,4 +44,4 @@ Proposed text, only if you choose 18 (not applied):
   adults. It is not meant for anyone under 18, and we do not knowingly collect data from
   children under 13."
 
-Then run `node scripts/build-legal.js` in `frontend/` (updates the app and `public-site/`).
+Then run `node scripts/build-legal.js` in `frontend/` (updates the app and `docs/site/`).

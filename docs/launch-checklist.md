@@ -32,7 +32,7 @@ Instagram often blocks data-centre IPs. The app also sends what the phone reads 
 
 1. Fill in the placeholders in `frontend/legal/privacy.md` and `terms.md`: who runs Lately (your name or company and country) and the support email. Proposed wording for a few more lines is in `docs/play-store/data-safety.md` §6 (email provider, sign-in records). Then run `node scripts/build-legal.js` in `frontend/`.
 2. Build the public pages with your real values: `LATELY_SUPPORT_EMAIL=... LATELY_DELETION_DAYS=30 node scripts/build-public-site.js --strict` (it stops if a placeholder is left).
-3. Publish `public-site/` on Netlify or Cloudflare Pages (drag and drop, free). The GitHub repo is private, so GitHub Pages is not an option on the free plan. `docs/play-store/hosting.md` has both routes and which two URLs go into Play Console (privacy policy, account deletion).
+3. The public pages are on GitHub Pages at `https://mitovoid-ai.github.io/lately/` (`docs/site/`, deployed by `.github/workflows/pages.yml`; set the repository variables `LATELY_SUPPORT_EMAIL` and `LATELY_DELETION_DAYS` so the live pages have them). GitHub Pages needs the repository to stay public on the free plan; if it goes private, publish `docs/site/` on Netlify or Cloudflare Pages instead. `docs/play-store/hosting.md` has every route and which two URLs go into Play Console (privacy policy, account deletion).
 
 ## 4. Payments (day 2, about 2 hours)
 

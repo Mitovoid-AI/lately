@@ -9,6 +9,7 @@
   --accent: #E39A1E;
   --accent-text: #8F5700;
   --warm: #FCEFD9;
+  --on-accent: #15130F;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -67,6 +68,13 @@ strong { font-weight: 650; }
 .toc li { margin: 0 0 6px; }
 .links { list-style: none; padding: 0; }
 .links a { display: inline-block; padding: 6px 0; font-weight: 600; }
+.download { margin: 24px 0 32px; }
+.button {
+  display: inline-block; background: var(--accent); color: var(--on-accent);
+  font-weight: 650; text-decoration: none; padding: 13px 22px; border-radius: 12px;
+}
+.button:hover { text-decoration: underline; }
+.release { color: var(--ink-2); font-size: 0.9375rem; margin: 10px 0 0; }
 footer.site { border-top: 1px solid var(--hairline); color: var(--ink-2); font-size: 0.9375rem; }
 footer.site .wrap { padding-top: 24px; padding-bottom: 32px; }
 footer.site p { margin: 0 0 8px; }

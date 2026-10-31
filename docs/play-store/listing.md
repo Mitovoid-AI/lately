@@ -128,7 +128,7 @@ First release. Share a reel from Instagram, or paste a link, and Lately turns it
 | Tags | Pick from Play Console's own tag list (Store settings → Tags → Manage tags). [CONFIRM] which tags exist: the list is only visible in the console. Look for ones about notes, bookmarks, organizing or search; skip social and video tags, since Lately does not play or share video. |
 | Email address (required) | `[SUPPORT EMAIL]` |
 | Phone number (optional) | leave empty |
-| Website (recommended) | `[PUBLIC SITE URL]` (the `public-site/` home page, see `hosting.md`) |
+| Website (recommended) | `[PUBLIC SITE URL]` (the `docs/site/` home page, see `hosting.md`) |
 | Privacy policy (App content → Privacy policy) | `[PUBLIC SITE URL]/privacy.html` |
 | Account deletion URL (Data safety → Data deletion) | `[PUBLIC SITE URL]/delete-account.html` |
 
