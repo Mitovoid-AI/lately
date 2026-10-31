@@ -4,44 +4,80 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>Lately: find the reels you saved</title>
-<meta name="description" content="Lately saves the Instagram reels you share to it and helps you find them later.">
-<link rel="stylesheet" href="style.css">
+<title>Lately: save Instagram reels, find them later</title>
+<meta name="description" content="Lately turns the Instagram reels you save into cards with the places, prices and steps, so you can find them later by typing what you remember.">
+<link rel="icon" href="assets/icon.png">
+<link rel="preload" href="assets/fonts/bricolage-800.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="landing.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
-<header class="site">
-<div class="wrap">
-<a class="brand" href="index.html">Lately</a>
-<nav aria-label="Pages"><ul><li><a href="index.html" aria-current="page">Home</a></li><li><a href="privacy.html">Privacy</a></li><li><a href="terms.html">Terms</a></li><li><a href="delete-account.html">Delete account</a></li></ul></nav>
-</div>
+<header class="top wrap">
+<a class="logo" href="index.html"><img src="assets/icon.png" alt="" width="32" height="32">Lately</a>
+<nav aria-label="Sections"><a href="#how">How it works</a><a href="#cards">Cards</a><a href="#search">Search</a></nav>
+<a class="pill pill-outline" href="https://github.com/Mitovoid-AI/lately/releases/latest/download/lately.apk">Download App</a>
 </header>
-<main id="main" class="wrap">
-<h1>Lately</h1>
-<p class="lead">Save the Instagram reels you want to come back to, and find them later by typing what you remember.</p>
-<div class="download">
-<a class="button" href="https://github.com/Mitovoid-AI/lately/releases/latest/download/lately.apk">Download for Android</a>
-<p class="release">Test build</p>
-<p class="release">Installed from this page, not from Google Play. The first time, Android asks you to allow installs from your browser.</p>
+<main id="main">
+<section class="hero wrap">
+<h1 class="display"><span class="bold">Save the reel</span><span class="thin">Find it later</span></h1>
+<div class="hero-panel">
+<svg class="loop" viewBox="0 0 1200 400" preserveAspectRatio="xMinYMax slice" aria-hidden="true"><path d="M-40 330C120 360 260 300 380 250 500 200 610 175 640 230 670 290 600 330 560 290 520 250 590 170 700 170 860 170 960 320 1240 300"/></svg>
+<p class="hero-copy">Share an Instagram reel to Lately and it writes the reel down for you: what it was, the places, the prices, the steps. Weeks later, type what you remember and it comes back.</p>
+<a class="pill pill-solid" href="https://github.com/Mitovoid-AI/lately/releases/latest/download/lately.apk">Download for Android</a>
+<p class="meta">Test build. Android app, installed from this page.</p>
 </div>
-<ul>
-<li>Share a reel to Lately from Instagram, or paste its link. Add a note on why you saved it if you like.</li>
-<li>Lately turns the reel into a card: a title, a summary, steps, places and tags.</li>
-<li>Search your saves by a word, a place or what the reel was about. Group them into stacks.</li>
+<figure class="phone hero-phone"><picture><source srcset="assets/shots/home-dark.webp" media="(prefers-color-scheme: dark)"><img src="assets/shots/home-light.webp" alt="Lately&#39;s Home screen: a search bar, saved reels to revisit, and a grid of recently saved reels." width="720" height="1559"></picture></figure>
+</section>
+<section class="how wrap" id="how">
+<figure class="phone how-phone"><picture><img src="assets/shots/pending-light.webp" alt="A new save in progress: got the reel, listening to it, finding places and steps, card ready." width="720" height="1559"></picture></figure>
+<div>
+<h2 class="display"><span class="bold">Share it.</span><span class="thin">Lately does the rest</span></h2>
+<p class="lede">In Instagram, tap Share and pick Lately, or paste the reel's link. You don't have to wait: the card is written while you keep scrolling.</p>
+<ol class="steps">
+<li><strong>Got the reel</strong><span>The link and the caption arrive.</span></li>
+<li><strong>Listening to it</strong><span>What is said in the reel is turned into text.</span></li>
+<li><strong>Finding places and steps</strong><span>Names, addresses, prices and how-tos are picked out.</span></li>
+<li><strong>Card ready</strong><span>A title, a short summary and tags, ready to search.</span></li>
+</ol>
+</div>
+</section>
+<section class="cards" id="cards">
+<div class="cards-top wrap">
+<div>
+<h2 class="display"><span class="bold">Every reel</span><span class="bold">becomes a card</span></h2>
+<p class="lede">A title and a short summary, the places with directions, prices, steps and tags. Add your own note on why you saved it.</p>
+<a class="pill pill-solid" href="https://github.com/Mitovoid-AI/lately/releases/latest/download/lately.apk">Download App</a>
+</div>
+<figure class="phone cards-phone"><picture><img src="assets/shots/card-light.webp" alt="A saved reel&#39;s card with the place, price, a short summary and a Directions button." width="720" height="1559"></picture></figure>
+<div class="find" id="search">
+<p class="find-line">Find it by what you remember</p>
+<p>Search reads the whole card and your notes, not only the title. Type it the way you'd say it:</p>
+<ul class="queries"><li>reading room cafe</li><li>momo place cash only</li><li>rainier on a budget</li></ul>
+</div>
+</div>
+<ul class="rail" aria-label="Sample saves">
+<li class="save save-food"><img src="assets/saves/rainier.webp" alt="" width="560" height="420" loading="lazy"><div><p class="save-title">Mount Rainier in 3 days on $400</p><p class="save-meta">@sample.trails</p><span class="tag">Food &amp; Places</span></div></li>
+<li class="save save-dev"><img src="assets/saves/github.webp" alt="" width="560" height="420" loading="lazy"><div><p class="save-title">5 GitHub search tricks to find great repos</p><p class="save-meta">@sample.dev</p><span class="tag">Dev &amp; Tools</span></div></li>
+<li class="save save-food"><img src="assets/saves/kyoto-cafe.webp" alt="" width="560" height="420" loading="lazy"><div><p class="save-title">Kyoto-style pour-over bar hidden in Southeast Portland</p><p class="save-meta">@sample.coffee</p><span class="tag">Food &amp; Places</span></div></li>
+<li class="save save-food"><img src="assets/saves/espresso-bar.webp" alt="" width="560" height="420" loading="lazy"><div><p class="save-title">The espresso bar with a 20-seat reading room</p><p class="save-meta">@sample.cafe</p><span class="tag">Food &amp; Places</span></div></li>
+<li class="save save-food"><img src="assets/saves/momos.webp" alt="" width="560" height="420" loading="lazy"><div><p class="save-title">Hole-in-the-wall momo spot in Jackson Heights</p><p class="save-meta">Momo Point · $15 for two</p><span class="tag">Food &amp; Places</span></div></li>
+<li class="save save-fit"><img src="assets/saves/stretch.webp" alt="" width="560" height="420" loading="lazy"><div><p class="save-title">10-minute desk stretch flow</p><p class="save-meta">@sample.mobility</p><span class="tag">Fitness</span></div></li>
+<li class="save save-fit"><img src="assets/saves/boots.webp" alt="" width="560" height="420" loading="lazy"><div><p class="save-title">Hiking boots under $150 that actually grip</p><p class="save-meta">@sample.trails</p><span class="tag">Fitness</span></div></li>
 </ul>
-<p>Lately is an Android app on <a href="https://play.google.com/store/apps/details?id=app.lately.android">Google Play</a>.</p>
-<h2 id="pages">Policies</h2>
-<ul class="links">
-<li><a href="privacy.html">Privacy policy</a></li>
-<li><a href="terms.html">Terms of service</a></li>
-<li><a href="delete-account.html">Delete your account</a></li>
-</ul>
+<p class="rail-note wrap">Sample saves from Lately's demo account.</p>
+</section>
+<section class="final wrap">
+<div class="final-panel">
+<h2 class="display"><span class="bold">Stop losing</span><span class="thin">good reels</span></h2>
+<a class="pill pill-solid" href="https://github.com/Mitovoid-AI/lately/releases/latest/download/lately.apk">Download for Android</a>
+<p class="meta">Test build</p>
+</div>
+</section>
 </main>
-<footer class="site">
-<div class="wrap">
-<p>Questions or requests about your data: [SUPPORT EMAIL]</p>
-<p>Lately is not affiliated with Instagram or Meta.</p>
-</div>
+<footer class="bottom wrap">
+<a class="logo" href="index.html"><img src="assets/icon.png" alt="" width="32" height="32">Lately</a>
+<nav aria-label="Policies"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="delete-account.html">Delete account</a></nav>
+<div><p>Lately is not affiliated with Instagram or Meta.</p></div>
 </footer>
 </body>
 </html>

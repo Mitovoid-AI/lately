@@ -1,6 +1,7 @@
-// Builds the public web pages Google Play needs (privacy policy, terms, account deletion, a home
-// page with the test-APK download) into ../docs/site/ from the same legal/*.md the app bundles.
-// Plain HTML + one CSS file: no scripts, no web fonts, no trackers. GitHub Pages serves the folder
+// Builds the public web pages Google Play needs (privacy policy, terms, account deletion) from the
+// same legal/*.md the app bundles, plus the product landing page with the test-APK download, into
+// ../docs/site/. Plain HTML + CSS: no scripts, no trackers, no third-party requests (the landing
+// page's fonts and images are self-hosted in docs/site/assets/). GitHub Pages serves the folder
 // (.github/workflows/pages.yml); it can also be uploaded as-is to any static host
 // (docs/play-store/hosting.md).
 //
@@ -121,8 +122,9 @@ function emailHtml() {
   return isPlaceholder(e) ? escapeHtml(e) : `<a href="mailto:${escapeHtml(e)}">${escapeHtml(e)}</a>`;
 }
 
-/** The test-APK button: the release the workflow passed in, else GitHub's always-latest link. */
-function downloadHtml() {
+/** The test-APK link and its one-line description: the release the workflow passed in, else
+ * GitHub's always-latest link. */
+function download() {
   const href = RELEASE.tag
     ? `https://github.com/${REPO}/releases/download/${encodeURIComponent(RELEASE.tag)}/lately.apk`
     : `https://github.com/${REPO}/releases/latest/download/lately.apk`;
@@ -131,12 +133,7 @@ function downloadHtml() {
     ? new Date(RELEASE.date).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" })
     : "";
   const size = RELEASE.bytes ? `${Math.round(RELEASE.bytes / 1e6)} MB` : "";
-  const facts = [build, day, size].filter(Boolean).join(" · ");
-  return `<div class="download">
-<a class="button" href="${escapeHtml(href)}">Download for Android</a>
-<p class="release">${escapeHtml(facts)}</p>
-<p class="release">Installed from this page, not from Google Play. The first time, Android asks you to allow installs from your browser.</p>
-</div>`;
+  return { href: escapeHtml(href), facts: escapeHtml([build, day, size].filter(Boolean).join(" · ")) };
 }
 
 const NAV = [
@@ -198,28 +195,111 @@ function legalPage(doc, title, description, intro) {
   return page({ file: `${doc}.html`, title: `${title} | ${SITE.appName}`, description, body });
 }
 
-function homePage() {
-  const body = `<h1>${escapeHtml(SITE.appName)}</h1>
-<p class="lead">Save the Instagram reels you want to come back to, and find them later by typing what you remember.</p>
-${downloadHtml()}
-<ul>
-<li>Share a reel to ${escapeHtml(SITE.appName)} from Instagram, or paste its link. Add a note on why you saved it if you like.</li>
-<li>${escapeHtml(SITE.appName)} turns the reel into a card: a title, a summary, steps, places and tags.</li>
-<li>Search your saves by a word, a place or what the reel was about. Group them into stacks.</li>
+// Sample saves for the card rail: the demo account's own saves and photos (frontend/assets/stitch,
+// resized into docs/site/assets/saves). The middle one sits behind the phone on wide screens.
+const RAIL = [
+  { img: "rainier", title: "Mount Rainier in 3 days on $400", meta: "@sample.trails", tag: "Food & Places", tint: "food" },
+  { img: "github", title: "5 GitHub search tricks to find great repos", meta: "@sample.dev", tag: "Dev & Tools", tint: "dev" },
+  { img: "kyoto-cafe", title: "Kyoto-style pour-over bar hidden in Southeast Portland", meta: "@sample.coffee", tag: "Food & Places", tint: "food" },
+  { img: "espresso-bar", title: "The espresso bar with a 20-seat reading room", meta: "@sample.cafe", tag: "Food & Places", tint: "food" },
+  { img: "momos", title: "Hole-in-the-wall momo spot in Jackson Heights", meta: "Momo Point · $15 for two", tag: "Food & Places", tint: "food" },
+  { img: "stretch", title: "10-minute desk stretch flow", meta: "@sample.mobility", tag: "Fitness", tint: "fit" },
+  { img: "boots", title: "Hiking boots under $150 that actually grip", meta: "@sample.trails", tag: "Fitness", tint: "fit" },
+];
+
+/** A phone frame around a real app screenshot (docs/site/assets/shots, from the store capture). */
+function phone(cls, shot, alt, darkShot) {
+  const dark = darkShot ? `<source srcset="assets/shots/${darkShot}.webp" media="(prefers-color-scheme: dark)">` : "";
+  return `<figure class="phone ${cls}"><picture>${dark}<img src="assets/shots/${shot}.webp" alt="${escapeHtml(alt)}" width="720" height="1559"></picture></figure>`;
+}
+
+/** The product landing page. It has its own header and stylesheet (landing.css); the policy pages
+ * keep the plain layout from page(). */
+function landingPage() {
+  const app = escapeHtml(SITE.appName);
+  const dl = download();
+  const rail = RAIL.map(
+    (s) => `<li class="save save-${s.tint}"><img src="assets/saves/${s.img}.webp" alt="" width="560" height="420" loading="lazy"><div><p class="save-title">${escapeHtml(s.title)}</p><p class="save-meta">${escapeHtml(s.meta)}</p><span class="tag">${escapeHtml(s.tag)}</span></div></li>`,
+  ).join("\n");
+  const email = isPlaceholder(SITE.supportEmail) ? "" : `<p>Questions: ${emailHtml()}</p>`;
+  return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>${app}: save Instagram reels, find them later</title>
+<meta name="description" content="${app} turns the Instagram reels you save into cards with the places, prices and steps, so you can find them later by typing what you remember.">
+<link rel="icon" href="assets/icon.png">
+<link rel="preload" href="assets/fonts/bricolage-800.woff" as="font" type="font/woff" crossorigin>
+<link rel="stylesheet" href="landing.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top wrap">
+<a class="logo" href="index.html"><img src="assets/icon.png" alt="" width="32" height="32">${app}</a>
+<nav aria-label="Sections"><a href="#how">How it works</a><a href="#cards">Cards</a><a href="#search">Search</a></nav>
+<a class="pill pill-outline" href="${dl.href}">Download App</a>
+</header>
+<main id="main">
+<section class="hero wrap">
+<h1 class="display"><span class="bold">Save the reel</span><span class="thin">Find it later</span></h1>
+<div class="hero-panel">
+<svg class="loop" viewBox="0 0 1200 400" preserveAspectRatio="xMinYMax slice" aria-hidden="true"><path d="M-40 330C120 360 260 300 380 250 500 200 610 175 640 230 670 290 600 330 560 290 520 250 590 170 700 170 860 170 960 320 1240 300"/></svg>
+<p class="hero-copy">Share an Instagram reel to ${app} and it writes the reel down for you: what it was, the places, the prices, the steps. Weeks later, type what you remember and it comes back.</p>
+<a class="pill pill-solid" href="${dl.href}">Download for Android</a>
+<p class="meta">${dl.facts}. Android app, installed from this page.</p>
+</div>
+${phone("hero-phone", "home-light", "Lately's Home screen: a search bar, saved reels to revisit, and a grid of recently saved reels.", "home-dark")}
+</section>
+<section class="how wrap" id="how">
+${phone("how-phone", "pending-light", "A new save in progress: got the reel, listening to it, finding places and steps, card ready.")}
+<div>
+<h2 class="display"><span class="bold">Share it.</span><span class="thin">${app} does the rest</span></h2>
+<p class="lede">In Instagram, tap Share and pick ${app}, or paste the reel's link. You don't have to wait: the card is written while you keep scrolling.</p>
+<ol class="steps">
+<li><strong>Got the reel</strong><span>The link and the caption arrive.</span></li>
+<li><strong>Listening to it</strong><span>What is said in the reel is turned into text.</span></li>
+<li><strong>Finding places and steps</strong><span>Names, addresses, prices and how-tos are picked out.</span></li>
+<li><strong>Card ready</strong><span>A title, a short summary and tags, ready to search.</span></li>
+</ol>
+</div>
+</section>
+<section class="cards" id="cards">
+<div class="cards-top wrap">
+<div>
+<h2 class="display"><span class="bold">Every reel</span><span class="bold">becomes a card</span></h2>
+<p class="lede">A title and a short summary, the places with directions, prices, steps and tags. Add your own note on why you saved it.</p>
+<a class="pill pill-solid" href="${dl.href}">Download App</a>
+</div>
+${phone("cards-phone", "card-light", "A saved reel's card with the place, price, a short summary and a Directions button.")}
+<div class="find" id="search">
+<p class="find-line">Find it by what you remember</p>
+<p>Search reads the whole card and your notes, not only the title. Type it the way you'd say it:</p>
+<ul class="queries"><li>reading room cafe</li><li>momo place cash only</li><li>rainier on a budget</li></ul>
+</div>
+</div>
+<ul class="rail" aria-label="Sample saves">
+${rail}
 </ul>
-<p>${escapeHtml(SITE.appName)} is an Android app on <a href="${SITE.playUrl}">Google Play</a>.</p>
-<h2 id="pages">Policies</h2>
-<ul class="links">
-<li><a href="privacy.html">Privacy policy</a></li>
-<li><a href="terms.html">Terms of service</a></li>
-<li><a href="delete-account.html">Delete your account</a></li>
-</ul>`;
-  return page({
-    file: "index.html",
-    title: `${SITE.appName}: find the reels you saved`,
-    description: `${SITE.appName} saves the Instagram reels you share to it and helps you find them later.`,
-    body,
-  });
+<p class="rail-note wrap">Sample saves from ${app}'s demo account.</p>
+</section>
+<section class="final wrap">
+<div class="final-panel">
+<h2 class="display"><span class="bold">Stop losing</span><span class="thin">good reels</span></h2>
+<a class="pill pill-solid" href="${dl.href}">Download for Android</a>
+<p class="meta">${dl.facts}</p>
+</div>
+</section>
+</main>
+<footer class="bottom wrap">
+<a class="logo" href="index.html"><img src="assets/icon.png" alt="" width="32" height="32">${app}</a>
+<nav aria-label="Policies"><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a><a href="delete-account.html">Delete account</a></nav>
+<div>${email}<p>${app} is not affiliated with Instagram or Meta.</p></div>
+</footer>
+</body>
+</html>
+`;
 }
 
 function deletePage() {
@@ -290,7 +370,6 @@ const CSS = `/* Generated by frontend/scripts/build-public-site.js. Colours: the
   --accent: #E39A1E;
   --accent-text: #8F5700;
   --warm: #FCEFD9;
-  --on-accent: #15130F;
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -349,21 +428,187 @@ strong { font-weight: 650; }
 .toc li { margin: 0 0 6px; }
 .links { list-style: none; padding: 0; }
 .links a { display: inline-block; padding: 6px 0; font-weight: 600; }
-.download { margin: 24px 0 32px; }
-.button {
-  display: inline-block; background: var(--accent); color: var(--on-accent);
-  font-weight: 650; text-decoration: none; padding: 13px 22px; border-radius: 12px;
-}
-.button:hover { text-decoration: underline; }
-.release { color: var(--ink-2); font-size: 0.9375rem; margin: 10px 0 0; }
 footer.site { border-top: 1px solid var(--hairline); color: var(--ink-2); font-size: 0.9375rem; }
 footer.site .wrap { padding-top: 24px; padding-bottom: 32px; }
 footer.site p { margin: 0 0 8px; }
 `;
 
+// The landing page's look follows a reference the founder chose: huge two-line headlines (bold, then
+// light italic), a warm rounded panel with a drawn loop, real screenshots in phone frames, dark pill
+// buttons. Colours are the app's Daylight and Espresso tokens; fonts are the app's own.
+const LANDING_CSS = `/* Generated by frontend/scripts/build-public-site.js. Fonts: Bricolage Grotesque and Inter (SIL OFL, assets/fonts). */
+@font-face { font-family: "Bricolage Grotesque"; font-weight: 800; font-display: swap; src: url(assets/fonts/bricolage-800.woff) format("woff"); }
+@font-face { font-family: "Inter"; font-weight: 300; font-style: italic; font-display: swap; src: url(assets/fonts/inter-300-italic.woff) format("woff"); }
+@font-face { font-family: "Inter"; font-weight: 400; font-display: swap; src: url(assets/fonts/inter-400.woff) format("woff"); }
+@font-face { font-family: "Inter"; font-weight: 600; font-display: swap; src: url(assets/fonts/inter-600.woff) format("woff"); }
+:root {
+  color-scheme: light dark;
+  --page: #F6F4F0;
+  --panel: #FCEFD9;
+  --loop: #F3DBB2;
+  --ink: #15130F;
+  --ink-2: #5C554A;
+  --hairline: #E2DED6;
+  --surface: #FFFFFF;
+  --pill: #15130F;
+  --on-pill: #FFFFFF;
+  --bezel: #15130F;
+  --ring: transparent;
+  --tint-food: #FCEFD9;
+  --tint-dev: #E4ECF8;
+  --tint-fit: #E3F0E4;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --page: #15120F;
+    --panel: #2A2219;
+    --loop: #3B2E1F;
+    --ink: #F2ECE3;
+    --ink-2: #B0A597;
+    --hairline: #3A332B;
+    --surface: #1E1A16;
+    --pill: #F2ECE3;
+    --on-pill: #15130F;
+    --bezel: #050403;
+    --ring: #3A332B;
+    --tint-food: #3A2D1C;
+    --tint-dev: #1F2938;
+    --tint-fit: #1E2C21;
+  }
+}
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; scroll-behavior: smooth; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+body {
+  margin: 0; background: var(--page); color: var(--ink); overflow-x: hidden;
+  font: 400 17px/1.55 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+}
+img { display: block; max-width: 100%; height: auto; }
+a { color: inherit; }
+a:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; border-radius: 6px; }
+p { margin: 0 0 16px; }
+.skip { position: absolute; left: -9999px; }
+.skip:focus { left: 16px; top: 8px; background: var(--page); padding: 8px 12px; z-index: 10; }
+.wrap { max-width: 1200px; margin-left: auto; margin-right: auto; padding-left: 24px; padding-right: 24px; }
+
+.top { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding-top: 18px; padding-bottom: 18px; }
+.logo {
+  display: inline-flex; align-items: center; gap: 10px; text-decoration: none;
+  font: 800 1.375rem/1 "Bricolage Grotesque", system-ui, sans-serif; letter-spacing: -0.01em;
+}
+.logo img { width: 32px; height: 32px; border-radius: 8px; }
+.top nav { display: flex; gap: 40px; }
+.top nav a, .bottom nav a { text-decoration: none; font-size: 0.9375rem; padding: 8px 0; }
+.top nav a:hover, .bottom nav a:hover { text-decoration: underline; text-underline-offset: 4px; }
+
+.pill {
+  display: inline-flex; align-items: center; justify-content: center; min-height: 48px; padding: 12px 28px;
+  border-radius: 999px; font-weight: 600; font-size: 1rem; text-decoration: none; white-space: nowrap;
+}
+.pill:hover { text-decoration: underline; text-underline-offset: 4px; }
+.pill-solid { background: var(--pill); color: var(--on-pill); }
+.pill-outline { border: 1.5px solid var(--ink); }
+
+.display { margin: 0; font-weight: 400; line-height: 0.95; text-transform: uppercase; }
+.display .bold { display: block; font-family: "Bricolage Grotesque", system-ui, sans-serif; font-weight: 800; letter-spacing: -0.025em; }
+.display .thin { display: block; font-family: Inter, system-ui, sans-serif; font-weight: 300; font-style: italic; letter-spacing: -0.035em; }
+.lede { font-size: 1.125rem; max-width: 34rem; margin: 24px 0 32px; }
+.meta { color: var(--ink-2); font-size: 0.875rem; margin: 16px 0 0; }
+
+.phone {
+  margin: 0; position: relative; padding: 9px; border-radius: 46px; background: var(--bezel);
+  box-shadow: 0 0 0 1px var(--ring), 0 40px 60px -36px rgba(21, 19, 15, 0.55);
+}
+.phone::before {
+  content: ""; position: absolute; top: 21px; left: 50%; width: 11px; height: 11px; margin-left: -5.5px;
+  border-radius: 50%; background: #000; z-index: 1;
+}
+.phone img { width: 100%; border-radius: 37px; }
+
+.hero {
+  display: grid; grid-template-columns: minmax(0, 1fr) 320px; grid-template-rows: auto auto;
+  column-gap: 48px; padding-top: 28px; padding-bottom: 24px;
+}
+.hero h1 { grid-column: 1; grid-row: 1; font-size: clamp(2.4rem, 7.4vw, 6.6rem); padding-bottom: 44px; }
+.hero-panel {
+  grid-column: 1 / -1; grid-row: 2; position: relative; overflow: hidden;
+  background: var(--panel); border-radius: 32px; padding: 52px 420px 52px 52px;
+}
+.hero-panel > :not(.loop) { position: relative; }
+.loop { position: absolute; left: 0; bottom: 0; width: 100%; height: 100%; fill: none; stroke: var(--loop); stroke-width: 26; stroke-linecap: round; }
+.hero-copy { font-size: 1.25rem; line-height: 1.5; max-width: 30rem; margin-bottom: 32px; }
+.hero-phone { grid-column: 2; grid-row: 1 / 3; align-self: end; z-index: 1; margin: 0 28px -28px 0; }
+
+.how { display: grid; grid-template-columns: 290px minmax(0, 1fr); gap: 96px; align-items: center; padding-top: 140px; padding-bottom: 120px; }
+.how h2 { font-size: clamp(2.2rem, 4.8vw, 4rem); }
+.steps { list-style: none; margin: 0; padding: 0; counter-reset: step; max-width: 36rem; }
+.steps li { counter-increment: step; display: grid; grid-template-columns: 56px 1fr; padding: 18px 0; border-top: 1px solid var(--hairline); }
+.steps li::before { content: counter(step, decimal-leading-zero); grid-row: 1 / 3; font: 800 1.125rem/1.5 "Bricolage Grotesque", system-ui, sans-serif; }
+.steps strong { font-weight: 600; }
+.steps span { color: var(--ink-2); }
+
+.cards { padding-top: 40px; padding-bottom: 112px; }
+.cards-top { display: grid; grid-template-columns: minmax(0, 1fr) 290px minmax(0, 1fr); gap: 56px; align-items: start; }
+.cards h2 { font-size: clamp(2.3rem, 4.6vw, 4rem); }
+.cards-phone { position: relative; z-index: 2; margin-bottom: -300px; }
+.find { padding-top: 12px; }
+.find-line {
+  font: italic 300 clamp(1.9rem, 3.4vw, 2.9rem)/1.02 Inter, system-ui, sans-serif;
+  text-transform: uppercase; letter-spacing: -0.035em; margin-bottom: 20px;
+}
+.queries { list-style: none; margin: 20px 0 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.queries li { border: 1px solid var(--hairline); background: var(--surface); border-radius: 999px; padding: 7px 16px; font-size: 0.9375rem; }
+.queries li::before { content: "\\201C"; } .queries li::after { content: "\\201D"; }
+.rail { list-style: none; margin: 72px 0 0; padding: 0; display: flex; justify-content: center; gap: 20px; overflow: hidden; }
+.save { flex: 0 0 252px; border-radius: 20px; overflow: hidden; background: var(--tint); }
+.save img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; }
+.save div { padding: 14px 16px 18px; }
+.save-title { font-weight: 600; line-height: 1.3; margin-bottom: 6px; }
+.save-meta { color: var(--ink-2); font-size: 0.8125rem; margin-bottom: 12px; }
+.tag { display: inline-block; background: var(--surface); border-radius: 999px; padding: 4px 11px; font-size: 0.75rem; font-weight: 600; }
+.save-food { --tint: var(--tint-food); }
+.save-dev { --tint: var(--tint-dev); }
+.save-fit { --tint: var(--tint-fit); }
+.rail-note { text-align: center; color: var(--ink-2); font-size: 0.8125rem; margin-top: 16px; }
+/* On wide screens the phone stands where the middle card would be. */
+@media (min-width: 961px) { .rail > :nth-child(4) { visibility: hidden; } }
+
+.final-panel { background: var(--panel); border-radius: 32px; padding: 88px 24px; text-align: center; }
+.final h2 { font-size: clamp(2.4rem, 7.6vw, 6rem); margin-bottom: 40px; }
+.bottom {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px 40px;
+  padding-top: 48px; padding-bottom: 48px; color: var(--ink-2); font-size: 0.9375rem;
+}
+.bottom .logo { color: var(--ink); }
+.bottom nav { display: flex; flex-wrap: wrap; gap: 4px 28px; }
+.bottom p { margin: 0; }
+
+@media (max-width: 960px) {
+  .top nav { display: none; }
+  .hero { grid-template-columns: minmax(0, 1fr); }
+  .hero h1 { padding-bottom: 28px; }
+  .hero-panel { grid-column: 1; padding: 36px 28px 220px; }
+  .hero-phone { grid-column: 1; grid-row: 3; justify-self: center; width: min(300px, 78vw); margin: -190px 0 0; }
+  .how { grid-template-columns: minmax(0, 1fr); gap: 48px; padding-top: 96px; padding-bottom: 88px; }
+  .how-phone { order: 2; justify-self: center; width: min(280px, 72vw); }
+  .cards-top { grid-template-columns: minmax(0, 1fr); gap: 48px; }
+  .cards-phone { justify-self: center; width: min(280px, 72vw); margin-bottom: 0; }
+  .rail { justify-content: flex-start; overflow-x: auto; scroll-snap-type: x mandatory; padding: 0 24px 8px; margin-top: 48px; }
+  .save { flex-basis: 236px; scroll-snap-align: center; }
+  .final-panel { padding: 64px 20px; }
+}
+@media (max-width: 480px) {
+  .wrap { padding-left: 16px; padding-right: 16px; }
+  .top .pill { min-height: 44px; padding: 10px 18px; }
+  .hero-panel { border-radius: 24px; padding: 28px 20px 200px; }
+  .hero-copy { font-size: 1.125rem; }
+  .rail { padding-left: 16px; padding-right: 16px; }
+}
+`;
+
 // Hosts that read it (Netlify, Cloudflare Pages) add these headers; elsewhere it is ignored.
 const HEADERS = `/*
-  Content-Security-Policy: default-src 'none'; style-src 'self'; img-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
+  Content-Security-Policy: default-src 'none'; style-src 'self'; img-src 'self'; font-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'
   X-Content-Type-Options: nosniff
   Referrer-Policy: no-referrer
 `;
@@ -372,7 +617,7 @@ const HEADERS = `/*
 
 function buildPublicSite({ strict = false } = {}) {
   const files = {
-    "index.html": homePage(),
+    "index.html": landingPage(),
     "privacy.html": legalPage(
       "privacy",
       "Privacy Policy",
@@ -383,6 +628,7 @@ function buildPublicSite({ strict = false } = {}) {
     "delete-account.html": deletePage(),
     "404.html": notFoundPage(),
     "style.css": CSS,
+    "landing.css": LANDING_CSS,
     _headers: HEADERS,
   };
   fs.mkdirSync(OUT, { recursive: true });

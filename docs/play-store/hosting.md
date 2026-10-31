@@ -11,7 +11,8 @@ private, upload `docs/site/` to **Netlify** or **Cloudflare Pages** instead (bot
 
 | File | What it is |
 |---|---|
-| `index.html` | One screen: what Lately is, the test-APK download button (newest release), links to the three pages below |
+| `index.html` | The product landing page: what Lately does, real screenshots in phone frames, sample cards, the test-APK download button (newest release), links to the three pages below |
+| `landing.css`, `assets/` | The landing page's styles, screenshots (`assets/shots`, from the store capture), the demo account's sample photos (`assets/saves`), the app icon and the app's fonts (`assets/fonts`, SIL OFL). Made once by hand; the script does not rebuild them |
 | `privacy.html` | The privacy policy, from `frontend/legal/privacy.md` (the same text the app shows) |
 | `terms.html` | The terms of service, from `frontend/legal/terms.md` |
 | `delete-account.html` | How to delete the account in the app or by email, what is deleted and kept, and the Google Play subscription step |
