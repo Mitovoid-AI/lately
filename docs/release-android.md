@@ -9,6 +9,15 @@ Facts in this guide were checked on 2026-10-22. The sources are at the end.
 For the rest of launch (backend, billing, store listing, public pages), see
 `docs/launch-checklist.md`.
 
+**Just want an APK to test on your phone?** You don't need any of this. Every push to `main`
+that touches the app runs the tests, builds a standalone APK and publishes it as a GitHub
+Release (workflow `android-apk`). On your phone open
+`https://github.com/Mitovoid-AI/lately/releases/latest/download/lately.apk` and install it.
+It runs in demo mode (sample saves) until the repository variables `EXPO_PUBLIC_API_URL`
+(https), `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` exist (step 4
+below), then it is built live. It is signed with Android's public debug key, so it is only for
+testing: it is not the Google Play app and can't buy Pro through Google Play.
+
 ---
 
 ## Words used in this guide

@@ -22,6 +22,18 @@ test("any of the three production signals marks a production build", () => {
   expect(releaseEnv.isProductionBuild({ NODE_ENV: "development", EAS_BUILD_PROFILE: "preview" })).toBe(false);
 });
 
+test("a preview test build is not a production build, even while a release bundle sets NODE_ENV", () => {
+  expect(releaseEnv.isProductionBuild({ APP_VARIANT: "preview", NODE_ENV: "production" })).toBe(false);
+  // The GitHub Releases test APK runs in demo mode until live settings exist; the guard lets it through.
+  expect(() =>
+    releaseEnv.assertReleaseEnv({ APP_VARIANT: "preview", NODE_ENV: "production", EXPO_PUBLIC_API_MODE: "demo" }),
+  ).not.toThrow();
+  // A store build still declares production and stays fully checked.
+  expect(() =>
+    releaseEnv.assertReleaseEnv({ APP_VARIANT: "production", NODE_ENV: "production", EXPO_PUBLIC_API_MODE: "demo" }),
+  ).toThrow(/production build/);
+});
+
 test("a complete live https config has no problems", () => {
   expect(releaseEnv.releaseEnvProblems(GOOD)).toEqual([]);
   expect(() => releaseEnv.assertReleaseEnv({ ...GOOD, APP_VARIANT: "production" })).not.toThrow();

@@ -1,21 +1,25 @@
 name: android-apk
-# The debug APK for testing on a phone. It loads its JavaScript from Metro on the PC
-# (shake → Settings → Debug server host → <PC IP>:8081), so code changes need no new APK;
-# only native changes (a new native module, app.json native settings) do.
+# The test APK for phones. Every push to main that touches the app runs the tests, builds a
+# standalone release APK (the JavaScript is inside, no PC needed) and publishes it as a GitHub
+# Release. Install the newest one from
+#   https://github.com/Mitovoid-AI/lately/releases/latest/download/lately.apk
+# It runs in demo mode (sample saves, no backend) until the repository variables
+# EXPO_PUBLIC_API_URL (https), EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+# are set; then it is built live. Signed with Android's public debug key so each new APK
+# installs over the last: for testing only. Google Play builds come from android-release.yml.
 on:
   push:
-    branches: [qa]
+    branches: [main]
     paths:
-      - "frontend/package.json"
-      - "frontend/package-lock.json"
-      - "frontend/app.json"
-      - "frontend/app.config.js"
-      - "frontend/assets/brand/**"
+      - "frontend/**"
       - ".github/workflows/android-apk.yml"
+      - ".github/workflows/tests.yml"
   workflow_dispatch:
 concurrency:
   group: android-apk-${{ github.ref }}
   cancel-in-progress: true
+permissions:
+  contents: read
 jobs:
   # Lint, type check, app tests and API unit tests must pass before the APK is built.
   tests:
@@ -23,12 +27,16 @@ jobs:
   build:
     needs: tests
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 75
+    permissions:
+      contents: write # create the GitHub Release
     defaults:
       run:
         working-directory: frontend
     env:
-      APP_VARIANT: development
+      # "preview" tells release-env.js this is a test build, not a store build.
+      APP_VARIANT: preview
+      ANDROID_VERSION_CODE: ${{ github.run_number }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -41,15 +49,58 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
+      - name: Choose demo or live
+        env:
+          API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
+          SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
+          SUPABASE_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+          REVENUECAT_KEY: ${{ vars.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY }}
+        run: |
+          if [[ "$API_URL" == https://* && -n "$SUPABASE_URL" && -n "$SUPABASE_KEY" ]]; then
+            {
+              echo "EXPO_PUBLIC_API_MODE=live"
+              echo "EXPO_PUBLIC_API_URL=$API_URL"
+              echo "EXPO_PUBLIC_SUPABASE_URL=$SUPABASE_URL"
+              echo "EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=$SUPABASE_KEY"
+              echo "EXPO_PUBLIC_REVENUECAT_ANDROID_KEY=$REVENUECAT_KEY"
+              echo "BUILD_MODE=live"
+            } >> "$GITHUB_ENV"
+          else
+            { echo "EXPO_PUBLIC_API_MODE=demo"; echo "BUILD_MODE=demo"; } >> "$GITHUB_ENV"
+          fi
       - run: npm ci
       # android/ is generated from app.json (Continuous Native Generation), never committed.
       - run: npx expo prebuild --platform android --no-install
       # 64-bit ARM only: every current Android phone, and a quarter of the native build time.
-      - run: ./gradlew :app:assembleDebug -PreactNativeArchitectures=arm64-v8a --no-daemon
+      # The release signing plugin asks for a key; a test build gets the template's public
+      # debug keystore, so successive test APKs share one signature and update in place.
+      - name: Build the release APK
         working-directory: frontend/android
-      - uses: actions/upload-artifact@v4
-        with:
-          name: lately-debug-apk
-          path: frontend/android/app/build/outputs/apk/debug/app-debug.apk
-          retention-days: 14
-          if-no-files-found: error
+        run: >-
+          ./gradlew :app:assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
+          -Pandroid.injected.signing.store.file="$PWD/app/debug.keystore"
+          -Pandroid.injected.signing.store.password=android
+          -Pandroid.injected.signing.key.alias=androiddebugkey
+          -Pandroid.injected.signing.key.password=android
+      - name: Publish the APK as a GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN: ${{ github.run_number }}
+        run: |
+          set -euo pipefail
+          cp android/app/build/outputs/apk/release/app-release.apk "$RUNNER_TEMP/lately.apk"
+          short="${GITHUB_SHA::7}"
+          notes=$(printf '%s\n' \
+            "Test build $RUN of Lately from \`main\` at $short, in **$BUILD_MODE mode**." \
+            "" \
+            "Install: open this page on your Android phone, tap **lately.apk**, then Install (allow installs from your browser if asked)." \
+            "" \
+            "For testing only: signed with Android's public debug key, so it is not the Google Play app and can't buy Pro through Google Play.")
+          tag="apk-$RUN"
+          # A re-run keeps the run number, so its release needs its own tag.
+          if [ "$GITHUB_RUN_ATTEMPT" != "1" ]; then tag="$tag-$GITHUB_RUN_ATTEMPT"; fi
+          gh release create "$tag" "$RUNNER_TEMP/lately.apk" \
+            --target "$GITHUB_SHA" \
+            --title "Lately test build $RUN ($BUILD_MODE)" \
+            --notes "$notes" \
+            --latest

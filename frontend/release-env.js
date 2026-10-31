@@ -5,6 +5,9 @@
 
 /** Is this config being evaluated for a production (store) build? */
 function isProductionBuild(env) {
+  // A test build for GitHub Releases (android-apk workflow) says so explicitly: bundling any
+  // release build can set NODE_ENV=production, so NODE_ENV alone can't tell the two apart.
+  if (env.APP_VARIANT === "preview") return false;
   return env.APP_VARIANT === "production" || env.EAS_BUILD_PROFILE === "production" || env.NODE_ENV === "production";
 }
 
