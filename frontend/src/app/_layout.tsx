@@ -23,6 +23,7 @@ import { ActivityIndicator, LogBox, Platform, Text, View } from "react-native";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { useReducedMotion } from "react-native-reanimated";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { Analytics } from "@vercel/analytics/react";
 
 import { createDemoApi } from "../api/demo";
 import { createHttpApi } from "../api/http";
@@ -174,6 +175,7 @@ function ThemedRoot({ children }: { children: ReactNode }) {
       <SafeAreaProvider>
         <StatusBar style={scheme === "dark" ? "light" : "dark"} />
         {children}
+        {Platform.OS === "web" && <Analytics />}
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );
