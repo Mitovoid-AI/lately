@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: October 22, 2026
+Last updated: November 1, 2026
 
 Lately saves the Instagram reels you share to it, turns each one into a card you can search, and keeps your reasons for saving it. This policy explains what Lately stores, who helps process it, and how to delete it.
 
@@ -20,7 +20,7 @@ On your phone, Lately also keeps a few things locally: your sign-in session, lin
 ## What Lately does not do
 
 - Lately does not sell your data or share it with advertisers.
-- Lately does not show ads and does not include advertising or analytics trackers.
+- The Lately app does not show ads and does not include advertising or analytics trackers.
 - Lately does not ask for access to your camera, microphone, photos, files, contacts or location. It only receives the text of what you share to it.
 - Lately does not post anything to Instagram or to any other account of yours.
 
@@ -37,6 +37,10 @@ Lately uses these service providers to run. Each receives only what it needs for
 - **Our hosting provider:** runs the Lately server that connects these together.
 
 Your searches are processed to return results; they are not used for advertising.
+
+## Lately's website
+
+Lately's website (latelysave.vercel.app) is hosted by Vercel and uses Vercel Web Analytics to count visits. It sets no cookies and does not identify you: for each page view it records the page, the site that sent you, your approximate location (such as your country), and your browser, operating system and device type. Repeat visits are told apart with a value made from your request that resets every day. The website asks for no personal information, and these counts are not linked to your Lately account.
 
 ## How long data is kept
 

@@ -59,6 +59,8 @@ jobs:
         env:
           LATELY_SUPPORT_EMAIL: ${{ vars.LATELY_SUPPORT_EMAIL }}
           LATELY_DELETION_DAYS: ${{ vars.LATELY_DELETION_DAYS }}
+          # Vercel Web Analytics only works on Vercel (latelysave.vercel.app), not on Pages.
+          LATELY_VERCEL_ANALYTICS: "off"
         run: node scripts/build-public-site.js
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

@@ -30,6 +30,11 @@ const SITE = {
 };
 
 const REPO = "Mitovoid-AI/lately";
+// Vercel Web Analytics (cookieless page-view counts) for the copy Vercel serves, which is the
+// committed docs/site. The script only exists on Vercel, so the GitHub Pages build turns it off
+// (LATELY_VERCEL_ANALYTICS=off in .github/workflows/pages.yml).
+const ANALYTICS =
+  process.env.LATELY_VERCEL_ANALYTICS === "off" ? "" : `<script defer src="/_vercel/insights/script.js"></script>\n`;
 const RELEASE = {
   tag: process.env.LATELY_RELEASE_TAG || "",
   date: process.env.LATELY_RELEASE_DATE || "",
@@ -156,7 +161,7 @@ function page({ file, title, description, body }) {
 <meta name="color-scheme" content="light dark">
 <title>${escapeHtml(title)}</title>
 <meta name="description" content="${escapeHtml(description)}">
-<link rel="stylesheet" href="style.css">
+${ANALYTICS}<link rel="stylesheet" href="style.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
@@ -240,7 +245,7 @@ function landingPage() {
 <link rel="icon" href="assets/icon.png">
 <link rel="preload" href="assets/fonts/bricolage-800.woff" as="font" type="font/woff" crossorigin>
 <script src="theme.js"></script>
-<link rel="stylesheet" href="landing.css">
+${ANALYTICS}<link rel="stylesheet" href="landing.css">
 </head>
 <body>
 <a class="skip" href="#main">Skip to content</a>
