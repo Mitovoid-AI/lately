@@ -1,0 +1,55 @@
+# Render Blueprint for the Lately backend on Render's free plan (docs/deploy.md, "Render").
+# Free Render has web services only, so the worker runs next to the API in one container
+# (backend/scripts/render-start.sh). A free service sleeps after 15 minutes without requests
+# and takes about a minute to wake; saves made meanwhile are retried by the app's queue.
+# Create it once: Render dashboard → New → Blueprint → this repo. Render then asks for each
+# `sync: false` value (secrets; copy them from backend/.env). Pushes to main that change
+# backend/ redeploy it.
+services:
+  - type: web
+    name: lately-api
+    runtime: docker
+    plan: free
+    region: singapore # nearest Render region to the Supabase project (ap-south-1, Mumbai)
+    branch: main
+    rootDir: backend
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    dockerCommand: sh scripts/render-start.sh
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      # Secrets: Render asks for these when the Blueprint is created.
+      - key: DATABASE_URL
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: EMBEDDINGS_API_KEY
+        sync: false
+      - key: LLM_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      # Settings (not secret).
+      - key: SUPABASE_JWT_AUDIENCE
+        value: authenticated
+      - key: CORS_ORIGINS
+        value: ""
+      - key: WORKER_CONCURRENCY # 0.1 CPU and 512 MB: two reels at a time
+        value: "2"
+      - key: SEARCH_EMBED_TIMEOUT_SECONDS
+        value: "4"
+      - key: EMBEDDINGS_MODEL
+        value: text-embedding-3-small
+      - key: EMBEDDINGS_DIMENSIONS
+        value: "768"
+      - key: LLM_BASE_URL
+        value: https://openrouter.ai/api/v1
+      - key: LLM_MODEL
+        value: dots-studio/dots-3-note-preview:free
+      - key: LLM_FALLBACK_MODELS
+        value: google/gemma-4-31b-it:free,nvidia/nemotron-3.5-super-vl:free
+      - key: LLM_REASONING
+        value: "off"

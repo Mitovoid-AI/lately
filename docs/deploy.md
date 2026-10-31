@@ -24,6 +24,28 @@ Never run `backend/scripts/db_reset.py` or the test suite against prod: both
 wipe tables. Tests use the disposable project's `lately_test_*` databases
 (`backend/scripts/make_test_db.py`).
 
+## 2a. Backend on Render (free, for testing)
+
+`render.yaml` at the repo root describes one free Render web service (`lately-api`,
+Singapore). Free Render has web services only, so `backend/scripts/render-start.sh` runs the
+worker next to the API in the same container.
+
+1. Sign in at render.com with GitHub (no card needed for the free plan) and give Render access
+   to this repository.
+2. **New** → **Blueprint** → pick the repository (branch `main`). Render reads `render.yaml`
+   and asks for each secret: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+   `EMBEDDINGS_API_KEY`, `LLM_API_KEY`, `GROQ_API_KEY`. Copy the values from `backend/.env`.
+3. **Apply**. The first build takes a few minutes. Then
+   `curl https://<service>.onrender.com/healthz` answers `{"status":"ok"}`.
+4. Put `https://<service>.onrender.com` in the GitHub repository variable
+   `EXPO_PUBLIC_API_URL` (with `EXPO_PUBLIC_SUPABASE_URL` and
+   `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY`), and the next test APK is built live.
+
+Limits of the free plan: 0.1 CPU and 512 MB; it sleeps after 15 minutes without requests and
+takes about a minute to wake (the app's offline queue retries a save made meanwhile); 750 free
+hours a month per workspace. Pushes to `main` that change `backend/` redeploy it. For real
+users, move to a paid instance or Fly.io below.
+
 ## 2. Backend on Fly.io
 
 ```bash
