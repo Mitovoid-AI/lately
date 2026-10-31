@@ -4,7 +4,11 @@ Google Play needs two public web addresses: a **privacy policy** URL (App conten
 policy) and an **account deletion** URL (Data safety → Data deletion). The pages are in
 `docs/site/` and **GitHub Pages** serves them at `https://mitovoid-ai.github.io/lately/`
 (`.github/workflows/pages.yml` deploys after every test-APK release and whenever the pages
-change). On GitHub's free plan Pages only works while the repository is **public**: if it goes
+change). Vercel (project `lately-docs`, `https://latelysave.vercel.app`) serves the same folder:
+its root directory is `docs/`, and `docs/vercel.json` publishes only `docs/site/` (without it the
+whole `docs/` folder went public and `/` was a 404). Vercel deploys on pushes, not on releases, so
+its download button uses GitHub's always-latest link and shows no build number.
+On GitHub's free plan Pages only works while the repository is **public**: if it goes
 private, upload `docs/site/` to **Netlify** or **Cloudflare Pages** instead (both free, below).
 
 ## What is in `docs/site/`
