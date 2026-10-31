@@ -70,6 +70,11 @@ export function PressableScale({
 
   const scale = reduced ? 1 : scaleTo;
   const pressFade = reduced && !highlightColor ? 0.2 : 0;
+  // The box grows to fill a touch target that is bigger than its content (flex-1, a stretched
+  // row). A target aligned on its own is sized to its content, and native layout (Yoga, not
+  // the web) then grows that box to all the height on offer: on Android a self-start link in a
+  // scroll view came out 2,000 dp tall and covered what followed. It never needs to fill.
+  const fill = !SELF_ALIGNED.test(containerClassName ?? "");
 
   const boxStyle = useAnimatedStyle(() => {
     const p = pressed.get();
@@ -104,7 +109,7 @@ export function PressableScale({
       className={containerClassName}
       style={containerStyle}
     >
-      <Animated.View style={[styles.grow, boxStyle]}>
+      <Animated.View style={[fill ? styles.grow : null, boxStyle]}>
         <View className={className} style={[highlightColor ? styles.clip : null, style]}>
           {highlightColor ? (
             <Animated.View style={[StyleSheet.absoluteFill, styles.passThrough, { backgroundColor: highlightColor }, highlightStyle]} />
@@ -115,6 +120,9 @@ export function PressableScale({
     </Pressable>
   );
 }
+
+/** NativeWind classes that align the touch target on its own instead of stretching it. */
+const SELF_ALIGNED = /(^|\s)self-(start|center|end|baseline)(\s|$)/;
 
 const styles = StyleSheet.create({
   grow: { flexGrow: 1 },
