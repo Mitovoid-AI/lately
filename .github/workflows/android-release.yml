@@ -25,7 +25,11 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # Lint, type check, app tests and API unit tests must pass before a bundle is built.
+  tests:
+    uses: ./.github/workflows/tests.yml
   bundle:
+    needs: tests
     runs-on: ubuntu-latest
     timeout-minutes: 90
     defaults:

@@ -17,7 +17,11 @@ concurrency:
   group: android-apk-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  # Lint, type check, app tests and API unit tests must pass before the APK is built.
+  tests:
+    uses: ./.github/workflows/tests.yml
   build:
+    needs: tests
     runs-on: ubuntu-latest
     timeout-minutes: 60
     defaults:

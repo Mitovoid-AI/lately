@@ -1,0 +1,47 @@
+name: tests
+# The quick checks every Android build waits for (android-apk and android-release call this):
+# the app's lint, type check, unit tests and screen tests (each screen is rendered and taps and
+# typing are simulated against demo data), and the API's unit tests that need no database.
+# The full API suite against Postgres still runs in backend-ci on every push.
+on:
+  workflow_call:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  app:
+    name: App (lint, types, unit and screen tests)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test -- --ci --maxWorkers=2
+  api:
+    name: API (unit tests, no database)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+          cache: pip
+          cache-dependency-path: backend/requirements-dev.txt
+      - run: pip install -r requirements-dev.txt && pip install -e .
+      - run: ruff check .
+      # Tests marked `db` need Postgres; backend-ci runs them against a local Supabase.
+      - run: python -m pytest -q -m "not db"
