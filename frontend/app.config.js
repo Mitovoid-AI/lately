@@ -8,7 +8,15 @@
 //
 // Every build also gets the release signing plugin (plugins/with-release-signing.js), which
 // signs the release build type with the upload key from Gradle properties.
+//
+// Test APKs for GitHub Releases (APP_VARIANT=preview, the android-apk workflow) update
+// themselves: they check this repository's latest release and hand the downloaded APK to
+// Android's installer (src/updates). Google Play forbids self-updating, so every other build
+// gets neither the install permission nor the `apkUpdates` setting.
 const { assertReleaseEnv } = require("./release-env");
+
+const APK_UPDATES = { repo: "Mitovoid-AI/lately" };
+const INSTALL_PERMISSION = "android.permission.REQUEST_INSTALL_PACKAGES";
 
 const VERSION_NAME = /^\d+(\.\d+){0,2}$/;
 const MAX_VERSION_CODE = 2100000000; // the highest versionCode Google Play accepts
@@ -39,12 +47,17 @@ function versionOverrides(env) {
 module.exports = ({ config }) => {
   assertReleaseEnv(process.env);
   const overrides = versionOverrides(process.env);
+  const testBuild = process.env.APP_VARIANT === "preview";
+  const android = {
+    ...config.android,
+    ...(overrides.androidVersionCode !== undefined ? { versionCode: overrides.androidVersionCode } : {}),
+    ...(testBuild ? { permissions: [...(config.android?.permissions ?? []), INSTALL_PERMISSION] } : {}),
+  };
   return {
     ...config,
     ...(overrides.version ? { version: overrides.version } : {}),
-    ...(overrides.androidVersionCode !== undefined
-      ? { android: { ...config.android, versionCode: overrides.androidVersionCode } }
-      : {}),
+    ...(config.android || overrides.androidVersionCode !== undefined || testBuild ? { android } : {}),
+    ...(testBuild ? { extra: { ...config.extra, apkUpdates: APK_UPDATES } } : {}),
     plugins: [...(config.plugins ?? []), "./plugins/with-release-signing"],
   };
 };

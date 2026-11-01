@@ -135,6 +135,26 @@ describe("app.config.js release overrides", () => {
     }
   });
 
+  test("only a preview test build can update itself: install permission and apkUpdates", () => {
+    const withPermissions = { ...base, android: { ...base.android, permissions: ["android.permission.INTERNET"] } };
+    process.env = { ...saved, APP_VARIANT: "preview", ANDROID_VERSION_CODE: "12" };
+    const preview = appConfig({ config: withPermissions }) as {
+      android: { permissions: string[]; versionCode: number };
+      extra: { apkUpdates: { repo: string } };
+    };
+    expect(preview.android.permissions).toEqual(["android.permission.INTERNET", "android.permission.REQUEST_INSTALL_PACKAGES"]);
+    expect(preview.android.versionCode).toBe(12);
+    expect(preview.extra.apkUpdates).toEqual({ repo: "Mitovoid-AI/lately" });
+
+    // Google Play forbids self-updating: the store build and plain builds get neither.
+    for (const env of [{ ...GOOD, APP_VARIANT: "production" }, { APP_VARIANT: undefined, NODE_ENV: "development" as const }]) {
+      process.env = { ...saved, ...env };
+      const out = appConfig({ config: withPermissions }) as { android: { permissions: string[] }; extra?: unknown };
+      expect(out.android.permissions).toEqual(["android.permission.INTERNET"]);
+      expect(out.extra).toBeUndefined();
+    }
+  });
+
   test("every build registers the release signing plugin after the app.json plugins", () => {
     process.env = { ...saved, APP_VARIANT: undefined, EAS_BUILD_PROFILE: undefined, NODE_ENV: "development" };
     const out = appConfig({ config: { ...base, plugins: ["expo-router"] } }) as { plugins: unknown[] };

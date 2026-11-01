@@ -42,6 +42,7 @@ import { ThemeProvider, useTheme } from "../theme/ThemeProvider";
 import { ThemeSync } from "../theme/ThemeSync";
 import { ShareRouter } from "../share/ShareRouter";
 import { SaveQueueProvider } from "../hooks/useSaveQueue";
+import { UpdatePrompt } from "../updates/UpdatePrompt";
 
 // Queries (and their polling) pause while the app is in the background.
 wireAppFocus();
@@ -213,6 +214,8 @@ export default function RootLayout() {
             </AppProviders>
           </AuthProvider>
         </ShareIntentProvider>
+        {/* GitHub test APKs only: offers a newer test build when one is out. */}
+        <UpdatePrompt />
       </ThemedRoot>
     </ThemeProvider>
   );

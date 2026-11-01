@@ -17,6 +17,12 @@ It runs in demo mode (sample saves) until the repository variables `EXPO_PUBLIC_
 (https), `EXPO_PUBLIC_SUPABASE_URL` and `EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY` exist (step 4
 below), then it is built live. It is signed with Android's public debug key, so it is only for
 testing: it is not the Google Play app and can't buy Pro through Google Play.
+From then on the test APK updates itself: when a newer test build is released, the app offers
+it on launch (Update now → progress bar → Install, then Android's own confirm screen; the first
+time Android also asks to allow installs from Lately). This needs the repository to stay public.
+Only these test builds have it (`app.config.js`, `APP_VARIANT=preview`): Google Play forbids
+apps that update themselves, so the store build never checks for updates and doesn't have the
+`REQUEST_INSTALL_PACKAGES` permission.
 
 ---
 
