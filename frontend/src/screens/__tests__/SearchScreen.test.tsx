@@ -9,7 +9,13 @@ import { NOW } from "../../test/fixtures";
 import { demoApi, renderWithProviders } from "../../test/render";
 import { SearchScreen } from "../SearchScreen";
 
-const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => mockCanGoBack };
+const mockRouter = {
+  push: jest.fn(),
+  replace: jest.fn(),
+  back: jest.fn(),
+  setParams: jest.fn(),
+  canGoBack: () => mockCanGoBack,
+};
 let mockCanGoBack = true;
 let mockParams: Record<string, string> = {};
 // How deep the app's stack is under Search: 0 = Search is the tab root, 1 = pushed over a screen.
@@ -243,6 +249,37 @@ test("a new q param on the mounted tab replaces the query", async () => {
   mockParams = { q: "zzzz" };
   await fireEvent.changeText(screen.getByPlaceholderText(PLACEHOLDER), "dump");
   expect(screen.getByDisplayValue("zzzz")).toBeTruthy();
+});
+
+test("the same search link opened again applies its text again, without touching typing in between", async () => {
+  mockParams = { q: "dumpling" };
+  const { api } = apiWith([BEST]);
+  await renderWithProviders(<SearchScreen />, { api });
+  expect(screen.getByDisplayValue("dumpling")).toBeTruthy();
+  // Applied once, the link's q is spent: the screen clears it from its params.
+  expect(mockRouter.setParams).toHaveBeenCalledWith({ q: undefined });
+  mockParams = {};
+  // The person changes the search (or opens a card and comes back): the cleared q leaves it be.
+  await fireEvent.changeText(screen.getByPlaceholderText(PLACEHOLDER), "soup");
+  await act(async () => {
+    jest.advanceTimersByTime(300);
+  });
+  expect(screen.getByDisplayValue("soup")).toBeTruthy();
+  // Home's "Back for you" tile again, with the very same q: it applies again.
+  mockParams = { q: "dumpling" };
+  await fireEvent.changeText(screen.getByPlaceholderText(PLACEHOLDER), "soups");
+  expect(screen.getByDisplayValue("dumpling")).toBeTruthy();
+});
+
+test("opening Search without a q never clears what is there", async () => {
+  const { api } = apiWith([BEST]);
+  await renderWithProviders(<SearchScreen />, { api });
+  await fireEvent.changeText(screen.getByPlaceholderText(PLACEHOLDER), "soup");
+  await act(async () => {
+    jest.advanceTimersByTime(300);
+  });
+  expect(screen.getByDisplayValue("soup")).toBeTruthy();
+  expect(mockRouter.setParams).not.toHaveBeenCalled();
 });
 
 test("the search box takes at most 200 characters", async () => {

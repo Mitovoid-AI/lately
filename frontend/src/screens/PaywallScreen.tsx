@@ -192,7 +192,7 @@ function ProState({
 export function PaywallScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { text: textParam } = useLocalSearchParams<{ text?: string }>();
+  const { text: textParam, from } = useLocalSearchParams<{ text?: string; from?: string }>();
   // The reel that hit the free limit, when the save sheet sent us here: Pro is bought to save it.
   const reelText = typeof textParam === "string" && textParam ? textParam : undefined;
   const { client, proActive, syncPlan } = useBilling();
@@ -305,7 +305,10 @@ export function PaywallScreen() {
   // finishes; Manage subscription waits for it, so it doesn't flash up and vanish.)
   const lifetime = me?.plan === "lifetime";
   if (me?.plan === "pro" || lifetime || syncedPro) {
-    const saveReel = reelText ? () => router.replace({ pathname: "/save-sheet", params: { text: reelText } }) : undefined;
+    // `from` keeps a shared reel's "back to the app it came from" once it is saved.
+    const saveReel = reelText
+      ? () => router.replace({ pathname: "/save-sheet", params: from ? { text: reelText, from } : { text: reelText } })
+      : undefined;
     return (
       <ProState
         lifetime={lifetime}

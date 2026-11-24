@@ -1,8 +1,10 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import * as Clipboard from "expo-clipboard";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import {
   ActivityIndicator,
+  BackHandler,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -22,6 +24,7 @@ import { PRO_CONFIRMING } from "../billing/plans";
 import { Button } from "../components/Button";
 import { Chip } from "../components/Chip";
 import { Icon, type IconName } from "../components/Icon";
+import { PressableScale } from "../components/motion/PressableScale";
 import { PopIn, Reveal } from "../components/motion/Reveal";
 import { usePresence } from "../components/motion/usePresence";
 import { Celebrate, SavedCheck } from "../components/save/Celebrate";
@@ -29,12 +32,22 @@ import { isFirstCard } from "../components/save/firstCard";
 import { SaveTracker } from "../components/save/SaveTracker";
 import { SHEET_RESIZE, SheetPanel, useSheetMotion } from "../components/Sheet";
 import { TextField } from "../components/TextField";
+import { useToast } from "../components/Toast";
 import { useNow } from "../hooks/useNow";
 import { useSaveProgress } from "../hooks/useSaves";
 import { savedAgo, shortDate } from "../lib/dates";
+import { useDevicePrefs } from "../lib/devicePrefs";
 import { haptic } from "../lib/haptics";
-import { displayLink, extractReelUrl } from "../lib/instagram";
-import { outcomeFromError, outcomeFromResult, QUEUE_REASON, QUEUED_BODY, type SaveOutcome } from "../lib/saveOutcome";
+import { displayLink, readInstagramLink } from "../lib/instagram";
+import {
+  badLinkOutcome,
+  NOT_REEL_MESSAGE,
+  outcomeFromError,
+  outcomeFromResult,
+  QUEUE_REASON,
+  QUEUED_BODY,
+  type SaveOutcome,
+} from "../lib/saveOutcome";
 import { DURATION } from "../theme/motion";
 import { useTheme } from "../theme/ThemeProvider";
 import { refreshSaveViews } from "../lib/queryClient";
@@ -43,8 +56,19 @@ import { useSaveQueue } from "../hooks/useSaveQueue";
 import { ApiError } from "../api/contract";
 import { config } from "../config";
 import { sendDeviceHint } from "../lib/deviceFetch";
+import { canReturnToSharer, FROM_SHARE, returnToSharer } from "../share/returnToSharer";
 
 const QUICK = ["To try", "To buy", "To visit", "To learn", "Watch later"];
+
+/** With "After sharing: save and go back", how long the confirmation shows before the sheet goes back. */
+export const AUTO_RETURN_MS = 1500;
+
+/** Said under the paste field, which keeps what was typed. */
+export const PASTE_NO_LINK = "No reel link found. Paste a link to an Instagram reel or post.";
+export const PASTE_EMPTY = "Nothing to paste. Copy the reel's link first.";
+export const PASTE_FAILED = "Couldn't paste. Long-press the field to paste instead.";
+/** A note that could not be sent as the sheet closed: said wherever the person is now. */
+export const NOTE_LOST = "Couldn't save your note. You can add it on the card.";
 
 // Each state of the sheet dissolves in; the sheet's height eases to fit it.
 const STATE_IN = FadeIn.duration(DURATION.state);
@@ -114,19 +138,27 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
   const { height: windowHeight } = useWindowDimensions();
   const keyboardHeight = useKeyboardHeight();
   const { user } = useAuth();
-  const { text } = useLocalSearchParams<{ text?: string }>();
+  const { text, from } = useLocalSearchParams<{ text?: string; from?: string }>();
   const router = useRouter();
   const api = useApi();
   const queryClient = useQueryClient();
   const queue = useSaveQueue();
   const billing = useBilling();
+  const toast = useToast();
+  const { afterShare } = useDevicePrefs();
   const queuedRef = useRef(false);
   const shared = !!text;
+  // Opened by a share from another app (Android): closing goes back to that app. With "After
+  // sharing: save and go back" on, the sheet also goes back by itself once the reel is safe.
+  const fromShare = from === FROM_SHARE && canReturnToSharer();
+  const autoReturn = fromShare && afterShare === "return";
   const now = useNow();
   const { motion, backdropStyle } = useSheetMotion();
   usePresence(true, motion.progress);
 
   const [input, setInput] = useState("");
+  // Why the pasted text was not saved (or could not be pasted), said under the field.
+  const [pasteError, setPasteError] = useState<string | null>(null);
   const [busy, setBusy] = useState(shared);
   const [outcome, setOutcome] = useState<SaveOutcome | null>(null);
   const [savedText, setSavedText] = useState(text ?? "");
@@ -141,13 +173,6 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
   const inFlight = useRef(false);
   const started = useRef(false);
   const userId = user?.id;
-
-  // Opened straight from a share (or a link) there is no screen to go back to.
-  const close = useCallback(() => {
-    setClosed(true);
-    if (router.canGoBack()) router.back();
-    else router.replace("/");
-  }, [router]);
 
   // The store can say Pro is on a moment before the server hears it. A save that hits the
   // free limit then tells the server and tries once more, before the sheet gives up on it.
@@ -194,13 +219,21 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
         setOutcome(next);
         refreshSaveViews(queryClient);
       } catch (e) {
+        // A link Lately won't save. Pasted: back to the field, the text kept, saying why there.
+        const refuse = () => {
+          const bad = badLinkOutcome(t);
+          if (shared) return setOutcome(bad);
+          setOutcome(null);
+          setPasteError(bad.notReel ? NOT_REEL_MESSAGE : PASTE_NO_LINK);
+        };
         const reason = e instanceof ApiError ? QUEUE_REASON[e.code] : undefined;
         if (reason) {
           // Nothing the server said about the link itself: keep it on the device and send it
-          // when Lately can take it — but only if there is a reel link to send.
-          if (!extractReelUrl(t)) {
+          // when Lately can take it — but only if it has a link the server would save.
+          const link = readInstagramLink(t);
+          if (link?.kind !== "reel" && link?.kind !== "share") {
             haptic.error();
-            setOutcome({ kind: "bad_url" });
+            refuse();
             return;
           }
           await queue.enqueue(t);
@@ -211,13 +244,14 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
         }
         const next = outcomeFromError(e);
         if (next.kind !== "deduped") haptic.error();
-        setOutcome(next);
+        if (next.kind === "bad_url") refuse();
+        else setOutcome(next);
       } finally {
         inFlight.current = false;
         setBusy(false);
       }
     },
-    [api, createSave, queryClient, queue, userId, firstCardStore],
+    [api, createSave, queryClient, queue, userId, firstCardStore, shared],
   );
 
   // A share hands us the text: save immediately (once).
@@ -248,7 +282,84 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
   }, [progress.ready, progress.status]);
   const celebrating = first && progress.status === "enriched";
 
+  // A /share/ link to a reel already in the library: the server finds the duplicate a few seconds
+  // after the save (any other link it catches at once) and removes the new one, so the card being
+  // followed answers "not found". That is "already saved", not an error, but only for the /share/
+  // save this sheet just made, before its card was ever ready. (`existing` reads the same query as
+  // the tracker, so it sees that answer.)
+  const vanished =
+    outcome?.kind === "saved" &&
+    !progress.ready &&
+    readInstagramLink(savedText)?.kind === "share" &&
+    existing.error instanceof ApiError &&
+    existing.error.code === "NOT_FOUND";
+  useEffect(() => {
+    // The new save is gone: Home must not keep showing it.
+    if (vanished) refreshSaveViews(queryClient);
+  }, [vanished, queryClient]);
+
   const noteInFlight = useRef(false);
+  /** A note typed (or a chip picked) and not saved yet goes along as the sheet closes, in the background. */
+  function keepNote() {
+    const t = note.trim();
+    if (outcome?.kind !== "saved" || vanished || !reelId || !t || noteInFlight.current) return;
+    noteInFlight.current = true;
+    // Closing never waits for it; if it fails, a toast says so wherever the person is now.
+    api.setNote(reelId, t).then(
+      () => refreshSaveViews(queryClient),
+      () => toast.show(NOTE_LOST),
+    );
+  }
+
+  // Once the sheet is leaving, nothing closes it again or sends it somewhere else (a second tap,
+  // the auto-return timer, Back).
+  const leaving = useRef(false);
+  /** Leaves the sheet: for somewhere in Lately (a card, Home) or back where it came from. */
+  function leave(go: () => void) {
+    if (leaving.current) return;
+    leaving.current = true;
+    setClosed(true);
+    go();
+  }
+
+  // Every way of closing (Done, Close, a swipe, a tap outside, Back) keeps a typed note. Opened
+  // straight from a share (or a link) there is no screen to go back to.
+  function close() {
+    if (leaving.current) return;
+    keepNote();
+    leave(() => {
+      if (router.canGoBack()) router.back();
+      else router.replace("/");
+      // A share from another app: back to that app, not to Lately's Home.
+      if (fromShare) returnToSharer();
+    });
+  }
+  // A stable handle for the sheet's swipe, the scrim, Back and the auto-return timer.
+  const closeRef = useRef(close);
+  useEffect(() => {
+    closeRef.current = close;
+  });
+  const requestClose = useCallback(() => closeRef.current(), []);
+
+  // Android Back closes the sheet the way Done does, instead of only popping the screen.
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
+      closeRef.current();
+      return true;
+    });
+    return () => sub.remove();
+  }, []);
+
+  // "Save and go back": once the reel is safe (saved, saved already, or waiting on this phone) the
+  // confirmation shows for a moment, then the sheet goes back to the app the share came from.
+  // Anything that needs a decision (an error, the monthly limit) stays until it is closed.
+  const safe = !busy && (outcome?.kind === "saved" || outcome?.kind === "deduped" || outcome?.kind === "queued");
+  useEffect(() => {
+    if (!autoReturn || !safe) return;
+    const id = setTimeout(() => closeRef.current(), AUTO_RETURN_MS);
+    return () => clearTimeout(id);
+  }, [autoReturn, safe]);
+
   /** Saves the typed note, then runs `then` (closing the sheet, or opening the card). */
   async function saveNote(then: () => void = close) {
     if (!reelId || !note.trim() || noteInFlight.current) return;
@@ -263,7 +374,9 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
     } catch {
       noteInFlight.current = false;
       haptic.error();
-      setNoteFailed(true);
+      // Closed (a swipe, Back) while it was being sent: say so wherever the person is now.
+      if (leaving.current) toast.show(NOTE_LOST);
+      else setNoteFailed(true);
     } finally {
       setSavingNote(false);
     }
@@ -271,20 +384,37 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
 
   function openCard() {
     if (!reelId) return;
-    const go = () => {
-      setClosed(true);
-      router.replace(`/reel/${reelId}`);
-    };
+    const go = () => leave(() => router.replace(`/reel/${reelId}`));
     // A note typed while waiting is kept, not dropped on the way to the card.
     if (note.trim()) void saveNote(go);
     else go();
   }
 
-  const link = displayLink(extractReelUrl(savedText)?.url ?? savedText);
+  /** Pasted text goes as the link itself, not the words around it (a bare instagram.com/reel/… gets its https://). */
+  function submitPasted() {
+    const typed = input.trim();
+    if (!typed) return;
+    setPasteError(null);
+    const found = readInstagramLink(typed);
+    save(found && found.kind !== "not_reel" ? found.url : typed);
+  }
+
+  async function pasteLink() {
+    setPasteError(null);
+    try {
+      const clip = (await Clipboard.getStringAsync()).trim();
+      if (clip) setInput(clip);
+      else setPasteError(PASTE_EMPTY);
+    } catch {
+      setPasteError(PASTE_FAILED);
+    }
+  }
+
+  const link = displayLink(readInstagramLink(savedText)?.url ?? savedText);
   // The saved sheet scrolls; with the keyboard up it may take only what the keyboard leaves.
   const scrollMax =
     keyboardHeight > 0 ? Math.max(180, Math.round(windowHeight - keyboardHeight - SHEET_CHROME)) : Math.round(windowHeight * 0.78);
-  const phase = busy || (shared && !outcome) ? "busy" : outcome ? outcome.kind : "paste";
+  const phase = busy || (shared && !outcome) ? "busy" : vanished ? "vanished" : outcome ? outcome.kind : "paste";
 
   let content: ReactNode;
   if (phase === "busy") {
@@ -300,17 +430,72 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
         <Text className="font-display text-display-md text-ink">Paste a reel link</Text>
         <TextField
           value={input}
-          onChangeText={setInput}
+          onChangeText={(t) => {
+            setInput(t);
+            if (pasteError) setPasteError(null);
+          }}
           placeholder="instagram.com/reel/…"
           accessibilityLabel="Reel link"
           autoCapitalize="none"
           autoCorrect={false}
           autoFocus
-          onSubmitEditing={() => input.trim() && save(input.trim())}
+          onSubmitEditing={submitPasted}
           className="mt-4"
+          trailing={
+            <PressableScale
+              accessibilityRole="button"
+              accessibilityLabel="Paste"
+              onPress={pasteLink}
+              highlightColor={colors.raised}
+              containerClassName="-mr-2 ml-2"
+              className="min-h-11 justify-center rounded-ctl px-3"
+            >
+              <Text maxFontSizeMultiplier={1.5} className="font-sans-semibold text-meta text-ink">
+                Paste
+              </Text>
+            </PressableScale>
+          }
         />
-        <Button title="Save" onPress={() => save(input.trim())} disabled={!input.trim()} className="mt-4" />
+        {pasteError ? (
+          <Text accessibilityRole="alert" accessibilityLiveRegion="polite" className="mt-2 font-sans text-meta text-danger">
+            {pasteError}
+          </Text>
+        ) : null}
+        <Button title="Save" onPress={submitPasted} disabled={!input.trim()} className="mt-4" />
         <Button title="Cancel" variant="ghost" onPress={close} className="mt-1" />
+      </View>
+    );
+  } else if (vanished) {
+    // Which card it is the server didn't say, so Home is where to find it.
+    content = (
+      <Message
+        icon={<StatusIcon name="info-outline" color={colors.ink2} bg={colors.raised} />}
+        title="You saved this already"
+        body="It's already in your library. Find it on Home."
+      >
+        <LinkChip link={link} />
+        <Button title="Open Home" onPress={() => leave(() => router.dismissTo("/"))} className="mt-5" />
+        <Button title="Close" variant="ghost" onPress={close} className="mt-1" />
+      </Message>
+    );
+  } else if (outcome.kind === "saved" && autoReturn) {
+    // "Save and go back": only the confirmation, for the moment before the sheet goes back.
+    content = (
+      <View>
+        <View className="flex-row items-center">
+          <PopIn>
+            <SavedCheck size={48} />
+          </PopIn>
+          <Reveal index={1} style={{ marginLeft: 12, flex: 1 }}>
+            <Text accessibilityLiveRegion="polite" accessibilityRole="header" className="font-display text-display-lg text-ink">
+              Saved
+            </Text>
+            <Text className="font-sans text-body text-ink-2">It&apos;s on Home now. Lately is writing its card.</Text>
+          </Reveal>
+        </View>
+        <Reveal index={2}>
+          <LinkChip link={link} />
+        </Reveal>
       </View>
     );
   } else if (outcome.kind === "saved") {
@@ -427,15 +612,16 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
             <Text className="mt-4 rounded-xl bg-raised px-4 py-3 font-sans-italic text-body text-ink-2">{`“${card.note}”`}</Text>
           </Animated.View>
         ) : null}
-        <Button title="Open card" onPress={() => router.replace(`/reel/${outcome.reelId}`)} className="mt-5" />
+        <Button title="Open card" onPress={() => leave(() => router.replace(`/reel/${outcome.reelId}`))} className="mt-5" />
         <Button title="Close" variant="ghost" onPress={close} className="mt-1" />
       </Message>
     );
   } else if (outcome.kind === "bad_url") {
+    // Only a shared text ends here; a pasted one goes back to the field.
     content = (
       <Message
         icon={<StatusIcon name="error-outline" color={colors.danger} bg={colors.dangerSoft} />}
-        title="No reel link found"
+        title={outcome.notReel ? "That link isn't a reel or post" : "No reel link found"}
         body="Paste or share a link to an Instagram reel or post."
       >
         <Button title="Close" onPress={close} className="mt-5" />
@@ -471,7 +657,7 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
             goes along, so the paywall can save it once Pro is on. */}
         <Button
           title="Upgrade to Pro"
-          onPress={() => router.replace({ pathname: "/pro", params: { text: savedText } })}
+          onPress={() => router.replace({ pathname: "/pro", params: fromShare ? { text: savedText, from } : { text: savedText } })}
           className="mt-5"
         />
         <Button title="Not now" variant="ghost" onPress={close} className="mt-1" />
@@ -523,11 +709,11 @@ export function SaveSheetScreen({ firstCardStore = deviceStore }: { firstCardSto
           importantForAccessibility="no"
           focusable={false}
           accessibilityLabel="Close"
-          onPress={close}
+          onPress={requestClose}
           style={StyleSheet.absoluteFill}
         />
       </Animated.View>
-      <SheetPanel motion={motion} onDismiss={close} layout={SHEET_RESIZE}>
+      <SheetPanel motion={motion} onDismiss={requestClose} layout={SHEET_RESIZE}>
         <Animated.View key={phase} entering={phase === "busy" ? undefined : STATE_IN}>
           {content}
         </Animated.View>

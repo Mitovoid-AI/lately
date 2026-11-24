@@ -13,12 +13,15 @@ const GAP_ABOVE_BAR = 8;
 /** The most the text grows with the system text size; past it the banner would eat the screen. */
 const MAX_FONT_SCALE = 1.3;
 
+export const OFFLINE_TEXT = "You're offline. New saves will be sent when you're back online.";
+
 /**
  * A slim notice floating just above the tab bar while the app runs on a stored session it
  * couldn't refresh (opened offline). It sits low, not at the top, so it never covers the
- * wordmark, the Back button or the avatar. Everything cached still shows; it disappears once the
- * session refreshes. The text may take two lines and the pill grows with it; it is a polite live
- * region, so a screen reader says it once when it appears.
+ * wordmark, the Back button or the avatar. It promises only what is true: nothing is stored on the
+ * phone to browse, but a reel saved now waits in the save queue and goes out once the app is back
+ * online. It disappears once the session refreshes. The text may take two lines and the pill grows
+ * with it; it is a polite live region, so a screen reader says it once when it appears.
  */
 export function OfflineBanner() {
   const { colors } = useTheme();
@@ -51,7 +54,7 @@ export function OfflineBanner() {
           maxFontSizeMultiplier={MAX_FONT_SCALE}
           className="ml-1.5 shrink font-sans-medium text-meta text-ink-2"
         >
-          {"You're offline. Showing what's on this phone."}
+          {OFFLINE_TEXT}
         </Text>
       </View>
     </Animated.View>

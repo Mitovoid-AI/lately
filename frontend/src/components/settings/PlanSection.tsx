@@ -11,9 +11,11 @@ import { countOf } from "../../lib/counts";
 import { shortDate } from "../../lib/dates";
 import { haptic } from "../../lib/haptics";
 import { useTheme } from "../../theme/ThemeProvider";
+import { updateSource } from "../../updates/release";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
 import { useToast } from "../Toast";
+import { longDate } from "./longDate";
 import { SettingsRow, SettingsSection } from "./SettingsSection";
 
 const PLAN_TITLE: Record<Me["plan"], string> = { free: "Free plan", pro: "Lately Pro", lifetime: "Lifetime" };
@@ -26,6 +28,12 @@ export function PlanSection({ me }: { me: Me }) {
   const { client, syncPlan } = useBilling();
   const [restoring, setRestoring] = useState(false);
   const restoreLatch = useRef(false);
+  // Test APKs (GitHub Releases) can't buy: Pro is sold through the Play Store version only.
+  const testBuild = updateSource() !== null;
+  // Store rows only where a store answers: not on a build without one, not on a test build.
+  const storeRows = client.kind !== "unavailable" && !testBuild;
+  // The server doesn't say whether the subscription renews or was cancelled, so the line names both.
+  const ends = me.plan === "pro" && me.plan_expires_at ? longDate(me.plan_expires_at) : null;
 
   async function manage() {
     try {
@@ -63,7 +71,7 @@ export function PlanSection({ me }: { me: Me }) {
 
   const chevron = <Icon name="chevron-right" size={20} color={colors.ink2} />;
   // A build with no store has nothing to restore from.
-  const restoreRow = client.kind !== "unavailable" && (
+  const restoreRow = storeRows && (
     <SettingsRow
       icon="refresh"
       title="Restore purchases"
@@ -72,6 +80,14 @@ export function PlanSection({ me }: { me: Me }) {
       right={restoring ? <ActivityIndicator color={colors.ink2} accessibilityLabel="Restoring purchases" /> : chevron}
       divider
     />
+  );
+  const testBuildNote = testBuild && (
+    <View className="mt-4 flex-row items-start rounded-xl bg-raised p-3">
+      <Icon name="info-outline" size={20} color={colors.ink2} />
+      <Text className="ml-2 flex-1 font-sans text-meta text-ink-2">
+        This is a test build. Lately Pro is bought in the Play Store version.
+      </Text>
+    </View>
   );
   const used = me.saves_this_month;
   const limit = Math.max(me.saves_limit, 1);
@@ -93,23 +109,27 @@ export function PlanSection({ me }: { me: Me }) {
             <View className="h-2 rounded-full bg-accent" style={{ width: `${Math.min(100, (used / limit) * 100)}%` }} />
           </View>
           <Text className="mt-2 font-sans text-meta text-ink-2">{`Resets on ${shortDate(me.resets_on)}`}</Text>
-          <Button title="Upgrade to Pro" onPress={() => router.push("/pro")} className="mt-4" />
+          {testBuild ? testBuildNote : <Button title="Upgrade to Pro" onPress={() => router.push("/pro")} className="mt-4" />}
           {restoreRow}
         </>
       ) : (
         <>
           <Text className="font-sans-semibold text-body text-ink">Unlimited saves</Text>
+          {ends ? <Text className="mt-1 font-sans text-meta text-ink-2">{`Renews or ends on ${ends}`}</Text> : null}
           {me.plan === "pro" ? (
             <>
-              <SettingsRow
-                icon="open-in-new"
-                title="Manage subscription"
-                subtitle="Change or cancel in Google Play"
-                onPress={manage}
-                right={chevron}
-                divider
-              />
+              {storeRows ? (
+                <SettingsRow
+                  icon="open-in-new"
+                  title="Manage subscription"
+                  subtitle="Change or cancel in Google Play"
+                  onPress={manage}
+                  right={chevron}
+                  divider
+                />
+              ) : null}
               {restoreRow}
+              {testBuildNote}
             </>
           ) : null}
         </>

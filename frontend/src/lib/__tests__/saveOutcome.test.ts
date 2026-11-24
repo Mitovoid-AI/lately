@@ -1,5 +1,6 @@
 import { ApiError } from "../../api/contract";
 import {
+  badLinkOutcome,
   outcomeFromError,
   outcomeFromResult,
   PARTIAL_NOTICE,
@@ -28,20 +29,25 @@ test("API errors map to their sheet state", () => {
   expect(outcomeFromError(new Error("x"))).toEqual({ kind: "network" });
 });
 
+test("a refused link says whether it was an Instagram page that isn't a reel or post", () => {
+  expect(badLinkOutcome("https://www.instagram.com/someprofile/")).toEqual({ kind: "bad_url", notReel: true });
+  expect(badLinkOutcome("look at this")).toEqual({ kind: "bad_url", notReel: false });
+});
+
 const states = (steps: ReturnType<typeof trackerSteps>) => steps.map((s) => s.state);
 
 test("the tracker follows the server's stage through its four named steps", () => {
   expect(trackerSteps("pending", "resolve").map((s) => [s.label, s.state])).toEqual([
     ["Getting the reel", "active"],
     ["Listening to it", "todo"],
-    ["Finding places and steps", "todo"],
+    ["Finding places and tips", "todo"],
     ["Card ready", "todo"],
   ]);
   expect(states(trackerSteps("pending", "fetch"))).toEqual(["active", "todo", "todo", "todo"]);
   expect(trackerSteps("pending", "transcribe").map((s) => [s.label, s.state])).toEqual([
     ["Got the reel", "done"],
     ["Listening to it", "active"],
-    ["Finding places and steps", "todo"],
+    ["Finding places and tips", "todo"],
     ["Card ready", "todo"],
   ]);
   expect(states(trackerSteps("pending", "vision"))).toEqual(["done", "active", "todo", "todo"]);
@@ -58,7 +64,7 @@ test("an enriched or partial card has finished every step", () => {
   for (const status of ["enriched", "partial"] as const) {
     const steps = trackerSteps(status, null);
     expect(states(steps)).toEqual(["done", "done", "done", "done"]);
-    expect(steps.map((s) => s.label)).toEqual(["Got the reel", "Listened to it", "Found places and steps", "Card ready"]);
+    expect(steps.map((s) => s.label)).toEqual(["Got the reel", "Listened to it", "Found places and tips", "Card ready"]);
   }
 });
 
@@ -67,8 +73,8 @@ test("stageLabel names what the server is doing in the tracker's own words", () 
   expect(stageLabel("fetch")).toBe("Getting the reel");
   expect(stageLabel("transcribe")).toBe("Listening to it");
   expect(stageLabel("vision")).toBe("Listening to it");
-  expect(stageLabel("structure")).toBe("Finding places and steps");
-  expect(stageLabel("finalize")).toBe("Finding places and steps");
+  expect(stageLabel("structure")).toBe("Finding places and tips");
+  expect(stageLabel("finalize")).toBe("Finding places and tips");
 });
 
 test("stageLabel says Getting details until the server names a step it knows", () => {

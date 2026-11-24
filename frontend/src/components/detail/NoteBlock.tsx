@@ -57,8 +57,11 @@ export function NoteBlock({
     inFlight.current = true;
     setSaving(true);
     try {
-      await onSave(draft.trim());
+      const next = draft.trim();
+      await onSave(next);
       setEditing(false);
+      // Saving it empty clears the note: say so, since the card just loses it.
+      if (!next && note) toast.show("Note removed");
     } catch {
       // Stay in edit mode with the draft intact so nothing typed is lost.
       haptic.error();
@@ -94,7 +97,8 @@ export function NoteBlock({
           />
           <View className="mt-3 flex-row gap-2">
             <Button title="Cancel" variant="secondary" onPress={() => setEditing(false)} className="flex-1" />
-            <Button title="Save" onPress={save} disabled={!draft.trim()} loading={saving} className="flex-1" />
+            {/* An empty note can be saved when there is one to clear (the API removes it). */}
+            <Button title="Save" onPress={save} disabled={!draft.trim() && !note} loading={saving} className="flex-1" />
           </View>
         </Animated.View>
       ) : note ? (

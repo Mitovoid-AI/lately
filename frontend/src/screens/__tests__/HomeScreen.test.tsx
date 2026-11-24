@@ -1,10 +1,11 @@
-import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor, within } from "@testing-library/react-native";
 import { Linking } from "react-native";
 
-import { ApiError, type LatelyApi, type Me } from "../../api/contract";
+import { ApiError, type Category, type LatelyApi, type Me, type Save } from "../../api/contract";
 import { buildDemoSeed } from "../../api/demo-data";
 import { sentence } from "../../components/home/BackForYou";
 import { countOf } from "../../lib/counts";
+import { refreshSaveViews } from "../../lib/queryClient";
 import { SEARCH_EXAMPLES } from "../../lib/searchExamples";
 import { enqueueSave, queueKey } from "../../lib/saveQueue";
 import { NOW } from "../../test/fixtures";
@@ -77,33 +78,87 @@ test("switching category shows the matching cached cards at once, not a skeleton
   expect(screen.queryByText(GITHUB)).toBeNull();
 });
 
-test("only categories present in the saves get a chip", async () => {
+/** The demo API with only these categories' saves, and the server's category list to match. */
+async function only(kinds: Category[]): Promise<LatelyApi> {
   const api = demoApi();
   const all = await api.listSaves({ limit: 100 });
-  const twoKinds: LatelyApi = {
+  const mine = all.filter((s) => s.category !== null && kinds.includes(s.category));
+  return {
     ...quiet(api),
-    listSaves: async () => all.filter((s) => s.category === "Food & Places" || s.category === "Dev & Tools"),
+    listSaves: async () => mine,
+    listCategories: async () => kinds.map((category) => ({ category, count: mine.filter((s) => s.category === category).length })),
   };
-  await renderWithProviders(<HomeScreen />, { api: twoKinds });
+}
+
+test("only categories the person has get a chip", async () => {
+  await renderWithProviders(<HomeScreen />, { api: await only(["Food & Places", "Dev & Tools"]) });
   await screen.findByText(MOMO);
-  expect(screen.getByRole("button", { name: "Food & Places" })).toBeTruthy();
+  expect(await screen.findByRole("button", { name: "Food & Places" })).toBeTruthy();
   expect(screen.getByRole("button", { name: "Dev & Tools" })).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Fitness" })).toBeNull();
 });
 
 test("with one category there is nothing to filter, so no chips at all", async () => {
-  const api = demoApi();
-  const all = await api.listSaves({ limit: 100 });
-  const onlyFood: LatelyApi = {
-    ...quiet(api),
-    listSaves: async () => all.filter((s) => s.category === "Food & Places"),
-  };
+  const onlyFood = await only(["Food & Places"]);
   await renderWithProviders(<HomeScreen />, { api: onlyFood });
   await screen.findByText(MOMO);
   expect(screen.queryByRole("button", { name: "All" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Food & Places" })).toBeNull();
   // The grid and its heading are still there.
   expect(screen.getByText("Recently saved")).toBeTruthy();
+});
+
+describe("category chips come from the server's list", () => {
+  /** Where each text is drawn, in reading order. */
+  const positions = (names: string[]) => {
+    const texts = renderedTexts(screen.toJSON());
+    return names.map((n) => texts.indexOf(n));
+  };
+
+  test("a category only older saves have still gets a chip", async () => {
+    // The first page holds only Food and Dev; the person also has Fitness saves further back.
+    const api = await only(["Food & Places", "Dev & Tools"]);
+    const withOlder: LatelyApi = {
+      ...api,
+      listCategories: async () => [...(await api.listCategories()), { category: "Fitness", count: 1 }],
+    };
+    await renderWithProviders(<HomeScreen />, { api: withOlder });
+    expect(await screen.findByRole("button", { name: "Fitness" })).toBeTruthy();
+  });
+
+  test("most used first, after All", async () => {
+    const api = await only(["Food & Places", "Dev & Tools"]);
+    const counts = [
+      { category: "Dev & Tools" as const, count: 9 },
+      { category: "Food & Places" as const, count: 2 },
+    ];
+    await renderWithProviders(<HomeScreen />, { api: { ...api, listCategories: async () => counts } });
+    await screen.findByRole("button", { name: "Dev & Tools" });
+    const [all, dev, food] = positions(["All", "Dev & Tools", "Food & Places"]);
+    expect(all).toBeGreaterThan(-1);
+    expect(all).toBeLessThan(dev);
+    expect(dev).toBeLessThan(food);
+  });
+
+  test("a card that has just finished brings its category before the server's list catches up", async () => {
+    const api = await only(["Food & Places", "Dev & Tools"]);
+    // The server's list is behind: it has not counted the Dev & Tools card yet.
+    const behind: LatelyApi = { ...api, listCategories: async () => [{ category: "Food & Places", count: 3 }] };
+    await renderWithProviders(<HomeScreen />, { api: behind });
+    expect(await screen.findByRole("button", { name: "Dev & Tools" })).toBeTruthy();
+    const [food, dev] = positions(["Food & Places", "Dev & Tools"]);
+    expect(food).toBeLessThan(dev);
+  });
+
+  test("the list is asked again whenever the saves change", async () => {
+    const api = demoApi();
+    const listCategories = jest.spyOn(api, "listCategories");
+    const { client } = await renderWithProviders(<HomeScreen />, { api: quiet(api) });
+    await screen.findByText(MOMO);
+    await waitFor(() => expect(listCategories).toHaveBeenCalledTimes(1));
+    await act(() => refreshSaveViews(client));
+    await waitFor(() => expect(listCategories).toHaveBeenCalledTimes(2));
+  });
 });
 
 test("a category chip asks the API for that category", async () => {
@@ -342,5 +397,90 @@ describe("the free-saves banner", () => {
     expect(pro).toBeGreaterThan(-1);
     expect(pro).toBeLessThan(queued);
     expect(queued).toBeLessThan(back);
+  });
+});
+
+describe("saves that need another try", () => {
+  const MIN = 60_000;
+  const PARTIAL = seed.find((s) => s.id === "s-partial")!;
+  const PARTIAL_TITLE = PARTIAL.caption!.split("\n")[0];
+
+  /** The demo library with these saves in place of its own pending and partial ones. */
+  async function library(extra: Save[]) {
+    const api = demoApi();
+    const ready = (await api.listSaves({ limit: 100 })).filter((s) => s.status === "enriched");
+    let list = [...extra, ...ready];
+    return {
+      api: { ...quiet(api), listSaves: async () => list } as LatelyApi,
+      set: (next: Save[]) => {
+        list = [...next, ...ready];
+      },
+    };
+  }
+  const partial = (id: string, over: Partial<Save> = {}): Save => ({ ...PARTIAL, id, ...over });
+  const pending = (id: string, minutes: number): Save => ({
+    ...seed.find((s) => s.id === "s-pending")!,
+    id,
+    created_at: new Date(NOW - minutes * MIN).toISOString(),
+  });
+
+  test("a notice counts them, and tapping it shows just those saves until Show all", async () => {
+    const { api } = await library([partial("p-1"), pending("p-old", 11)]);
+    await renderWithProviders(<HomeScreen />, { api });
+    await screen.findByText(MOMO);
+    expect(screen.getByText("2 saves need another try")).toBeTruthy();
+    // The one that never finished says so on its tile.
+    expect(screen.getByText("Didn't finish")).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "2 saves need another try. Show them" }));
+    expect(screen.getByText("Need another try")).toBeTruthy();
+    expect(screen.queryByText(MOMO)).toBeNull();
+    expect(screen.getAllByText(PARTIAL_TITLE).length).toBeGreaterThan(0);
+    expect(screen.queryByText("2 saves need another try")).toBeNull();
+    // A tile still opens its card, where Try again is.
+    await fireEvent.press(screen.getByLabelText(/Didn't finish/));
+    expect(mockRouter.push).toHaveBeenCalledWith("/reel/p-old");
+    await fireEvent.press(screen.getByRole("button", { name: "Show all" }));
+    expect(await screen.findByText(MOMO)).toBeTruthy();
+    expect(screen.getByText("Recently saved")).toBeTruthy();
+  });
+
+  test("one reads in the singular", async () => {
+    const { api } = await library([partial("p-1")]);
+    await renderWithProviders(<HomeScreen />, { api });
+    expect(await screen.findByText("1 save needs another try")).toBeTruthy();
+    expect(screen.getByText("Tap to see it.")).toBeTruthy();
+  });
+
+  test("a save still within the usual time does not count, nor one whose reel is gone", async () => {
+    const { api } = await library([pending("p-young", 2), partial("p-gone", { fail_reason: "unavailable" })]);
+    await renderWithProviders(<HomeScreen />, { api });
+    await screen.findByText(MOMO);
+    expect(screen.queryByText(/needs? another try/)).toBeNull();
+  });
+
+  test("the cross hides it for the session, until another save needs a try", async () => {
+    const { api, set } = await library([partial("p-1")]);
+    const { client } = await renderWithProviders(<HomeScreen />, { api });
+    await fireEvent.press(await screen.findByLabelText("Hide this notice"));
+    expect(screen.queryByText("1 save needs another try")).toBeNull();
+    // A refresh with the same save: still hidden.
+    await act(() => client.invalidateQueries({ queryKey: ["saves"] }));
+    await screen.findByText(MOMO);
+    expect(screen.queryByText(/needs? another try/)).toBeNull();
+    // A new one comes in: the notice is back, counting both.
+    set([partial("p-1"), partial("p-2")]);
+    await act(() => client.invalidateQueries({ queryKey: ["saves"] }));
+    expect(await screen.findByText("2 saves need another try")).toBeTruthy();
+  });
+
+  test("the notice sits with the other banners, above the grid", async () => {
+    const { api } = await library([partial("p-1")]);
+    await renderWithProviders(<HomeScreen />, { api });
+    await screen.findByText("1 save needs another try");
+    const texts = renderedTexts(screen.toJSON());
+    expect(texts.indexOf("1 save needs another try")).toBeLessThan(texts.indexOf("Recently saved"));
+    // It is one stop for a screen reader, with the cross as its own button.
+    const notice = screen.getByRole("button", { name: "1 save needs another try. Show it" });
+    expect(within(notice).queryByLabelText("Hide this notice")).toBeNull();
   });
 });

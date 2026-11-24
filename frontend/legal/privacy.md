@@ -1,6 +1,6 @@
 # Privacy Policy
 
-Last updated: November 1, 2026
+Last updated: November 24, 2026
 
 Lately saves the Instagram reels you share to it, turns each one into a card you can search, and keeps your reasons for saving it. This policy explains what Lately stores, who helps process it, and how to delete it.
 
@@ -11,6 +11,7 @@ Lately saves the Instagram reels you share to it, turns each one into a card you
 - **Your notes.** The "why are you saving this?" notes you write, and any edits to them.
 - **Reading the reel from your phone.** Right after you save a reel, the app also loads that reel's public page from Instagram, the way your browser would, and sends what it reads (caption, creator handle, thumbnail and video links) to Lately to build the card. Instagram sees an ordinary web request from your phone. Lately sends Instagram none of your Lately data.
 - **Cards Lately makes from your saves.** For each saved reel, Lately reads its public content (caption, thumbnail, and the audio, which is transcribed to text) and derives a card from it: a title, a summary, steps, places, tags and a category. To make search work, Lately also computes search data (text indexes and numeric "embeddings") from your cards and notes.
+- **Saving by Instagram message (optional).** If you connect Instagram in Lately's settings, Lately stores the ID Instagram uses for your account in conversations with Lately's Instagram account (not your username or password), which Lately account it belongs to, and when you connected. Messages you send to Lately's Instagram account are read to find a reel link, a connection code or a note. Lately keeps the reel link (as a save) and the note, plus each message's ID for up to 7 days so a message delivered twice is saved once; it does not keep the rest of the message. Lately replies in the same conversation to tell you what happened.
 - **Your stacks and settings.** The collections you create and which saves are in them, and your reading preferences (font, text size, theme).
 - **Usage limits.** How many reels you have saved this month, so the free plan's monthly limit can be applied.
 - **Your plan.** Whether you are on the free plan or Lately Pro, when your current paid period ends, and the subscription updates RevenueCat sends Lately (for example: purchased, renewed, canceled, expired). These updates contain your account ID, the plan, its price and currency, the country of purchase, dates and Google Play's transaction ID. Lately never receives your card or other payment details.
@@ -34,6 +35,7 @@ Lately uses these service providers to run. Each receives only what it needs for
 - **OpenAI:** receives the text of your cards and notes to compute search embeddings, and the text of your searches to match them.
 - **Google Play:** if you subscribe to Lately Pro, Google Play takes the payment and manages the subscription under Google's own terms and privacy policy. Your card and billing details stay with Google.
 - **RevenueCat:** checks Google Play subscription purchases for Lately and tells Lately whether your Pro subscription is active. In the Android app, Lately gives RevenueCat your account ID when you sign in, so a purchase can be linked to your account. RevenueCat receives that ID (a random identifier, not your name or email), the details of your Google Play purchases (plan, price, country, dates and Google's purchase token), and the technical details any app request carries, such as your IP address and app version.
+- **Meta (Instagram):** only if you save reels by sending them to Lately's Instagram account. Meta delivers those messages to Lately and carries Lately's replies, under Meta's own terms and privacy policy.
 - **Our hosting provider:** runs the Lately server that connects these together.
 
 Your searches are processed to return results; they are not used for advertising.
@@ -51,6 +53,7 @@ Your data is kept while your account exists. Lately keeps your most recent archi
 - **See and edit.** Everything Lately stores about your saves is visible in the app, and notes can be edited at any time.
 - **Export.** In Account and settings, "Download your archive" prepares a copy of your saves, notes, cards and stacks as a JSON file in the app. When it is ready, tap Download to save it to your phone or share it.
 - **Delete a save.** Open a card, tap the ⋮ menu, then Delete.
+- **Disconnect Instagram.** In Account and settings, open "Save from Instagram DMs" and tap Disconnect. Lately then stops reading your messages and deletes the stored Instagram ID. Your conversation with Lately's account stays in Instagram until you delete it there.
 - **Delete your account.** In Account and settings, tap "Delete account" and confirm twice. This deletes your account and everything in it, then signs you out.
 - **Delete your account without the app.** Email the support address from the address you sign in with, or follow the steps on the account deletion page of Lately's website.
 

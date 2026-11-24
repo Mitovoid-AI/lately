@@ -1,10 +1,12 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AppState } from "react-native";
+import { AppState, Platform } from "react-native";
 
 import { useApi } from "../api/index";
 import { useAuth } from "../auth/AuthProvider";
 import { useToast } from "../components/Toast";
+import { config } from "../config";
+import { sendDeviceHint } from "../lib/deviceFetch";
 import { refreshSaveViews } from "../lib/queryClient";
 import { dequeueSave, enqueueSave, flushQueue, queueKey, readQueue, type QueuedSave } from "../lib/saveQueue";
 import { deviceStore, type KeyValueStore } from "../lib/storage";
@@ -36,17 +38,24 @@ export function useSaveQueue() {
 }
 
 const reels = (n: number) => (n === 1 ? "1 reel" : `${n} reels`);
+const shares = (n: number) => (n === 1 ? "1 share" : `${n} shares`);
 
 /**
  * Why shares waiting on the queue were refused for good, one sentence per reason, so the toast
  * says what went wrong and what to do about it instead of a bare "couldn't save".
  */
 export function droppedMessage(codes: readonly string[]): string {
-  const quota = codes.filter((c) => c === "QUOTA_EXCEEDED").length;
-  const noLink = codes.length - quota;
+  const count = (code: string) => codes.filter((c) => c === code).length;
+  const quota = count("QUOTA_EXCEEDED");
+  const noLink = count("BAD_URL");
+  const tooLong = count("TOO_LARGE");
+  // Anything else the server refused (BAD_REQUEST, NOT_FOUND): nothing the person can fix.
+  const other = codes.length - quota - noLink - tooLong;
   const parts: string[] = [];
   if (quota) parts.push(`${reels(quota)} you shared offline didn't save: you've used this month's free saves.`);
   if (noLink) parts.push(`${noLink === 1 ? "1 share had" : `${noLink} shares had`} no reel link, so nothing was saved.`);
+  if (tooLong) parts.push(`${shares(tooLong)} ${tooLong === 1 ? "was" : "were"} too long to save.`);
+  if (other) parts.push(`Lately couldn't save ${reels(other)} you shared offline.`);
   return parts.join(" ");
 }
 
@@ -87,6 +96,13 @@ export function SaveQueueProvider({
       if (r.saved.length) {
         refreshSaveViews(queryClient);
         toast.show(`Saved ${reels(r.saved.length)} you shared offline`);
+        // The phone's own read of each reel, as the save sheet sends after a live save. One at a
+        // time, in the background: never awaited, never fails the flush (sendDeviceHint never rejects).
+        void (async () => {
+          for (const { item, result } of r.saved) {
+            await sendDeviceHint({ api, mode: config.apiMode, platform: Platform.OS, text: item.text, result });
+          }
+        })();
       }
       if (r.dropped.length) toast.show(droppedMessage(r.dropped.map((d) => d.code)));
     } finally {

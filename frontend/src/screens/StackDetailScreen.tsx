@@ -2,7 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback, useState } from "react";
 import { RefreshControl, Text, useWindowDimensions, View } from "react-native";
-import Animated, { useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
+import Animated, { FadeIn, useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { ApiError, type Save, type StackDetail } from "../api/contract";
@@ -14,7 +14,9 @@ import { Icon } from "../components/Icon";
 import { IconButton } from "../components/motion/IconButton";
 import { PressableScale } from "../components/motion/PressableScale";
 import { Reveal, useEntranceWindow } from "../components/motion/Reveal";
+import { NewStackForm } from "../components/NewStackForm";
 import { cardTitle, ReelCard } from "../components/ReelCard";
+import { Sheet } from "../components/Sheet";
 import { Skeleton, SkeletonGrid } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import { useNow } from "../hooks/useNow";
@@ -22,8 +24,12 @@ import { pollWhilePending } from "../hooks/useSaves";
 import { GRID_GAP, GRID_MAX_WIDTH, GRID_SIDE, gridLayout } from "../lib/grid";
 import { haptic } from "../lib/haptics";
 import { goBack } from "../lib/navigation";
+import { DURATION } from "../theme/motion";
 import { useTheme } from "../theme/ThemeProvider";
 import { savesCount } from "./StacksScreen";
+
+// The menu turning into the rename form: the form dissolves in while the sheet eases to fit.
+const MODE_IN = FadeIn.duration(DURATION.state);
 
 export function StackDetailScreen() {
   const { colors } = useTheme();
@@ -41,6 +47,9 @@ export function StackDetailScreen() {
     refetchInterval: (q) => pollWhilePending(q.state.data?.saves),
   });
   const [editing, setEditing] = useState(false);
+  // More: Rename (the menu turns into the name form) and Delete stack.
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [renaming, setRenaming] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const { columns, itemWidth } = gridLayout(width);
@@ -82,7 +91,8 @@ export function StackDetailScreen() {
       queryClient.invalidateQueries({ queryKey: ["stacks"] });
       queryClient.invalidateQueries({ queryKey: ["me"] });
       toast.show("Stack deleted");
-      router.replace("/stacks");
+      // Back to the Stacks tab already underneath, not a second copy of the tabs on top.
+      router.dismissTo("/stacks");
     } catch {
       haptic.error();
       toast.show("Couldn't delete the stack. Try again.");
@@ -136,7 +146,14 @@ export function StackDetailScreen() {
                 <Text className="font-sans-semibold text-body text-ink">{editing ? "Done" : "Edit"}</Text>
               </PressableScale>
             ) : null}
-            <IconButton icon="delete-outline" label="Delete stack" onPress={() => setConfirmOpen(true)} />
+            <IconButton
+              icon="more-vert"
+              label="More"
+              onPress={() => {
+                setRenaming(false);
+                setMenuOpen(true);
+              }}
+            />
           </>
         ) : null}
         <ScrollHairline scrollY={scrollY} />
@@ -198,10 +215,51 @@ export function StackDetailScreen() {
         />
       )}
 
+      <Sheet visible={menuOpen} fluid onClose={() => setMenuOpen(false)}>
+        {renaming && data ? (
+          <Animated.View key="rename" entering={MODE_IN}>
+            <NewStackForm
+              stack={data}
+              onCreated={() => {
+                haptic.success();
+                setMenuOpen(false);
+                toast.show("Stack renamed");
+              }}
+            />
+          </Animated.View>
+        ) : (
+          <View className="pb-2">
+            <PressableScale
+              accessibilityRole="button"
+              onPress={() => setRenaming(true)}
+              scaleTo={1}
+              highlightColor={colors.raised}
+              className="-mx-2 min-h-12 flex-row items-center rounded-xl px-2 py-2"
+            >
+              <Icon name="edit" size={22} color={colors.ink} />
+              <Text className="ml-3 font-sans-medium text-body text-ink">Rename</Text>
+            </PressableScale>
+            <PressableScale
+              accessibilityRole="button"
+              onPress={() => {
+                setMenuOpen(false);
+                setConfirmOpen(true);
+              }}
+              scaleTo={1}
+              highlightColor={colors.dangerSoft}
+              className="-mx-2 min-h-12 flex-row items-center rounded-xl px-2 py-2"
+            >
+              <Icon name="delete-outline" size={22} color={colors.danger} />
+              <Text className="ml-3 font-sans-medium text-body text-danger">Delete stack</Text>
+            </PressableScale>
+          </View>
+        )}
+      </Sheet>
+
       <ConfirmDialog
         visible={confirmOpen}
         title={`Delete “${data?.name ?? "this stack"}”?`}
-        message="The stack goes away; its reels stay saved."
+        message="The stack goes away; the saves in it stay."
         confirmLabel="Delete"
         busy={deleting}
         onConfirm={deleteStack}

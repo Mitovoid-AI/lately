@@ -186,7 +186,7 @@ export async function sendDeviceHint(o: {
 }): Promise<HintOutcome> {
   try {
     if (o.mode !== "live" || o.platform === "web" || o.result.deduped) return "skipped";
-    if (/instagram\.com\/share\//i.test(o.text)) return "skipped";
+    // Null for a /share/ link too: its shortcode is unknown until the server resolves it.
     const link = extractReelUrl(o.text);
     if (!link) return "skipped";
     const hint = await fetchEmbedHint(link.shortcode, { fetchImpl: o.fetchImpl, timeoutMs: o.timeoutMs });

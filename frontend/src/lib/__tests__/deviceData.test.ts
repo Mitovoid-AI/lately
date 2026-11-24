@@ -1,7 +1,12 @@
 import { firstCardKey, isFirstCard } from "../../components/save/firstCard";
 import { createMemoryStore } from "../../test/memoryStore";
 import { forgetDeviceData } from "../deviceData";
+import { deleteExportFiles } from "../exportFile";
 import { RECENT_KEY } from "../recent";
+
+jest.mock("../exportFile", () => ({ deleteExportFiles: jest.fn() }));
+
+beforeEach(() => jest.clearAllMocks());
 
 test("forgetting the device data also forgets the first-card flag, so it is asked again", async () => {
   const store = createMemoryStore({ [RECENT_KEY]: JSON.stringify(["momo"]) });
@@ -19,4 +24,9 @@ test("without a signed-in person it still clears what it can", async () => {
   const store = createMemoryStore({ [RECENT_KEY]: JSON.stringify(["momo"]) });
   await forgetDeviceData(null, store);
   expect(await store.getItem(RECENT_KEY)).toBe("[]");
+});
+
+test("archive files written for the share sheet are deleted too", async () => {
+  await forgetDeviceData("u1", createMemoryStore());
+  expect(deleteExportFiles).toHaveBeenCalledTimes(1);
 });

@@ -1,7 +1,7 @@
 import { NOW } from "../../test/fixtures";
 import { createMemoryStore } from "../../test/memoryStore";
-import { ApiError } from "../contract";
-import { createDemoApi, EXPORT_MS, PENDING_MS } from "../demo";
+import { ApiError, CATEGORIES } from "../contract";
+import { createDemoApi, EXPORT_MS, INSTAGRAM_CODE_MS, PENDING_MS } from "../demo";
 
 const MOMO = "Hole-in-the-wall momo spot in Jackson Heights";
 const STACK_NAMES = [
@@ -106,7 +106,8 @@ test("a PARTIAL demo link ends up partial", async () => {
   const { api, advance } = setup();
   const res = await api.createSave("https://www.instagram.com/reel/PARTIAL/");
   advance(PENDING_MS);
-  expect((await api.getSave(res.reel_id)).status).toBe("partial");
+  const card = await api.getSave(res.reel_id);
+  expect([card.status, card.fail_reason]).toEqual(["partial", "fetch_blocked"]);
 });
 
 test("notes can be set and saves deleted", async () => {
@@ -223,8 +224,11 @@ test("a partial card can be retried and becomes pending again", async () => {
   const { api, advance } = setup();
   const before = (await api.listSaves({ limit: 100 })).find((s) => s.status === "partial");
   expect(before).toBeDefined();
-  await api.retryEnrichment(before!.id);
-  expect((await api.getSave(before!.id)).status).toBe("pending");
+  // The seeded "Preview unavailable" card says why it could not be completed.
+  expect(before!.fail_reason).toBe("fetch_blocked");
+  expect(await api.retryEnrichment(before!.id)).toEqual({ status: "queued" });
+  const retried = await api.getSave(before!.id);
+  expect([retried.status, retried.fail_reason]).toEqual(["pending", null]);
   advance(PENDING_MS + 1);
   expect((await api.getSave(before!.id)).status).toBe("enriched");
 });
@@ -312,5 +316,55 @@ describe("plan", () => {
     api.setPlan("pro");
     await api.deleteAccount();
     expect(api.currentPlan()).toBe("free");
+  });
+});
+
+test("listCategories counts the finished saves in each category, in the app's order", async () => {
+  const { api } = setup();
+  const counts = await api.listCategories();
+  const all = await api.listSaves({ limit: 100 });
+  expect(counts.length).toBeGreaterThan(0);
+  expect(counts.map((c) => c.category)).toEqual(CATEGORIES.filter((c) => counts.some((x) => x.category === c)));
+  for (const { category, count } of counts) {
+    expect(count).toBe(all.filter((s) => s.category === category).length);
+    expect(count).toBeGreaterThan(0);
+  }
+  // A new save has no category while it is pending.
+  const total = counts.reduce((n, c) => n + c.count, 0);
+  await api.createSave("https://www.instagram.com/reel/NEW123/");
+  expect((await api.listCategories()).reduce((n, c) => n + c.count, 0)).toBe(total);
+  await api.deleteAccount();
+  expect(await api.listCategories()).toEqual([]);
+});
+
+test("renameStack renames a stack (trimmed) and keeps its saves", async () => {
+  const { api } = setup();
+  const [first] = await api.listStacks();
+  const renamed = await api.renameStack(first.id, "  Weekend eats ");
+  expect([renamed.id, renamed.name, renamed.save_count]).toEqual([first.id, "Weekend eats", first.save_count]);
+  expect((await api.getStack(first.id)).name).toBe("Weekend eats");
+  expect((await rejection(api.renameStack("nope", "x"))).code).toBe("NOT_FOUND");
+});
+
+describe("Instagram link", () => {
+  test("starts unlinked, links on the second look after a code is made, and unlinks", async () => {
+    const { api } = setup();
+    const off = { enabled: true, handle: "lately.app", linked: false, linked_at: null, code: null, code_expires_at: null };
+    expect(await api.getInstagramLink()).toEqual(off);
+    expect(await api.getInstagramLink()).toEqual(off);
+
+    const made = await api.createInstagramCode();
+    expect(made.code).toMatch(/^LATELY-[2-9A-HJ-NP-Z]{6}$/);
+    expect(Date.parse(made.code_expires_at!) - NOW).toBe(INSTAGRAM_CODE_MS);
+    expect(made.linked).toBe(false);
+
+    // First look: still waiting for the message. Second look: the person sent it.
+    expect(await api.getInstagramLink()).toMatchObject({ linked: false, code: made.code });
+    const linked = await api.getInstagramLink();
+    expect(linked).toMatchObject({ linked: true, code: null, code_expires_at: null, handle: "lately.app" });
+    expect(linked.linked_at).not.toBeNull();
+
+    await api.unlinkInstagram();
+    expect(await api.getInstagramLink()).toEqual(off);
   });
 });

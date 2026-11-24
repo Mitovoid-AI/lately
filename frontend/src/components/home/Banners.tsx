@@ -4,7 +4,42 @@ import { countOf } from "../../lib/counts";
 import { useTheme } from "../../theme/ThemeProvider";
 import { Button } from "../Button";
 import { Icon } from "../Icon";
+import { IconButton } from "../motion/IconButton";
+import { PressableScale } from "../motion/PressableScale";
 import { Reveal } from "../motion/Reveal";
+
+/** "1 save needs another try", "2 saves need another try". */
+export const attentionText = (count: number) => `${countOf(count, "save")} ${count === 1 ? "needs" : "need"} another try`;
+
+/**
+ * Saves whose cards came out partial or never finished: tapping it shows just those saves, the
+ * cross hides it. Only saves another try could help are counted (the caller decides which).
+ */
+export function AttentionBanner({ count, onShow, onDismiss }: { count: number; onShow: () => void; onDismiss: () => void }) {
+  const { colors } = useTheme();
+  return (
+    <Reveal>
+      <View className="mt-3 flex-row items-center rounded-2xl border border-hairline bg-card pr-1">
+        <PressableScale
+          accessibilityRole="button"
+          accessibilityLabel={`${attentionText(count)}. Show ${count === 1 ? "it" : "them"}`}
+          onPress={onShow}
+          scaleTo={0.98}
+          highlightColor={colors.raised}
+          containerClassName="flex-1"
+          className="min-h-14 flex-row items-center rounded-2xl py-2 pl-4 pr-2"
+        >
+          <Icon name="refresh" size={22} color={colors.ink2} />
+          <View className="ml-3 flex-1">
+            <Text className="font-sans-semibold text-body text-ink">{attentionText(count)}</Text>
+            <Text className="font-sans text-meta text-ink-2">{`Tap to see ${count === 1 ? "it" : "them"}.`}</Text>
+          </View>
+        </PressableScale>
+        <IconButton icon="close" size={20} label="Hide this notice" onPress={onDismiss} />
+      </View>
+    </Reveal>
+  );
+}
 
 /** Saves made offline, waiting on the device for a connection. */
 export function QueuedBanner({ count, busy, onRetry }: { count: number; busy: boolean; onRetry: () => void }) {

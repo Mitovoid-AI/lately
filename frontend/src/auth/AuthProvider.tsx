@@ -110,15 +110,39 @@ export function isRetryableAuthError(error: AuthError | Error | null | undefined
   return e.name === "AuthRetryableFetchError" || failureFrom(error) === "network";
 }
 
-/** Is this OAuth provider switched on in the Supabase project? (null = couldn't tell) */
-async function providerEnabled(provider: string): Promise<boolean | null> {
+/** How long the check before the Google window may take; past it the window opens anyway. */
+export const PROVIDER_CHECK_MS = 5000;
+
+/**
+ * Is this OAuth provider switched on in the Supabase project? (null = couldn't tell, including a
+ * check slower than `timeoutMs`: a slow network must not leave the button looking dead.)
+ */
+export async function providerEnabled(provider: string, timeoutMs = PROVIDER_CHECK_MS): Promise<boolean | null> {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timedOut = new Promise<null>((resolve) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      resolve(null);
+    }, timeoutMs);
+  });
+  const check = (async () => {
+    try {
+      const res = await fetch(`${config.supabaseUrl}/auth/v1/settings`, {
+        headers: { apikey: config.supabaseKey },
+        signal: controller.signal,
+      });
+      if (!res.ok) return null;
+      const settings = (await res.json()) as { external?: Record<string, boolean> };
+      return settings.external?.[provider] ?? null;
+    } catch {
+      return null;
+    }
+  })();
   try {
-    const res = await fetch(`${config.supabaseUrl}/auth/v1/settings`, { headers: { apikey: config.supabaseKey } });
-    if (!res.ok) return null;
-    const settings = (await res.json()) as { external?: Record<string, boolean> };
-    return settings.external?.[provider] ?? null;
-  } catch {
-    return null;
+    return await Promise.race([check, timedOut]);
+  } finally {
+    clearTimeout(timer);
   }
 }
 

@@ -1,13 +1,15 @@
 // Demo implementation of the API contract: in-memory, seeded with the Stitch content.
 // Mutations last until reload; preferences persist on the device.
 import { curatedDate } from "../lib/dates";
-import { extractReelUrl } from "../lib/instagram";
+import { readInstagramLink } from "../lib/instagram";
 import { matchSaves } from "../lib/search";
 import { deviceStore, readJson, writeJson, type KeyValueStore } from "../lib/storage";
 import {
   ApiError,
+  CATEGORIES,
   DEFAULT_PREFERENCES,
   type CuratedFeed,
+  type InstagramLink,
   type LatelyApi,
   type Me,
   type Preferences,
@@ -37,6 +39,13 @@ const STAGE_STARTS: readonly (readonly [SaveStage, number])[] = [
 
 /** How long a demo export takes to "build". */
 export const EXPORT_MS = 1500;
+
+/** How long a demo Instagram link code stays valid, like the server's. */
+export const INSTAGRAM_CODE_MS = 15 * 60_000;
+/** The demo's Lately account on Instagram: where the person sends their code. */
+const INSTAGRAM_HANDLE = "lately.app";
+// No 0/O or 1/I: the person types the code into an Instagram message.
+const CODE_ALPHABET = "23456789ABCDEFGHJKLMNPQRSTUVWXYZ";
 
 /** The demo API plus what the demo store (billing/demo.ts) needs to "buy" Pro in it. */
 export interface DemoApi extends LatelyApi {
@@ -70,8 +79,12 @@ function toSave(d: SaveDetail): Save {
     creator: d.creator,
     channel: d.channel,
     stage: d.stage ?? null,
+    fail_reason: d.status === "partial" ? (d.fail_reason ?? null) : null,
   };
 }
+
+/** Stack names are trimmed, like the server does. */
+const stackName = (name: string) => name.trim();
 
 export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStore } = {}): DemoApi {
   const now = opts.now ?? Date.now;
@@ -86,6 +99,13 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
   let exportRequestedAt: number | null = null;
   let plan: Me["plan"] = "free";
   let planExpiresAt: string | null = null;
+  let instagram: InstagramLink = unlinked();
+  // Reads of GET /me/instagram since the last code: the second one finds it "sent".
+  let instagramReads = 0;
+
+  function unlinked(): InstagramLink {
+    return { enabled: true, handle: INSTAGRAM_HANDLE, linked: false, linked_at: null, code: null, code_expires_at: null };
+  }
 
   const wait = () => (latency ? new Promise((r) => setTimeout(r, latency)) : Promise.resolve());
 
@@ -104,7 +124,15 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
     if (s.status === "pending" && s.ready_at !== undefined && now() >= s.ready_at) {
       // Processing finished: promote in the store so it stays done.
       if (s.shortcode === "PARTIAL") {
-        Object.assign(s, { status: "partial", media_status: "partial", title: null, thumbnail_url: null, summary: null, steps: null });
+        Object.assign(s, {
+          status: "partial",
+          media_status: "partial",
+          fail_reason: "fetch_blocked",
+          title: null,
+          thumbnail_url: null,
+          summary: null,
+          steps: null,
+        });
       } else {
         Object.assign(s, { status: "enriched", media_status: "ready" });
       }
@@ -173,8 +201,11 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
 
     async createSave(text) {
       await wait();
-      const link = extractReelUrl(text);
-      if (!link) throw new ApiError("BAD_URL", 422, "No Instagram link found.");
+      const read = readInstagramLink(text);
+      if (!read) throw new ApiError("BAD_URL", 422, "No Instagram link found.");
+      if (read.kind === "not_reel") throw new ApiError("BAD_URL", 422, "That link isn't a reel or post.");
+      // A /share/ link has no shortcode until the server resolves it; demo keys it by its id.
+      const link = { url: read.url, shortcode: read.shortcode ?? read.url.split("/share/")[1] };
       // Pro has no monthly cap: the QUOTA sample link only trips on the free plan.
       if (link.shortcode === "QUOTA" && plan === "free") throw new ApiError("QUOTA_EXCEEDED", 429, "Monthly save limit reached.");
       if (link.shortcode === "RATE") throw new ApiError("RATE_LIMITED", 429, "Too many saves right now.");
@@ -211,6 +242,15 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
         .map((s) => toSave(present(s)))
         .filter((s) => !p.category || s.category === p.category)
         .slice(0, limit);
+    },
+
+    async listCategories() {
+      await wait();
+      // A pending save has no category yet, as on the server.
+      const all = saves.map((s) => present(s).category);
+      return CATEGORIES.map((category) => ({ category, count: all.filter((c) => c === category).length })).filter(
+        (c) => c.count > 0,
+      );
     },
 
     async getSave(id) {
@@ -284,12 +324,20 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
       await wait();
       const st: DemoStack = {
         id: `st-${stacks.length + 1}-${Math.floor(now()) % 100000}`,
-        name: name.trim(),
+        name: stackName(name),
         category: null,
         save_ids: [],
         updated_at: new Date(now()).toISOString(),
       };
       stacks.push(st);
+      return stackView(st);
+    },
+
+    async renameStack(id, name) {
+      await wait();
+      const st = findStack(id);
+      st.name = stackName(name);
+      st.updated_at = new Date(now()).toISOString();
       return stackView(st);
     },
 
@@ -343,6 +391,7 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
           summary: "A short follow-along routine from the reel's caption and audio.",
         });
       }
+      return { status: "queued" };
     },
 
     async deleteAccount() {
@@ -351,6 +400,7 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
       stacks = [];
       plan = "free";
       planExpiresAt = null;
+      instagram = unlinked();
       await writeJson(store, PREFS_KEY, {});
     },
 
@@ -362,6 +412,30 @@ export function createDemoApi(opts: { now?: () => number; storage?: KeyValueStor
     async syncPlan() {
       await wait();
       return { plan, plan_expires_at: planExpiresAt };
+    },
+
+    async getInstagramLink() {
+      await wait();
+      // The second look after a code was made finds it sent: the account is linked.
+      if (instagram.code && !instagram.linked && ++instagramReads >= 2) {
+        instagram = { ...instagram, linked: true, linked_at: new Date(now()).toISOString(), code: null, code_expires_at: null };
+      }
+      return { ...instagram };
+    },
+
+    async createInstagramCode() {
+      await wait();
+      let code = "";
+      for (let i = 0; i < 6; i++) code += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+      instagram = { ...instagram, code: `LATELY-${code}`, code_expires_at: new Date(now() + INSTAGRAM_CODE_MS).toISOString() };
+      instagramReads = 0;
+      return { ...instagram };
+    },
+
+    async unlinkInstagram() {
+      await wait();
+      instagram = unlinked();
+      instagramReads = 0;
     },
 
     async getCurated(): Promise<CuratedFeed> {

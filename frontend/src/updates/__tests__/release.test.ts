@@ -1,6 +1,6 @@
 import { Platform } from "react-native";
 
-import { buildNumber, findNewerRelease, parseLatestRelease, updateSource } from "../release";
+import { buildNumber, checkForUpdate, findNewerRelease, parseLatestRelease, updateSource } from "../release";
 
 const mockConfig: { expoConfig: Record<string, unknown> | null } = { expoConfig: null };
 jest.mock("expo-constants", () => ({
@@ -61,6 +61,25 @@ test("a failed check (rate limit, private repo, offline) is just no update", asy
     throw new TypeError("Network request failed");
   }) as unknown as typeof fetch;
   await expect(findNewerRelease("Mitovoid-AI/lately", 9, offline)).resolves.toBeNull();
+});
+
+test("an on-demand check tells a newer build, nothing newer and no answer apart", async () => {
+  await expect(checkForUpdate("Mitovoid-AI/lately", 9, answer(LATEST))).resolves.toMatchObject({
+    status: "newer",
+    release: { build: 12 },
+  });
+  await expect(checkForUpdate("Mitovoid-AI/lately", 12, answer(LATEST))).resolves.toEqual({ status: "current" });
+  // A latest release that isn't a test APK has nothing newer to offer.
+  await expect(checkForUpdate("Mitovoid-AI/lately", 9, answer({ ...LATEST, tag_name: "v2.0.0" }))).resolves.toEqual({
+    status: "current",
+  });
+  await expect(checkForUpdate("Mitovoid-AI/lately", 9, answer({ message: "rate limited" }, false))).resolves.toEqual({
+    status: "failed",
+  });
+  const offline = jest.fn(async () => {
+    throw new TypeError("Network request failed");
+  }) as unknown as typeof fetch;
+  await expect(checkForUpdate("Mitovoid-AI/lately", 9, offline)).resolves.toEqual({ status: "failed" });
 });
 
 describe("updateSource", () => {

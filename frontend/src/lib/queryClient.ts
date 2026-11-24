@@ -4,9 +4,15 @@ import { ApiError } from "../api/contract";
 
 const isUnauthorized = (e: unknown) => e instanceof ApiError && e.code === "UNAUTHORIZED";
 
-/** Errors a retry cannot fix: the session is gone or the thing isn't there. */
+/** Codes a retry cannot fix: the session is gone, the thing isn't there, or the request is wrong. */
+const PERMANENT = new Set(["UNAUTHORIZED", "NOT_FOUND", "BAD_URL", "BAD_REQUEST", "TOO_LARGE"]);
+
+/**
+ * A call that timed out is not retried either: two more 15 s waits would keep its error off the
+ * screen for ~48 s.
+ */
 function retryable(e: unknown) {
-  return !(e instanceof ApiError && (e.code === "UNAUTHORIZED" || e.code === "NOT_FOUND" || e.code === "BAD_URL"));
+  return !(e instanceof ApiError && (e.timeout || PERMANENT.has(e.code)));
 }
 
 /**

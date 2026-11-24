@@ -32,6 +32,8 @@ export const SAVE_STAGES: readonly SaveStage[] = ["resolve", "fetch", "transcrib
 
 export type Channel = "app_share" | "web" | "meta_dm";
 
+export type FailReason = "fetch_blocked" | "unavailable" | "ai_unavailable" | "timed_out";
+
 export interface Save {
   id: string;
   source_url: string;
@@ -47,6 +49,14 @@ export interface Save {
   channel: Channel;
   /** The enrich job's current stage while the save is pending; null otherwise (or from an older server). */
   stage?: SaveStage | null;
+  /** Why a partial card could not be completed; absent from older servers. */
+  fail_reason?: FailReason | null;
+}
+
+/** GET /saves/categories: how many of the person's saves are in a category. */
+export interface CategoryCount {
+  category: Category;
+  count: number;
 }
 
 export interface Place {
@@ -170,6 +180,19 @@ export interface PlanSync {
 /** GET /me/export: the archive file once it is built, or still queued. */
 export type ExportDownload = { status: "queued" } | { status: "ready"; filename: string; json: string };
 
+/**
+ * GET /me/instagram: the person's Instagram account linked to Lately. They link it by sending
+ * `code` to `handle` on Instagram; once the server has seen it, `linked` is true and `code` null.
+ */
+export interface InstagramLink {
+  enabled: boolean;
+  handle: string | null;
+  linked: boolean;
+  linked_at: string | null;
+  code: string | null;
+  code_expires_at: string | null;
+}
+
 export type ApiErrorCode =
   | "BAD_URL"
   | "QUOTA_EXCEEDED"
@@ -177,6 +200,12 @@ export type ApiErrorCode =
   | "NOT_FOUND"
   | "UNAUTHORIZED"
   | "BILLING_UNAVAILABLE"
+  /** The server refused what was sent (422 validation, or any other 4xx with no code of its own). */
+  | "BAD_REQUEST"
+  /** 413: what was sent is too big. */
+  | "TOO_LARGE"
+  /** 500 from GET /me/export: the archive could not be built. */
+  | "EXPORT_FAILED"
   | "NETWORK"
   | "SERVER";
 
@@ -185,6 +214,8 @@ export class ApiError extends Error {
     readonly code: ApiErrorCode,
     readonly status: number,
     message?: string,
+    /** True when the call was given up for taking too long (the code is NETWORK); it is never retried automatically. */
+    readonly timeout = false,
   ) {
     super(message ?? code);
     this.name = "ApiError";
@@ -196,6 +227,8 @@ export interface LatelyApi {
   createSave(text: string): Promise<SaveResult>;
   /** GET /saves?before=<created_at>&limit=<n>&category=<name> — newest first */
   listSaves(p?: { before?: string; limit?: number; category?: Category }): Promise<Save[]>;
+  /** GET /saves/categories — one entry per category that has saves */
+  listCategories(): Promise<CategoryCount[]>;
   /** GET /saves/{id} */
   getSave(id: string): Promise<SaveDetail>;
   /** PATCH /saves/{id} {note} */
@@ -214,6 +247,8 @@ export interface LatelyApi {
   listStacks(): Promise<Stack[]>;
   /** POST /stacks {name} */
   createStack(name: string): Promise<Stack>;
+  /** PATCH /stacks/{id} {name} */
+  renameStack(id: string, name: string): Promise<Stack>;
   /** GET /stacks/{id} */
   getStack(id: string): Promise<StackDetail>;
   /** POST /stacks/{id}/saves {save_id} */
@@ -228,11 +263,15 @@ export interface LatelyApi {
   requestExport(): Promise<{ status: "queued" }>;
   /**
    * GET /me/export → 200 with the JSON file (Content-Disposition names it), 202 while it is
-   * still being built; NOT_FOUND when no export was ever requested.
+   * still being built; NOT_FOUND when no export was ever requested, EXPORT_FAILED (500) when
+   * the archive could not be built.
    */
   downloadExport(): Promise<ExportDownload>;
-  /** POST /retries/{reel_id} → 202: re-run enrichment for a partial card (it goes back to pending) */
-  retryEnrichment(reelId: string): Promise<void>;
+  /**
+   * POST /retries/{reel_id} → 202: re-run enrichment for a partial card (it goes back to pending).
+   * "running" means a worker is on it right now; an older server's empty answer reads as "queued".
+   */
+  retryEnrichment(reelId: string): Promise<{ status: "queued" | "running" }>;
   /** DELETE /me → 204: deletes the account and everything saved in it */
   deleteAccount(): Promise<void>;
   /** POST /saves/{id}/hint → 202: the device's own read of the reel (fire-and-forget after a save) */
@@ -243,6 +282,12 @@ export interface LatelyApi {
    * BILLING_UNAVAILABLE (502) when RevenueCat can't be reached.
    */
   syncPlan(): Promise<PlanSync>;
+  /** GET /me/instagram */
+  getInstagramLink(): Promise<InstagramLink>;
+  /** POST /me/instagram/code: a fresh code to send to Lately's Instagram account */
+  createInstagramCode(): Promise<InstagramLink>;
+  /** DELETE /me/instagram → 204 */
+  unlinkInstagram(): Promise<void>;
 }
 
 export type Endpoint = keyof LatelyApi;
@@ -251,6 +296,7 @@ export type Endpoint = keyof LatelyApi;
 const ENDPOINT_SET: Record<Endpoint, true> = {
   createSave: true,
   listSaves: true,
+  listCategories: true,
   getSave: true,
   setNote: true,
   deleteSave: true,
@@ -260,6 +306,7 @@ const ENDPOINT_SET: Record<Endpoint, true> = {
   search: true,
   listStacks: true,
   createStack: true,
+  renameStack: true,
   getStack: true,
   addToStack: true,
   removeFromStack: true,
@@ -271,6 +318,9 @@ const ENDPOINT_SET: Record<Endpoint, true> = {
   deleteAccount: true,
   sendHint: true,
   syncPlan: true,
+  getInstagramLink: true,
+  createInstagramCode: true,
+  unlinkInstagram: true,
 };
 
 /** Every call in the contract. */

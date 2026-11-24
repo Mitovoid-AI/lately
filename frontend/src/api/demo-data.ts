@@ -215,6 +215,7 @@ export function buildDemoSeed(now: number): DemoSeed {
       shortcode: "Mob30D3",
       status: "partial",
       media_status: "partial",
+      fail_reason: "fetch_blocked",
       note: null,
       created_at: ago(8 * DAY),
       title: null,

@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { AccessibilityInfo } from "react-native";
+import { useQueryClient, type QueryClient } from "@tanstack/react-query";
+import { useCallback, useSyncExternalStore } from "react";
 
-import { ApiError, type ExportDownload } from "../api/contract";
+import { ApiError, type ExportDownload, type LatelyApi } from "../api/contract";
 import { useApi } from "../api/index";
 import { useToast } from "../components/Toast";
 import { shareExportFile } from "../lib/exportFile";
@@ -9,106 +9,113 @@ import { haptic } from "../lib/haptics";
 
 export type ExportPhase = "idle" | "preparing" | "ready" | "sharing";
 
-/** What the row says once the file is built; also spoken, since nothing else on screen announces it. */
+/** Said once the file is built, as a toast (which is also spoken): the person may be on another screen by then. */
 const READY_TEXT = "Your archive is ready";
 
 type ReadyExport = Extract<ExportDownload, { status: "ready" }>;
 
 /**
+ * Where the export stands. It lives in the query cache, not in the screen: leaving Account and
+ * coming back finds it still preparing (or ready), and sign-out, which clears the cache, forgets
+ * it. `run` tells one export from the next, so a poll that outlived a sign-out stops.
+ */
+interface ExportState {
+  phase: ExportPhase;
+  file: ReadyExport | null;
+  run: number;
+}
+
+const KEY = ["export"];
+const IDLE: ExportState = { phase: "idle", file: null, run: 0 };
+
+const read = (client: QueryClient) => client.getQueryData<ExportState>(KEY) ?? IDLE;
+
+function write(client: QueryClient, next: ExportState) {
+  // Never garbage-collected: nothing on screen may be watching while it is prepared.
+  client.setQueryDefaults(KEY, { gcTime: Infinity });
+  client.setQueryData(KEY, next);
+}
+
+/**
+ * Polls until the JSON file is ready (giving up after a few minutes). Every step first checks
+ * that this export is still the current one.
+ */
+async function poll(
+  client: QueryClient,
+  api: LatelyApi,
+  notify: (message: string) => void,
+  run: number,
+  { pollMs, giveUpMs }: { pollMs: number; giveUpMs: number },
+) {
+  const current = () => read(client).run === run;
+  const fail = (message: string) => {
+    if (!current()) return;
+    write(client, { phase: "idle", file: null, run });
+    notify(message);
+  };
+  const until = Date.now() + giveUpMs;
+  while (current()) {
+    try {
+      const out = await api.downloadExport();
+      if (out.status === "ready") {
+        if (!current()) return;
+        write(client, { phase: "ready", file: out, run });
+        haptic.success();
+        notify(READY_TEXT);
+        return;
+      }
+    } catch (e) {
+      if (e instanceof ApiError && e.code === "EXPORT_FAILED") return fail("Couldn't build your archive. Try again.");
+      // A dropped connection is worth waiting out; anything else won't fix itself.
+      if (!(e instanceof ApiError && e.code === "NETWORK")) return fail("Couldn't prepare your archive. Try again.");
+    }
+    if (Date.now() >= until) break;
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+  fail("Your archive is taking a while. Try again in a few minutes.");
+}
+
+/**
  * The account archive, delivered in the app: ask the server to build it, poll until the JSON
- * file is ready (giving up after a few minutes), then hand it to the system share sheet.
- * `start` resolves once the export is requested; polling carries on in the background.
+ * file is ready, then hand it to the system share sheet. `start` resolves once the export is
+ * requested; polling carries on in the background, also after the screen is gone.
  */
 export function useExport({ pollMs = 3000, giveUpMs = 3 * 60_000 }: { pollMs?: number; giveUpMs?: number } = {}) {
   const api = useApi();
   const toast = useToast();
-  const [phase, setPhase] = useState<ExportPhase>("idle");
-  const file = useRef<ReadyExport | null>(null);
-  const alive = useRef(true);
-  const busy = useRef(false);
-
-  // The wait between polls; unmounting ends it at once so no timer outlives the screen.
-  const wake = useRef<{ timer: ReturnType<typeof setTimeout>; resolve: () => void } | null>(null);
-  const sleep = useCallback(
-    (ms: number) =>
-      new Promise<void>((resolve) => {
-        wake.current = { timer: setTimeout(resolve, ms), resolve };
-      }),
-    [],
-  );
-
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-      if (wake.current) {
-        clearTimeout(wake.current.timer);
-        wake.current.resolve();
-      }
-    };
-  }, []);
-
-  const finish = useCallback(
-    (next: ExportPhase, message?: string) => {
-      busy.current = false;
-      if (!alive.current) return;
-      setPhase(next);
-      if (message) toast.show(message);
-    },
-    [toast],
-  );
-
-  const poll = useCallback(async () => {
-    const until = Date.now() + giveUpMs;
-    while (alive.current) {
-      try {
-        const out = await api.downloadExport();
-        if (out.status === "ready") {
-          file.current = out;
-          haptic.success();
-          finish("ready");
-          if (alive.current) AccessibilityInfo.announceForAccessibility(READY_TEXT);
-          return;
-        }
-      } catch (e) {
-        // A dropped connection is worth waiting out; anything else won't fix itself.
-        if (!(e instanceof ApiError && e.code === "NETWORK")) {
-          finish("idle", "Couldn't prepare your archive. Try again.");
-          return;
-        }
-      }
-      if (Date.now() >= until) break;
-      await sleep(pollMs);
-    }
-    finish("idle", "Your archive is taking a while. Try again in a few minutes.");
-  }, [api, finish, sleep, pollMs, giveUpMs]);
+  const client = useQueryClient();
+  const subscribe = useCallback((onChange: () => void) => client.getQueryCache().subscribe(onChange), [client]);
+  const { phase } = useSyncExternalStore(subscribe, () => read(client), () => read(client));
 
   const start = useCallback(async () => {
-    if (busy.current) return;
-    busy.current = true;
-    setPhase("preparing");
+    const before = read(client);
+    if (before.phase === "preparing" || before.phase === "sharing") return;
+    // A new export never offers the previous file as its own.
+    const run = before.run + 1;
+    write(client, { phase: "preparing", file: null, run });
     try {
       await api.requestExport();
     } catch {
+      if (read(client).run !== run) return;
       haptic.error();
-      finish("idle", "Couldn't start the export. Try again.");
+      write(client, { phase: "idle", file: null, run });
+      toast.show("Couldn't start the export. Try again.");
       return;
     }
-    void poll();
-  }, [api, finish, poll]);
+    void poll(client, api, toast.show, run, { pollMs, giveUpMs });
+  }, [api, client, toast, pollMs, giveUpMs]);
 
   const download = useCallback(async () => {
-    const ready = file.current;
-    if (!ready || busy.current) return;
-    busy.current = true;
-    setPhase("sharing");
+    const ready = read(client);
+    if (ready.phase !== "ready" || !ready.file) return;
+    write(client, { ...ready, phase: "sharing" });
     try {
-      await shareExportFile(ready.filename, ready.json);
-      finish("ready");
+      await shareExportFile(ready.file.filename, ready.file.json);
     } catch {
-      finish("ready", "Couldn't open the share sheet. Try again.");
+      toast.show("Couldn't open the share sheet. Try again.");
     }
-  }, [finish]);
+    if (read(client).run === ready.run) write(client, ready);
+  }, [client, toast]);
 
   return { phase, start, download };
 }

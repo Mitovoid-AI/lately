@@ -6,9 +6,12 @@ import {
   DEFAULT_PREFERENCES,
   SAVE_STAGES,
   type ApiErrorCode,
+  type CategoryCount,
   type Channel,
   type CuratedFeed,
   type CuratedSection,
+  type FailReason,
+  type InstagramLink,
   type LatelyApi,
   type Me,
   type PlanSync,
@@ -21,6 +24,7 @@ import {
   type StackDetail,
 } from "./contract";
 
+// Codes the server may name in {"error": {"code": ...}}. NETWORK is the app's own (never the server's).
 const KNOWN_CODES: ApiErrorCode[] = [
   "BAD_URL",
   "QUOTA_EXCEEDED",
@@ -28,7 +32,25 @@ const KNOWN_CODES: ApiErrorCode[] = [
   "NOT_FOUND",
   "UNAUTHORIZED",
   "BILLING_UNAVAILABLE",
+  "BAD_REQUEST",
+  "TOO_LARGE",
+  "EXPORT_FAILED",
+  "SERVER",
 ];
+
+/**
+ * The code for an error answer whose body names none this app knows. A 404 is NOT_FOUND only
+ * when it is the API's own (`shaped`: the body is {"error": {"code": ...}}); a tunnel or proxy
+ * page, or FastAPI's bare {"detail": "Not Found"}, means the server could not be reached as expected.
+ */
+function codeForStatus(status: number, shaped: boolean): ApiErrorCode {
+  if (status === 404) return shaped ? "NOT_FOUND" : "SERVER";
+  if (status === 429) return "RATE_LIMITED";
+  if (status === 413) return "TOO_LARGE";
+  return status >= 400 && status < 500 ? "BAD_REQUEST" : "SERVER";
+}
+
+const FAIL_REASONS: readonly FailReason[] = ["fetch_blocked", "unavailable", "ai_unavailable", "timed_out"];
 
 type Raw = Record<string, unknown>;
 
@@ -36,6 +58,7 @@ const strOf = (raw: Raw, k: string) => (typeof raw[k] === "string" ? (raw[k] as 
 const categoryOf = (v: unknown) => CATEGORIES.find((c) => c === v) ?? null;
 /** A stage this app knows; anything else (a newer server's step, a missing field) is none. */
 const stageOf = (v: unknown): SaveStage | null => SAVE_STAGES.find((x) => x === v) ?? null;
+const failReasonOf = (v: unknown): FailReason | null => FAIL_REASONS.find((x) => x === v) ?? null;
 const listOf = (v: unknown): Raw[] => (Array.isArray(v) ? (v as Raw[]) : []);
 
 /** The backend may send a subset of the Save fields; fill the rest. */
@@ -57,6 +80,8 @@ export function toSave(raw: Raw): Save {
     channel: (str("channel") as Channel | null) ?? "app_share",
     // Only a pending save has a step; a stale value on a finished one is dropped.
     stage: status === "pending" ? stageOf(raw.stage) : null,
+    // Likewise only a partial card has a reason it could not be completed.
+    fail_reason: status === "partial" ? failReasonOf(raw.fail_reason) : null,
   };
 }
 
@@ -125,6 +150,19 @@ function toPlanSync(raw: Raw | undefined): PlanSync {
   return { plan, plan_expires_at: raw ? strOf(raw, "plan_expires_at") : null };
 }
 
+/** GET /me/instagram and POST /me/instagram/code answer the same shape; anything missing reads as off or not linked. */
+function toInstagramLink(raw: Raw | undefined): InstagramLink {
+  const str = (k: string) => (raw ? strOf(raw, k) : null);
+  return {
+    enabled: raw?.enabled === true,
+    handle: str("handle"),
+    linked: raw?.linked === true,
+    linked_at: str("linked_at"),
+    code: str("code"),
+    code_expires_at: str("code_expires_at"),
+  };
+}
+
 /** How long one call may take before it is given up as NETWORK. */
 export const DEFAULT_TIMEOUT_MS = 15_000;
 /** Saving waits a little longer: the server checks the link and quota before answering. */
@@ -155,18 +193,23 @@ export function createHttpApi(o: {
   const saveTimeoutMs = o.saveTimeoutMs ?? SAVE_TIMEOUT_MS;
 
   async function send(method: string, path: string, token: string | null, body?: unknown) {
-    const headers: Record<string, string> = { Accept: "application/json" };
+    // The phone's UTC offset in minutes east (India is 330), so the server can work in the person's day.
+    const headers: Record<string, string> = {
+      Accept: "application/json",
+      "X-Timezone-Offset": String(-new Date().getTimezoneOffset()),
+    };
     if (token) headers.Authorization = `Bearer ${token}`;
     if (body !== undefined) headers["Content-Type"] = "application/json";
-    // A request (headers and body) that takes too long is abandoned as NETWORK, so nothing
-    // waits forever on a dead connection. The race also covers a fetch that ignores `signal`.
+    // A request (headers and body) that takes too long is abandoned as NETWORK (flagged
+    // `timeout`), so nothing waits forever on a dead connection. The race also covers a fetch
+    // that ignores `signal`.
     const ms = method === "POST" && path === "/saves" ? saveTimeoutMs : timeoutMs;
     const ctrl = new AbortController();
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<never>((_, reject) => {
       timer = setTimeout(() => {
         ctrl.abort();
-        reject(new ApiError("NETWORK", 0, "The request timed out."));
+        reject(new ApiError("NETWORK", 0, "The request timed out.", true));
       }, ms);
     });
     const attempt = (async () => {
@@ -183,7 +226,7 @@ export function createHttpApi(o: {
       return await Promise.race([attempt, timeout]);
     } catch (e) {
       if (e instanceof ApiError) throw e;
-      if (ctrl.signal.aborted) throw new ApiError("NETWORK", 0, "The request timed out.");
+      if (ctrl.signal.aborted) throw new ApiError("NETWORK", 0, "The request timed out.", true);
       throw new ApiError("NETWORK", 0, e instanceof Error ? e.message : "Network request failed");
     } finally {
       clearTimeout(timer);
@@ -208,11 +251,12 @@ export function createHttpApi(o: {
     }
     if (res.ok) return { res, text, data };
     if (res.status === 401) throw new ApiError("UNAUTHORIZED", 401, "Please sign in again.");
-    const err = (data as { error?: { code?: string; message?: string } } | undefined)?.error;
+    const shape = (data as { error?: { code?: unknown; message?: string } } | null | undefined)?.error;
+    // Only {"error": {"code": ...}} is the API's own error; any other body gets a code from its status.
+    const err = shape && typeof shape === "object" && typeof shape.code === "string" ? shape : undefined;
     const code = KNOWN_CODES.find((c) => c === err?.code);
     if (code) throw new ApiError(code, res.status, err?.message);
-    if (res.status === 404) throw new ApiError("NOT_FOUND", 404, err?.message);
-    throw new ApiError("SERVER", res.status, err?.message ?? `HTTP ${res.status}`);
+    throw new ApiError(codeForStatus(res.status, !!err), res.status, err?.message ?? `HTTP ${res.status}`);
   }
 
   async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
@@ -236,6 +280,12 @@ export function createHttpApi(o: {
     createSave: (text) => request("POST", "/saves", { text, channel: "app_share" }),
     listSaves: async (p = {}) =>
       listOf(await request("GET", `/saves${query({ before: p.before, limit: p.limit, category: p.category })}`)).map(toSave),
+    // Categories this app does not know are left out, like a save's unknown category.
+    listCategories: async () =>
+      listOf(await request("GET", "/saves/categories")).flatMap((raw): CategoryCount[] => {
+        const category = categoryOf(raw.category);
+        return category ? [{ category, count: typeof raw.count === "number" ? raw.count : 0 }] : [];
+      }),
     getSave: async (id) => toDetail(await request("GET", `/saves/${seg(id)}`)),
     setNote: async (id, note) => toSave(await request("PATCH", `/saves/${seg(id)}`, { note })),
     deleteSave: (id) => call("DELETE", `/saves/${seg(id)}`),
@@ -248,6 +298,7 @@ export function createHttpApi(o: {
     search: async (q) => listOf(await request("GET", `/search${query({ q })}`)).map(toHit),
     listStacks: async () => listOf(await request("GET", "/stacks")).map(toStack),
     createStack: async (name) => toStack(await request("POST", "/stacks", { name })),
+    renameStack: async (id, name) => toStack(await request("PATCH", `/stacks/${seg(id)}`, { name })),
     getStack: async (id) => toStackDetail(await request("GET", `/stacks/${seg(id)}`)),
     addToStack: (stackId, saveId) => call("POST", `/stacks/${seg(stackId)}/saves`, { save_id: saveId }),
     removeFromStack: (stackId, saveId) => call("DELETE", `/stacks/${seg(stackId)}/saves/${seg(saveId)}`),
@@ -262,9 +313,15 @@ export function createHttpApi(o: {
       if (res.status === 202) return { status: "queued" };
       return { status: "ready", filename: filenameFrom(res.headers?.get?.("content-disposition")), json: text };
     },
-    retryEnrichment: (reelId) => call("POST", `/retries/${seg(reelId)}`),
+    retryEnrichment: async (reelId) => {
+      const raw = await request<Raw | undefined>("POST", `/retries/${seg(reelId)}`);
+      return { status: raw?.status === "running" ? "running" : "queued" };
+    },
     deleteAccount: () => call("DELETE", "/me"),
     sendHint: (saveId, hint) => call("POST", `/saves/${seg(saveId)}/hint`, hint),
     syncPlan: async () => toPlanSync(await request<Raw | undefined>("POST", "/billing/sync")),
+    getInstagramLink: async () => toInstagramLink(await request<Raw | undefined>("GET", "/me/instagram")),
+    createInstagramCode: async () => toInstagramLink(await request<Raw | undefined>("POST", "/me/instagram/code")),
+    unlinkInstagram: () => call("DELETE", "/me/instagram"),
   };
 }

@@ -196,6 +196,11 @@ test("every contract call hits its path and method", async () => {
     ["search", (a) => a.search("momo cafe"), "GET", "/search?q=momo%20cafe", undefined, { status: 200, body: [] }],
     ["listStacks", (a) => a.listStacks(), "GET", "/stacks", undefined, { status: 200, body: [] }],
     ["createStack", (a) => a.createStack("Trip"), "POST", "/stacks", { name: "Trip" }, { status: 201, body: { id: "st1", name: "Trip" } }],
+    ["renameStack", (a) => a.renameStack("st 1", "Goa"), "PATCH", "/stacks/st%201", { name: "Goa" }, { status: 200, body: { id: "st 1", name: "Goa" } }],
+    ["listCategories", (a) => a.listCategories(), "GET", "/saves/categories", undefined, { status: 200, body: [] }],
+    ["getInstagramLink", (a) => a.getInstagramLink(), "GET", "/me/instagram"],
+    ["createInstagramCode", (a) => a.createInstagramCode(), "POST", "/me/instagram/code"],
+    ["unlinkInstagram", (a) => a.unlinkInstagram(), "DELETE", "/me/instagram", undefined, { status: 204 }],
     ["getStack", (a) => a.getStack("st1"), "GET", "/stacks/st1", undefined, { status: 200, body: { id: "st1", name: "x", saves: [] } }],
     ["addToStack", (a) => a.addToStack("st1", "r1"), "POST", "/stacks/st1/saves", { save_id: "r1" }, { status: 204 }],
     ["removeFromStack", (a) => a.removeFromStack("st1", "r1"), "DELETE", "/stacks/st1/saves/r1", undefined, { status: 204 }],
@@ -300,14 +305,21 @@ function timed(fetchImpl: unknown, timeoutMs: number, saveTimeoutMs: number) {
 test("a request that takes longer than the timeout is aborted as NETWORK", async () => {
   const f = slowFetch(500);
   const e = await rejection(timed(f, 20, 1000).listSaves());
-  expect([e.code, e.status]).toEqual(["NETWORK", 0]);
+  expect([e.code, e.status, e.timeout]).toEqual(["NETWORK", 0, true]);
   expect((f.mock.calls[0][1]?.signal as AbortSignal).aborted).toBe(true);
 });
 
 test("a fetch that ignores the abort signal still times out", async () => {
   const f = jest.fn(() => new Promise<Response>(() => {}));
   const e = await rejection(timed(f, 20, 1000).getMe());
-  expect(e.code).toBe("NETWORK");
+  expect([e.code, e.timeout]).toEqual(["NETWORK", true]);
+});
+
+test("a failed fetch is NETWORK but not a timeout", async () => {
+  const f = jest.fn(async () => {
+    throw new TypeError("Network request failed");
+  });
+  expect((await rejection(timed(f, 1000, 1000).listSaves())).timeout).toBe(false);
 });
 
 test("createSave gets the longer save timeout", async () => {
@@ -385,4 +397,150 @@ describe("syncPlan (POST /billing/sync)", () => {
     const me = await setup(f).api.getMe();
     expect(me.plan_expires_at).toBe("2027-01-01T00:00:00Z");
   });
+});
+
+describe("error codes (issue #26)", () => {
+  const codeFor = async (reply: Reply) => {
+    const e = await rejection(setup(fakeFetch(reply)).api.getSave("r1"));
+    expect(e).toBeInstanceOf(ApiError);
+    return [e.code, e.status];
+  };
+
+  test("a 404 is NOT_FOUND only when it carries the API's own error shape", async () => {
+    expect(await codeFor({ status: 404, body: { error: { code: "NOT_FOUND", message: "gone" } } })).toEqual(["NOT_FOUND", 404]);
+    // An API 404 with a code this app has never heard of is still the API saying "not there".
+    expect(await codeFor({ status: 404, body: { error: { code: "SAVE_GONE" } } })).toEqual(["NOT_FOUND", 404]);
+    // FastAPI's bare route miss, a tunnel's page, an empty answer: the API was not reached as expected.
+    expect(await codeFor({ status: 404, body: { detail: "Not Found" } })).toEqual(["SERVER", 404]);
+    expect(await codeFor({ status: 404, raw: "<html>Tunnel not found</html>" })).toEqual(["SERVER", 404]);
+    expect(await codeFor({ status: 404 })).toEqual(["SERVER", 404]);
+    expect(await codeFor({ status: 404, body: { error: "not found" } })).toEqual(["SERVER", 404]);
+  });
+
+  test("without a known code, the status decides", async () => {
+    expect(await codeFor({ status: 422, body: { detail: [{ loc: ["body", "name"], msg: "too long" }] } })).toEqual(["BAD_REQUEST", 422]);
+    expect(await codeFor({ status: 400, body: { error: { code: "WHATEVER" } } })).toEqual(["BAD_REQUEST", 400]);
+    expect(await codeFor({ status: 403, raw: "Forbidden" })).toEqual(["BAD_REQUEST", 403]);
+    expect(await codeFor({ status: 413, raw: "Request Entity Too Large" })).toEqual(["TOO_LARGE", 413]);
+    expect(await codeFor({ status: 429, body: { detail: "slow down" } })).toEqual(["RATE_LIMITED", 429]);
+    expect(await codeFor({ status: 503, raw: "Service Unavailable" })).toEqual(["SERVER", 503]);
+    expect(await codeFor({ status: 500, body: { error: { code: "BOOM" } } })).toEqual(["SERVER", 500]);
+  });
+
+  test("a code the app knows wins over the status", async () => {
+    expect(await codeFor({ status: 400, body: { error: { code: "TOO_LARGE" } } })).toEqual(["TOO_LARGE", 400]);
+    expect(await codeFor({ status: 422, body: { error: { code: "BAD_REQUEST", message: "Name too long." } } })).toEqual(["BAD_REQUEST", 422]);
+    expect(await codeFor({ status: 429, body: { error: { code: "QUOTA_EXCEEDED" } } })).toEqual(["QUOTA_EXCEEDED", 429]);
+  });
+
+  test("a 401 after the refresh is UNAUTHORIZED whatever its body", async () => {
+    const f = fakeFetch({ status: 401, raw: "nope" }, { status: 401, body: { detail: "Not authenticated" } });
+    expect((await rejection(setup(f).api.getSave("r1"))).code).toBe("UNAUTHORIZED");
+  });
+
+  test("downloadExport surfaces a failed archive as EXPORT_FAILED", async () => {
+    const f = fakeFetch({ status: 500, body: { error: { code: "EXPORT_FAILED", message: "The export could not be built." } } });
+    const e = await rejection(setup(f).api.downloadExport());
+    expect([e.code, e.status, e.message]).toEqual(["EXPORT_FAILED", 500, "The export could not be built."]);
+  });
+});
+
+test("every request says the phone's UTC offset in minutes east", async () => {
+  const offset = jest.spyOn(Date.prototype, "getTimezoneOffset").mockReturnValue(-330);
+  try {
+    const f = fakeFetch({ status: 200, body: [] }, { status: 201, body: { id: "st1", name: "x" } }, { status: 204 });
+    const { api } = setup(f);
+    await api.listSaves();
+    await api.createStack("x");
+    await api.deleteStack("st1");
+    expect([0, 1, 2].map((i) => headersOf(f, i)["X-Timezone-Offset"])).toEqual(["330", "330", "330"]);
+    offset.mockReturnValue(300); // US Eastern: five hours behind UTC
+    await api.getMe();
+    expect(headersOf(f, 3)["X-Timezone-Offset"]).toBe("-300");
+  } finally {
+    offset.mockRestore();
+  }
+});
+
+test("retryEnrichment says whether a worker is already on it", async () => {
+  const f = fakeFetch(
+    { status: 202, body: { status: "queued" } },
+    { status: 202, body: { status: "running" } },
+    { status: 202 },
+    { status: 202, body: { status: "exploded" } },
+  );
+  const { api } = setup(f);
+  expect(await api.retryEnrichment("r1")).toEqual({ status: "queued" });
+  expect(await api.retryEnrichment("r1")).toEqual({ status: "running" });
+  // An older server's empty answer, or a status this app does not know, reads as queued.
+  expect(await api.retryEnrichment("r1")).toEqual({ status: "queued" });
+  expect(await api.retryEnrichment("r1")).toEqual({ status: "queued" });
+});
+
+test("listCategories keeps the categories this app knows", async () => {
+  const f = fakeFetch({
+    status: 200,
+    body: [
+      { category: "Fitness", count: 3 },
+      { category: "Travel", count: 9 },
+      { category: "Food & Places", count: "2" },
+      { category: "Dev & Tools", count: 1 },
+    ],
+  });
+  expect(await setup(f).api.listCategories()).toEqual([
+    { category: "Fitness", count: 3 },
+    { category: "Food & Places", count: 0 },
+    { category: "Dev & Tools", count: 1 },
+  ]);
+});
+
+test("renameStack returns the renamed stack", async () => {
+  const f = fakeFetch({ status: 200, body: { id: "st1", name: "Goa trip", save_count: 2, updated_at: "2026-11-01T00:00:00Z" } });
+  expect(await setup(f).api.renameStack("st1", "Goa trip")).toMatchObject({ id: "st1", name: "Goa trip", save_count: 2 });
+});
+
+test("a 422 on renameStack is BAD_REQUEST", async () => {
+  const f = fakeFetch({ status: 422, body: { error: { code: "BAD_REQUEST", message: "Name too long." } } });
+  expect((await rejection(setup(f).api.renameStack("st1", "x".repeat(200)))).code).toBe("BAD_REQUEST");
+});
+
+describe("Instagram link", () => {
+  const LINK = {
+    enabled: true,
+    handle: "lately.app",
+    linked: false,
+    linked_at: null,
+    code: "LATELY-7K2QXM",
+    code_expires_at: "2026-11-24T10:15:00Z",
+  };
+
+  test("getInstagramLink and createInstagramCode map the link", async () => {
+    const linked = { ...LINK, linked: true, linked_at: "2026-11-24T10:02:00Z", code: null, code_expires_at: null };
+    const f = fakeFetch({ status: 201, body: LINK }, { status: 200, body: linked });
+    const { api } = setup(f);
+    expect(await api.createInstagramCode()).toEqual(LINK);
+    expect(await api.getInstagramLink()).toEqual(linked);
+  });
+
+  test("missing fields read as off and not linked", async () => {
+    const f = fakeFetch({ status: 200, body: { handle: 7, linked: "yes" } }, { status: 200, raw: "" });
+    const { api } = setup(f);
+    const none = { enabled: false, handle: null, linked: false, linked_at: null, code: null, code_expires_at: null };
+    expect(await api.getInstagramLink()).toEqual(none);
+    expect(await api.getInstagramLink()).toEqual(none);
+  });
+
+  test("unlinkInstagram sends DELETE and resolves on 204", async () => {
+    const f = fakeFetch({ status: 204 });
+    await expect(setup(f).api.unlinkInstagram()).resolves.toBeUndefined();
+    expect(callOf(f)).toEqual({ url: "http://api.test/me/instagram", method: "DELETE", body: undefined });
+  });
+});
+
+test("toSave keeps the fail reason of a partial card and nothing else", () => {
+  const base = { id: "r1", source_url: "u", note: null, created_at: "2026-10-04T00:00:00Z" };
+  expect(toSave({ ...base, status: "partial", fail_reason: "fetch_blocked" }).fail_reason).toBe("fetch_blocked");
+  expect(toSave({ ...base, status: "partial", fail_reason: "cosmic_rays" }).fail_reason).toBeNull();
+  expect(toSave({ ...base, status: "partial" }).fail_reason).toBeNull();
+  expect(toSave({ ...base, status: "enriched", fail_reason: "timed_out" }).fail_reason).toBeNull();
 });

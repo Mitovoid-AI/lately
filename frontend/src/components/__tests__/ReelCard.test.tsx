@@ -6,7 +6,7 @@ import { relativeShort } from "../../lib/dates";
 import { displayLink } from "../../lib/instagram";
 import { stageLabel } from "../../lib/saveOutcome";
 import { NOW } from "../../test/fixtures";
-import { cardTitle, PENDING_TITLE, ReelCard } from "../ReelCard";
+import { cardTitle, PENDING_TITLE, ReelCard, STALE_ACTION, STALE_LABEL } from "../ReelCard";
 
 const seed = buildDemoSeed(NOW).saves;
 const byId = (id: string): Save => seed.find((s) => s.id === id)!;
@@ -89,4 +89,37 @@ test("an enriched tile shows its title once, on the image", async () => {
   const save = byId("s-momo");
   await render(<ReelCard save={save} now={NOW} onPress={() => {}} />);
   expect(screen.getAllByText(cardTitle(save))).toHaveLength(1);
+});
+
+describe("a card that never finished", () => {
+  const MIN = 60_000;
+  // Its own id: the stale clock counts from a retry in this session, which other tests may make.
+  const stuck = (minutes: number): Save => ({
+    ...byId("s-pending"),
+    id: `s-stuck-${minutes}`,
+    created_at: new Date(NOW - minutes * MIN).toISOString(),
+  });
+
+  test("past the waiting time it stops loading and says Didn't finish, with Tap to retry", async () => {
+    const onPress = jest.fn();
+    await render(<ReelCard save={stuck(11)} now={NOW} onPress={onPress} />);
+    expect(STALE_LABEL).toBe("Didn't finish");
+    expect(screen.getByText("Didn't finish")).toBeTruthy();
+    expect(screen.getByText(STALE_ACTION)).toBeTruthy();
+    expect(screen.queryByText("Getting details")).toBeNull();
+    const card = screen.getByRole("button");
+    expect(card.props.accessibilityLabel).toContain("Didn't finish");
+    expect(card.props.accessibilityHint).toBe("Opens the card, where you can try again");
+    // Tapping it opens the card, where Try again is.
+    await fireEvent.press(screen.getByText(STALE_ACTION));
+    expect(onPress).toHaveBeenCalledTimes(1);
+  });
+
+  test("within the usual time it is still a loading tile", async () => {
+    await render(<ReelCard save={stuck(5)} now={NOW} onPress={() => {}} />);
+    expect(screen.getByText("Getting details")).toBeTruthy();
+    expect(screen.queryByText("Didn't finish")).toBeNull();
+    expect(screen.queryByText(STALE_ACTION)).toBeNull();
+    expect(screen.getByRole("button").props.accessibilityHint).toBeUndefined();
+  });
 });

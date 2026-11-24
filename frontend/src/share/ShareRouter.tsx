@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useRef, useState, type ReactNode 
 
 import { useAuth } from "../auth/AuthProvider";
 import { deviceStore, type KeyValueStore } from "../lib/storage";
+import { FROM_SHARE } from "./returnToSharer";
 
 /** Where a shared link waits while the person signs in (it survives an app restart). */
 export const PENDING_SHARE_KEY = "lately.pending-share";
@@ -37,6 +38,10 @@ export function ShareRouter({
   const navReady = !!useRootNavigationState()?.key;
   const [pending, setPending] = useState<string | null>(null);
   const routed = useRef<string | null>(null);
+  // The share that just came in from another app, while the person was signed in: closing its
+  // sheet goes back to that app. One kept from before a restart, or one that waited for a
+  // sign-in (an email link may have brought the person back from their mail app), does not.
+  const live = useRef<string | null>(null);
 
   // A share kept from before a restart (e.g. the OAuth round trip relaunched the app).
   useEffect(() => {
@@ -66,6 +71,7 @@ export function ShareRouter({
     onConsumed();
     if (!text) return;
     routed.current = null;
+    live.current = text;
     store
       .setItem(PENDING_SHARE_KEY, text)
       .catch(() => {})
@@ -74,9 +80,11 @@ export function ShareRouter({
 
   // Signed in and the navigator is up: open the save sheet once per share.
   useEffect(() => {
+    if (pending && status === "signed-out") live.current = null;
     if (!pending || status !== "signed-in" || !navReady || routed.current === pending) return;
     routed.current = pending;
-    router.push({ pathname: "/save-sheet", params: { text: pending } });
+    const fromShare = live.current === pending;
+    router.push({ pathname: "/save-sheet", params: fromShare ? { text: pending, from: FROM_SHARE } : { text: pending } });
     store
       .setItem(PENDING_SHARE_KEY, "")
       .catch(() => {})

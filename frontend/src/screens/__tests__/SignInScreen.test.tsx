@@ -1,4 +1,4 @@
-import { fireEvent, screen } from "@testing-library/react-native";
+import { act, fireEvent, screen } from "@testing-library/react-native";
 
 import { AuthFlowError } from "../../auth/AuthProvider";
 import { PendingShareContext } from "../../share/ShareRouter";
@@ -55,6 +55,26 @@ test("live mode: a double tap on Google opens one sign-in", async () => {
   await fireEvent.press(screen.getByText("Continue with Google"));
   await fireEvent.press(screen.getByText("Continue with Google"));
   expect(signInWithGoogle).toHaveBeenCalledTimes(1);
+});
+
+test("live mode: Google shows it is working from the tap, and the button takes no more taps", async () => {
+  let fail = (_e: Error) => {};
+  const signInWithGoogle = jest.fn(() => new Promise<void>((_resolve, reject) => (fail = reject)));
+  await renderWithProviders(<SignInScreen />, { auth: { status: "signed-out", mode: "live", signInWithGoogle } });
+  const button = screen.getByRole("button", { name: "Continue with Google" });
+  expect(button.props.accessibilityState).toMatchObject({ busy: false, disabled: false });
+  await fireEvent.press(button);
+  expect(screen.getByRole("button", { name: "Continue with Google" }).props.accessibilityState).toMatchObject({
+    busy: true,
+    disabled: true,
+  });
+  // A failure shows the usual message and gives the button back.
+  await act(async () => fail(new AuthFlowError("network")));
+  expect(screen.getByText("Couldn't reach the sign-in service. Check your connection.")).toBeTruthy();
+  expect(screen.getByRole("button", { name: "Continue with Google" }).props.accessibilityState).toMatchObject({
+    busy: false,
+    disabled: false,
+  });
 });
 
 test("live mode: Google can be tried again after it fails", async () => {

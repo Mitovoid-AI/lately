@@ -1,10 +1,12 @@
 import { ApiError, type ApiErrorCode, type ReelStatus, type SaveResult, type SaveStage } from "../api/contract";
+import { readInstagramLink } from "./instagram";
 
 /** What the save sheet shows after POST /saves (one state per API outcome). */
 export type SaveOutcome =
   | { kind: "saved"; reelId: string }
   | { kind: "deduped"; reelId: string }
-  | { kind: "bad_url" }
+  /** No link Lately saves; `notReel` when there is an Instagram link, but to a profile, story or the like. */
+  | { kind: "bad_url"; notReel?: boolean }
   | { kind: "quota" }
   | { kind: "rate_limited" }
   | { kind: "network" }
@@ -28,6 +30,14 @@ export const QUEUED_BODY: Record<QueueReason, string> = {
 
 export function outcomeFromResult(r: SaveResult): SaveOutcome {
   return r.deduped ? { kind: "deduped", reelId: r.reel_id } : { kind: "saved", reelId: r.reel_id };
+}
+
+/** The server's own words (BAD_URL) for an Instagram link that isn't a reel or post. */
+export const NOT_REEL_MESSAGE = "That link isn't a reel or post.";
+
+/** A text the server refused (or, offline, would refuse) as a link: says whether it was an Instagram page that isn't a reel or post. */
+export function badLinkOutcome(text: string): Extract<SaveOutcome, { kind: "bad_url" }> {
+  return { kind: "bad_url", notReel: readInstagramLink(text)?.kind === "not_reel" };
 }
 
 export function outcomeFromError(e: unknown): SaveOutcome {
@@ -55,7 +65,7 @@ export interface TrackerStep {
 const STEPS = [
   { key: "reel", doing: "Getting the reel", done: "Got the reel" },
   { key: "listen", doing: "Listening to it", done: "Listened to it" },
-  { key: "find", doing: "Finding places and steps", done: "Found places and steps" },
+  { key: "find", doing: "Finding places and tips", done: "Found places and tips" },
   { key: "ready", doing: "Card ready", done: "Card ready" },
 ] as const;
 
@@ -75,7 +85,7 @@ export const STAGE_FALLBACK = "Getting details";
 /**
  * What the enrich job is doing right now, in the tracker's own words. Home's pending tile and the
  * card detail use this so every place says the same thing: Getting the reel, Listening to it,
- * Finding places and steps. With no stage it is "Getting details".
+ * Finding places and tips. With no stage it is "Getting details".
  */
 export function stageLabel(stage: SaveStage | null | undefined): string {
   if (!stage || !(stage in STAGE_STEP)) return STAGE_FALLBACK;

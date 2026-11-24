@@ -1,13 +1,12 @@
 import FontAwesome from "@expo/vector-icons/FontAwesome";
-import Constants from "expo-constants";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import { ActivityIndicator, Text, View } from "react-native";
+import { ActivityIndicator, Linking, Switch, Text, View } from "react-native";
 import Animated, { FadeIn, useAnimatedScrollHandler, useSharedValue } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import type { ConnectedAccount, Me, Preferences } from "../api/contract";
+import { ApiError, type ConnectedAccount, type Me, type Preferences } from "../api/contract";
 import { useApi } from "../api/index";
 import { useAuth } from "../auth/AuthProvider";
 import { useBilling } from "../billing/BillingProvider";
@@ -19,23 +18,29 @@ import { Icon, type IconName } from "../components/Icon";
 import { IconButton } from "../components/motion/IconButton";
 import { PressableScale } from "../components/motion/PressableScale";
 import { Reveal } from "../components/motion/Reveal";
+import { appVersionLabel, reportProblemUrl, supportEmail } from "../components/settings/about";
 import { OptionCard } from "../components/settings/OptionCard";
 import { PlanSection } from "../components/settings/PlanSection";
 import { SettingsRow, SettingsSection } from "../components/settings/SettingsSection";
 import { TextSizeControl } from "../components/settings/TextSizeControl";
+import { useInstagramLink } from "../components/settings/useInstagramLink";
 import { Skeleton, SkeletonGroup } from "../components/Skeleton";
 import { IMAGE_FADE } from "../components/Thumb";
 import { useToast } from "../components/Toast";
 import { useExport, type ExportPhase } from "../hooks/useExport";
 import { usePreferences } from "../hooks/usePreferences";
+import { useSaveQueue } from "../hooks/useSaveQueue";
 import { useMe } from "../hooks/useSaves";
 import { countOf } from "../lib/counts";
 import { monthYear } from "../lib/dates";
 import { forgetDeviceData } from "../lib/deviceData";
+import { setDevicePref, useDevicePrefs } from "../lib/devicePrefs";
 import { haptic } from "../lib/haptics";
 import { goBack } from "../lib/navigation";
 import { DURATION } from "../theme/motion";
 import { useTheme } from "../theme/ThemeProvider";
+import { checkForUpdatesNow } from "../updates/offer";
+import { updateSource } from "../updates/release";
 
 const SIZES: { size: Preferences["text_size"]; name: string }[] = [
   { size: 14, name: "Small" },
@@ -64,11 +69,22 @@ function subscriptionNote(plan: Me["plan"] | undefined, storeSaysPro: boolean, c
   return "";
 }
 
-const PROVIDER_NAME: Record<ConnectedAccount["provider"], string> = {
-  instagram: "Instagram",
+type SignInProvider = Exclude<ConnectedAccount["provider"], "instagram">;
+
+// Instagram is never a way to sign in: its connection has its own row (Connected accounts).
+const PROVIDER_NAME: Record<SignInProvider, string> = {
   google: "Google",
   email: "Email",
 };
+
+const isSignIn = (a: ConnectedAccount): a is ConnectedAccount & { provider: SignInProvider } => a.provider !== "instagram";
+
+/** "2 links haven't been sent yet. Signing out deletes them." */
+function unsentNote(n: number): string {
+  return n === 1
+    ? "1 link hasn't been sent yet. Signing out deletes it."
+    : `${n} links haven't been sent yet. Signing out deletes them.`;
+}
 
 /** A static fact about the account: fill only, no border, so it doesn't read as a button. */
 function InfoChip({ icon, text }: { icon: IconName; text: string }) {
@@ -77,6 +93,30 @@ function InfoChip({ icon, text }: { icon: IconName; text: string }) {
     <View className="min-h-8 flex-row items-center rounded-full bg-raised px-3 py-1">
       <Icon name={icon} size={16} color={colors.ink2} />
       <Text className="ml-1.5 font-sans-medium text-meta text-ink">{text}</Text>
+    </View>
+  );
+}
+
+/**
+ * Reading and appearance before the account's own settings are in: a quiet placeholder, or what
+ * failed and a retry. Never the defaults shown as if chosen (one tap would save them).
+ */
+function PreferencesPending({ failed, onRetry, retrying }: { failed: boolean; onRetry: () => void; retrying: boolean }) {
+  if (!failed) {
+    return (
+      <SkeletonGroup label="Loading your settings" style={{ gap: 12 }}>
+        <Skeleton style={{ width: 140, height: 16, borderRadius: 8 }} />
+        <Skeleton style={{ height: 80, borderRadius: 12 }} />
+        <Skeleton style={{ height: 80, borderRadius: 12 }} />
+      </SkeletonGroup>
+    );
+  }
+  return (
+    <View>
+      <Text accessibilityLiveRegion="polite" className="font-sans text-body text-ink-2">
+        {"Couldn't load your reading and theme settings. Check your connection and try again."}
+      </Text>
+      <Button title="Try again" variant="secondary" onPress={onRetry} loading={retrying} className="mt-3" />
     </View>
   );
 }
@@ -91,7 +131,11 @@ export function AccountScreen() {
   const meQuery = useMe();
   const me = meQuery.data;
   const billing = useBilling();
-  const { prefs, update } = usePreferences();
+  const { prefs, update, loaded: prefsLoaded, failed: prefsFailed, retry: retryPrefs, retrying: retryingPrefs } = usePreferences();
+  const device = useDevicePrefs();
+  const queue = useSaveQueue();
+  const instagram = useInstagramLink().data;
+  const testBuild = updateSource();
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler({ onScroll: (e) => scrollY.set(e.contentOffset.y) });
 
@@ -102,9 +146,11 @@ export function AccountScreen() {
   const identity = [handle ? `@${handle}` : "", email].filter(Boolean).join(" · ");
   const avatar = (live ? auth.user?.avatarUrl : me?.avatar_url) ?? null;
   const sizeName = SIZES.find((s) => s.size === prefs.text_size)?.name ?? "Default";
-  const version = Constants.expoConfig?.version ?? "1.0.0";
   // Signed in with Google or email, the name is already known; only the demo waits on /me for it.
   const profileLoading = meQuery.isPending && !name;
+  // The Instagram connection is listed only while the server offers it (hidden when off or unanswered).
+  const dm = instagram?.enabled && instagram.handle ? instagram : null;
+  const chevron = <Icon name="chevron-right" size={20} color={colors.ink2} />;
 
   const archive = useExport();
   function onArchivePress() {
@@ -120,7 +166,12 @@ export function AccountScreen() {
     if (deletingAccount) return;
     setDeletingAccount(true);
     try {
-      await api.deleteAccount();
+      try {
+        await api.deleteAccount();
+      } catch (e) {
+        // Not found: an earlier try deleted it and only its reply was lost. That is done, not failed.
+        if (!(e instanceof ApiError && e.code === "NOT_FOUND")) throw e;
+      }
       haptic.medium();
       setDeleteStep(0);
       await forgetDeviceData(auth.user?.id);
@@ -131,6 +182,44 @@ export function AccountScreen() {
       toast.show("Couldn't delete your account. Try again.");
     } finally {
       setDeletingAccount(false);
+    }
+  }
+
+  // Links saved offline and not sent yet live only on this phone: signing out deletes them, so ask first.
+  const unsent = queue.queued.length;
+  const [askSignOut, setAskSignOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  async function signOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await forgetDeviceData(auth.user?.id);
+      await auth.signOut();
+    } catch {
+      toast.show("Couldn't sign out. Try again.");
+    } finally {
+      setSigningOut(false);
+      setAskSignOut(false);
+    }
+  }
+
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
+  async function checkUpdates() {
+    if (checkingUpdates) return;
+    setCheckingUpdates(true);
+    const result = await checkForUpdatesNow();
+    setCheckingUpdates(false);
+    // "offered" opens the update dialog itself.
+    if (result === "current") toast.show("You're on the newest build");
+    else if (result === "failed") toast.show("Couldn't check for updates. Try again.");
+  }
+
+  async function reportProblem() {
+    try {
+      await Linking.openURL(reportProblemUrl());
+    } catch {
+      const email = supportEmail();
+      toast.show(email ? `Couldn't open your email app. Write to ${email}.` : "Couldn't open the page. Try again.");
     }
   }
 
@@ -215,7 +304,15 @@ export function AccountScreen() {
           ) : null}
 
           <Reveal index={2}>
-            <SettingsSection icon="menu-book" title="Reading and appearance">
+            <SettingsSection
+              icon="menu-book"
+              title="Reading and appearance"
+              placeholder={
+                prefsLoaded ? undefined : (
+                  <PreferencesPending failed={prefsFailed} onRetry={() => void retryPrefs()} retrying={retryingPrefs} />
+                )
+              }
+            >
               <Text className="font-sans-semibold text-body text-ink">Reading font</Text>
               <Text className="font-sans text-meta text-ink-2">Serif or sans-serif for summaries and notes</Text>
               <View className="mt-3 flex-row gap-2">
@@ -289,25 +386,98 @@ export function AccountScreen() {
             </SettingsSection>
           </Reveal>
 
+          {/* Kept on this phone only (devicePrefs): they work signed in or not and never wait on the server. */}
           <Reveal index={3}>
+            <SettingsSection icon="bookmark-border" title="Saving">
+              <Text className="font-sans-semibold text-body text-ink">After sharing a reel</Text>
+              <Text className="font-sans text-meta text-ink-2">What happens once Lately has saved it</Text>
+              <View className="mt-3 flex-row gap-2">
+                {(
+                  [
+                    { value: "ask", icon: "edit-note", title: "Ask for a note", label: "Add why you saved it" },
+                    { value: "return", icon: "ios-share", title: "Save and go back", label: "Returns right away" },
+                  ] as const
+                ).map((o) => (
+                  <OptionCard
+                    key={o.value}
+                    check
+                    selected={device.afterShare === o.value}
+                    onPress={() => void setDevicePref("afterShare", o.value)}
+                    top={
+                      <View>
+                        <Icon name={o.icon} size={20} color={device.afterShare === o.value ? colors.accentText : colors.ink2} />
+                        <Text className="mt-2 font-sans-medium text-body text-ink">{o.title}</Text>
+                      </View>
+                    }
+                    label={o.label}
+                  />
+                ))}
+              </View>
+
+              <View className="mt-6 flex-row items-center">
+                <View className="mr-3 flex-1">
+                  <Text className="font-sans-semibold text-body text-ink">Vibration</Text>
+                  <Text className="font-sans text-meta text-ink-2">A light buzz when you save, pick or delete</Text>
+                </View>
+                <Switch
+                  accessibilityLabel="Vibration"
+                  value={device.haptics}
+                  onValueChange={(on) => {
+                    void setDevicePref("haptics", on);
+                    // Turned on: the first buzz says it works (setDevicePref applies at once).
+                    haptic.light();
+                  }}
+                  trackColor={{ false: colors.control, true: colors.accent }}
+                  thumbColor={device.haptics ? colors.onAccent : colors.card}
+                  ios_backgroundColor={colors.control}
+                />
+              </View>
+            </SettingsSection>
+          </Reveal>
+
+          {dm ? (
+            <Reveal index={4}>
+              <SettingsSection icon="link" title="Connected accounts">
+                <SettingsRow
+                  icon="instagram"
+                  title="Save from Instagram DMs"
+                  subtitle={dm.linked ? `Connected. Send reels to @${dm.handle}` : `Send reels to @${dm.handle} on Instagram to save them`}
+                  onPress={() => router.push("/instagram")}
+                  right={chevron}
+                />
+              </SettingsSection>
+            </Reveal>
+          ) : null}
+
+          <Reveal index={5}>
             <SettingsSection icon="shield" title="Sign-in and data">
               <SettingsRow icon="link" title="Sign-in methods" subtitle="How you sign in to Lately">
                 <View className="ml-14 mt-3 gap-2">
-                  {(me?.connected_accounts ?? []).map((a) => (
-                    <View key={a.provider} className="min-h-11 flex-row items-center rounded-xl bg-raised px-3 py-2">
-                      {a.provider === "instagram" ? (
-                        <FontAwesome name="instagram" size={16} color={colors.ink2} />
-                      ) : a.provider === "google" ? (
-                        <FontAwesome name="google" size={15} color={colors.ink2} />
-                      ) : (
-                        <Icon name="mail-outline" size={16} color={colors.ink2} />
-                      )}
-                      {/* No status word: nothing here checks one (the server's "secured" is not a verification). */}
-                      <Text numberOfLines={1} className="ml-2 flex-1 font-sans-medium text-meta text-ink">
-                        {`${PROVIDER_NAME[a.provider]} (${a.label})`}
-                      </Text>
+                  {me ? (
+                    me.connected_accounts.filter(isSignIn).map((a) => (
+                      <View key={a.provider} className="min-h-11 flex-row items-center rounded-xl bg-raised px-3 py-2">
+                        {a.provider === "google" ? (
+                          <FontAwesome name="google" size={15} color={colors.ink2} />
+                        ) : (
+                          <Icon name="mail-outline" size={16} color={colors.ink2} />
+                        )}
+                        {/* No status word: nothing here checks one (the server's "secured" is not a verification). */}
+                        <Text numberOfLines={1} className="ml-2 flex-1 font-sans-medium text-meta text-ink">
+                          {`${PROVIDER_NAME[a.provider]} (${a.label})`}
+                        </Text>
+                      </View>
+                    ))
+                  ) : meQuery.isError ? (
+                    // The plan's error above has the one Try again: both come from the same profile request.
+                    <View className="min-h-11 flex-row items-center rounded-xl bg-raised px-3 py-2">
+                      <Icon name="cloud-off" size={16} color={colors.ink2} />
+                      <Text className="ml-2 flex-1 font-sans text-meta text-ink-2">{"Couldn't load these"}</Text>
                     </View>
-                  ))}
+                  ) : (
+                    <SkeletonGroup label="Loading your sign-in methods">
+                      <Skeleton style={{ height: 44, borderRadius: 12 }} />
+                    </SkeletonGroup>
+                  )}
                 </View>
               </SettingsRow>
               <SettingsRow
@@ -331,7 +501,40 @@ export function AccountScreen() {
 
           {/* Weekly digest and offline reading aren't built, so they aren't listed: no "Coming soon" rows, no dead switches. */}
 
-          <Reveal index={4}>
+          <Reveal index={6}>
+            <SettingsSection icon="info-outline" title="Help">
+              <SettingsRow
+                icon="ios-share"
+                title="How to save from Instagram"
+                subtitle="Share a reel to Lately, or paste its link"
+                onPress={() => router.push("/help")}
+                right={chevron}
+              />
+              <SettingsRow
+                icon="mail-outline"
+                title="Report a problem"
+                subtitle={supportEmail() ? "Email the Lately team" : "Tell us on Lately's GitHub page"}
+                onPress={() => void reportProblem()}
+                right={<Icon name="open-in-new" size={20} color={colors.ink2} />}
+                divider
+              />
+              {/* Test APKs only: the Play build is updated by the Play Store, never by Lately itself. */}
+              {testBuild ? (
+                <SettingsRow
+                  icon="refresh"
+                  title="Check for updates"
+                  subtitle={`You're on test build ${testBuild.installedBuild}`}
+                  onPress={() => void checkUpdates()}
+                  right={
+                    checkingUpdates ? <ActivityIndicator color={colors.ink2} accessibilityLabel="Checking for updates" /> : chevron
+                  }
+                  divider
+                />
+              ) : null}
+            </SettingsSection>
+          </Reveal>
+
+          <Reveal index={7}>
             <SettingsSection icon="gavel" title="Legal">
               <SettingsRow
                 icon="privacy-tip"
@@ -348,20 +551,26 @@ export function AccountScreen() {
                 right={<Icon name="chevron-right" size={20} color={colors.ink2} />}
                 divider
               />
+              <SettingsRow
+                icon="description"
+                title="Open-source licenses"
+                subtitle="The fonts and libraries Lately is built with"
+                onPress={() => router.push("/licenses")}
+                right={chevron}
+                divider
+              />
             </SettingsSection>
           </Reveal>
 
-          <Reveal index={5}>
+          <Reveal index={8}>
             {/* Signing out is routine and undoable: a plain secondary button. Deleting is the one danger action. */}
             <Button
               title="Sign out"
               variant="secondary"
               icon="logout"
               className="mt-8"
-              onPress={async () => {
-                await forgetDeviceData(auth.user?.id);
-                await auth.signOut();
-              }}
+              loading={signingOut && !askSignOut}
+              onPress={() => (unsent > 0 ? setAskSignOut(true) : void signOut())}
             />
 
             <PressableScale
@@ -378,7 +587,9 @@ export function AccountScreen() {
 
             <View className="mt-8 items-center">
               <Image source={LOGO} style={{ width: 28, height: 28, borderRadius: 8 }} />
-              <Text className="mt-2 font-sans text-meta text-ink-2">{`Lately v${version}`}</Text>
+              <Text selectable className="mt-2 font-sans text-meta text-ink-2">
+                {appVersionLabel()}
+              </Text>
             </View>
           </Reveal>
         </View>
@@ -393,8 +604,12 @@ export function AccountScreen() {
           label: "Download my archive first",
           onPress: () => {
             setDeleteStep(0);
-            if (archive.phase === "idle") void archive.start();
-            else if (archive.phase === "ready") void archive.download();
+            // The share sheet answers a ready archive; anything else gets a word, since its row may be off screen.
+            if (archive.phase === "ready") void archive.download();
+            else {
+              if (archive.phase === "idle") void archive.start();
+              toast.show("Preparing your archive…");
+            }
           },
         }}
         onConfirm={() => setDeleteStep(2)}
@@ -408,6 +623,15 @@ export function AccountScreen() {
         busy={deletingAccount}
         onConfirm={deleteAccount}
         onCancel={() => setDeleteStep(0)}
+      />
+      <ConfirmDialog
+        visible={askSignOut}
+        title="Sign out?"
+        message={unsentNote(unsent)}
+        confirmLabel="Sign out"
+        busy={signingOut}
+        onConfirm={() => void signOut()}
+        onCancel={() => setAskSignOut(false)}
       />
     </View>
   );

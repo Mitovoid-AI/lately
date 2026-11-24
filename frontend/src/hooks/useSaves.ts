@@ -27,6 +27,16 @@ export function markRetried(id: string, at = Date.now()) {
   retriedAt.set(id, at);
 }
 
+// Saves whose retries ran out today (the server allows 3 a day): their Try again stays off for
+// the rest of this session.
+const retryCapped = new Set<string>();
+
+export function markRetryCapped(id: string) {
+  retryCapped.add(id);
+}
+
+export const isRetryCapped = (id: string) => retryCapped.has(id);
+
 function pendingAge(s: PendingInfo, now: number): number {
   const since = Math.max(Date.parse(s.created_at) || 0, retriedAt.get(s.id) ?? 0);
   return now - since;
@@ -35,6 +45,15 @@ function pendingAge(s: PendingInfo, now: number): number {
 /** A pending save that has been processing long enough that its job probably died. */
 export const isStalePending = (s: PendingInfo, now = Date.now()) =>
   s.status === "pending" && pendingAge(s, now) > STALE_PENDING_MS;
+
+/**
+ * A save another try could still help: a partial card (not one whose reel is private or gone,
+ * where retrying cannot help) or one stuck processing, and not one whose retries ran out today.
+ * A pending save still within the usual time is not one of these.
+ */
+export const needsRetry = (s: PendingInfo & Pick<Save, "fail_reason">, now = Date.now()) =>
+  !isRetryCapped(s.id) &&
+  ((s.status === "partial" && s.fail_reason !== "unavailable") || isStalePending(s, now));
 
 /**
  * A refetchInterval for any query whose data holds saves: every 4 s while a pending save is
@@ -84,6 +103,18 @@ export function useSaves(category?: Category) {
     refetch: q.refetch,
     isRefetching: q.isRefetching && !q.isFetchingNextPage,
   };
+}
+
+/**
+ * The person's categories, most used first (GET /saves/categories). Kept under the ["saves"]
+ * prefix so everything that marks the saves stale (a save made, edited, deleted or retried)
+ * refreshes it too.
+ */
+export const CATEGORY_COUNTS_KEY = ["saves", "categories"] as const;
+
+export function useCategoryCounts() {
+  const api = useApi();
+  return useQuery({ queryKey: CATEGORY_COUNTS_KEY, queryFn: () => api.listCategories() });
 }
 
 /** How often the save sheet asks the server how a card is coming along. */

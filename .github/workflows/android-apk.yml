@@ -55,7 +55,10 @@ jobs:
           SUPABASE_URL: ${{ vars.EXPO_PUBLIC_SUPABASE_URL }}
           SUPABASE_KEY: ${{ vars.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
           REVENUECAT_KEY: ${{ vars.EXPO_PUBLIC_REVENUECAT_ANDROID_KEY }}
+          SUPPORT_EMAIL: ${{ vars.EXPO_PUBLIC_SUPPORT_EMAIL }}
         run: |
+          # "Report a problem" emails this address when set (GitHub's new-issue page otherwise).
+          echo "EXPO_PUBLIC_SUPPORT_EMAIL=$SUPPORT_EMAIL" >> "$GITHUB_ENV"
           if [[ "$API_URL" == https://* && -n "$SUPABASE_URL" && -n "$SUPABASE_KEY" ]]; then
             {
               echo "EXPO_PUBLIC_API_MODE=live"

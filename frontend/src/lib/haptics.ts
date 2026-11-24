@@ -1,10 +1,13 @@
 import * as Haptics from "expo-haptics";
 import { Platform } from "react-native";
 
+import { devicePrefsSnapshot } from "./devicePrefs";
+
 const SUPPORTED = Platform.OS === "ios" || Platform.OS === "android";
 
 function run(fire: () => Promise<void>) {
-  if (!SUPPORTED) return;
+  // Settings > Vibration off silences every haptic (the root layout reads the setting at launch).
+  if (!SUPPORTED || !devicePrefsSnapshot().haptics) return;
   try {
     fire().catch(() => {});
   } catch {

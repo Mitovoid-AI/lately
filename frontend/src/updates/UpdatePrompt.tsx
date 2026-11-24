@@ -5,8 +5,9 @@ import Animated, { useAnimatedStyle, useReducedMotion, useSharedValue } from "re
 import { Button } from "../components/Button";
 import { usePresence } from "../components/motion/usePresence";
 import { useTheme } from "../theme/ThemeProvider";
-import { downloadApk, openInstaller } from "./apk";
-import { findNewerRelease, updateSource, type ApkRelease } from "./release";
+import { deleteOldApks, downloadApk, openInstaller } from "./apk";
+import { onUpdateOffer, type UpdateOffer } from "./offer";
+import { findNewerRelease, updateSource } from "./release";
 
 type Step =
   | { kind: "offer" }
@@ -17,20 +18,26 @@ type Step =
 const mb = (bytes: number) => Math.max(1, Math.round(bytes / 1_000_000));
 
 /**
- * Test APKs only (see updateSource): on launch, asks GitHub for a newer test build and offers
- * it. Update now downloads it with a progress bar, then Install hands the file to Android's
- * installer. Later hides the offer until the next launch. Built like ConfirmDialog: a centered
- * card over a dimmed backdrop, buttons stacked with the main one on top.
+ * Test APKs only (see updateSource): on launch, deletes update files already done with, then
+ * asks GitHub for a newer test build and offers it. Update now downloads it with a progress bar,
+ * then Install hands the file to Android's installer. Later hides the offer until the next launch
+ * or until Settings' "Check for updates" finds a build again. Built like ConfirmDialog: a
+ * centered card over a dimmed backdrop, buttons stacked with the main one on top.
  */
 export function UpdatePrompt() {
-  const [offer, setOffer] = useState<{ release: ApkRelease; installedBuild: number } | null>(null);
+  const [offer, setOffer] = useState<UpdateOffer | null>(null);
   const [step, setStep] = useState<Step>({ kind: "offer" });
   const [dismissed, setDismissed] = useState(false);
   const download = useRef<AbortController | null>(null);
+  const shown = useRef<UpdateOffer | null>(null);
+  useEffect(() => {
+    shown.current = offer;
+  }, [offer]);
 
   useEffect(() => {
     const source = updateSource();
     if (!source) return;
+    deleteOldApks(source.installedBuild);
     let live = true;
     void findNewerRelease(source.repo, source.installedBuild).then((release) => {
       if (live && release) setOffer({ release, installedBuild: source.installedBuild });
@@ -40,6 +47,20 @@ export function UpdatePrompt() {
       download.current?.abort();
     };
   }, []);
+
+  // A check from Settings: show the dialog again; the same build keeps its progress, a newer one starts over.
+  useEffect(
+    () =>
+      onUpdateOffer((next) => {
+        if (shown.current?.release.build !== next.release.build) {
+          download.current?.abort();
+          setOffer(next);
+          setStep({ kind: "offer" });
+        }
+        setDismissed(false);
+      }),
+    [],
+  );
 
   const start = async () => {
     if (!offer) return;

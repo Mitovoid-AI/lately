@@ -27,6 +27,13 @@ test("the tab files are exactly Home, Search, Save, Stacks", () => {
   for (const file of ["index", "search", "save", "stacks"]) expect(has(`(tabs)/${file}.tsx`)).toBe(true);
 });
 
+test("Help, Open-source licenses and the Instagram connection are signed-in stack screens", () => {
+  for (const file of ["help", "licenses", "instagram"]) expect(has(`${file}.tsx`)).toBe(true);
+  const layout = fs.readFileSync(path.join(APP, "_layout.tsx"), "utf8");
+  const signedIn = layout.slice(layout.indexOf("<Stack.Protected guard={signedIn}>"), layout.indexOf("</Stack.Protected>"));
+  for (const name of ["help", "licenses", "instagram"]) expect(signedIn).toContain(`<Stack.Screen name="${name}" />`);
+});
+
 test("the root stack lists Curated and no longer lists a stack-level search", () => {
   const layout = fs.readFileSync(path.join(APP, "_layout.tsx"), "utf8");
   expect(layout).toContain('<Stack.Screen name="curated" />');

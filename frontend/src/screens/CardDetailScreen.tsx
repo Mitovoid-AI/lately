@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient, type InfiniteData } from "@tanstack/react-query";
 import { Link, useLocalSearchParams, useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Linking, Text, useWindowDimensions, View } from "react-native";
+import { Linking, Platform, Text, useWindowDimensions, View } from "react-native";
 import Animated, {
   Extrapolation,
   FadeIn,
@@ -17,7 +17,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-import { ApiError, type Save, type SaveDetail } from "../api/contract";
+import { ApiError, type FailReason, type Save, type SaveDetail } from "../api/contract";
 import { useApi } from "../api/index";
 import { Button } from "../components/Button";
 import { CategoryPill } from "../components/Chip";
@@ -40,10 +40,12 @@ import { Sheet } from "../components/Sheet";
 import { Skeleton, SkeletonGroup } from "../components/Skeleton";
 import { Thumb } from "../components/Thumb";
 import { useToast } from "../components/Toast";
+import { config } from "../config";
 import { useNow } from "../hooks/useNow";
-import { isStalePending, markRetried, pollWhilePending } from "../hooks/useSaves";
+import { isRetryCapped, isStalePending, markRetryCapped, markRetried, pollWhilePending } from "../hooks/useSaves";
 import { useReadingStyle } from "../hooks/usePreferences";
 import { savedAgo } from "../lib/dates";
+import { sendDeviceHint } from "../lib/deviceFetch";
 import { haptic } from "../lib/haptics";
 import { displayLink } from "../lib/instagram";
 import { PARTIAL_NOTICE } from "../lib/saveOutcome";
@@ -77,6 +79,25 @@ const COLUMN_MAX = 560;
 
 /** Hero and best-match media use the larger media radius; tiles and thumbnails use 12. */
 const HERO_RADIUS = 16;
+
+/** Why a partial card is incomplete, in the reader's terms (Save.fail_reason). */
+export const FAIL_NOTICE: Record<FailReason, string> = {
+  fetch_blocked: "Instagram didn't let Lately read this reel just now. Try again in a while, or add a note so you can still find it.",
+  // Retrying cannot help here, so the card offers no Try again.
+  unavailable: "This reel looks private or deleted, so there was nothing to read. Add a note so you can still find it.",
+  ai_unavailable: "Lately couldn't write this card just now. Try again in a few minutes.",
+  timed_out: "Reading this reel took too long. Try again.",
+};
+/** A partial card with no reason (an older server, or one this app does not know). */
+export const PARTIAL_GENERIC = `${PARTIAL_NOTICE} It can try again.`;
+/** The server allows 3 retries a save a day; after that Try again stays off for the session. */
+export const RETRY_CAPPED = "You've retried this one 3 times today. Try again tomorrow.";
+/** Try again while the card is already being made right now: nothing new starts. */
+export const RETRY_RUNNING = "Lately is already working on this card.";
+
+function partialNotice(reason: FailReason | null | undefined): string {
+  return (reason && FAIL_NOTICE[reason]) || PARTIAL_GENERIC;
+}
 
 /**
  * Back on the left, More on the right. Once the hero and title scroll away the title fades
@@ -213,7 +234,8 @@ function useCachedSave(id: string): Save | undefined {
     () =>
       queryClient
         .getQueriesData<InfiniteData<Save[]>>({ queryKey: ["saves"] })
-        .flatMap(([, data]) => data?.pages.flat() ?? [])
+        // Not every query under ["saves"] is a page list (the category counts live there too).
+        .flatMap(([, data]) => data?.pages?.flat() ?? [])
         .find((s) => s.id === id),
     [queryClient, id],
   );
@@ -261,6 +283,7 @@ export function CardDetailScreen() {
   const [deleting, setDeleting] = useState(false);
   const [captionOpen, setCaptionOpen] = useState(false);
   const [retrying, setRetrying] = useState(false);
+  const [capped, setCapped] = useState(() => isRetryCapped(id));
   // While the note editor is open the keyboard needs the room, so the action bar steps aside.
   const [noteEditing, setNoteEditing] = useState(false);
   const stackPop = usePop();
@@ -309,21 +332,42 @@ export function CardDetailScreen() {
   }
 
   async function retry() {
-    if (retrying) return;
+    if (retrying || capped || !card) return;
     setRetrying(true);
+    // The phone reads the reel too, as the save sheet does (Instagram often blocks the server).
+    // Fire-and-forget: never awaited, never throws.
+    void sendDeviceHint({
+      api,
+      mode: config.apiMode,
+      platform: Platform.OS,
+      text: card.source_url,
+      result: { reel_id: id, deduped: false, status: card.status },
+    });
     try {
-      await api.retryEnrichment(id);
+      const { status } = await api.retryEnrichment(id);
       markRetried(id);
-      haptic.success();
+      if (status === "running") {
+        // Already being made right now: nothing new started, and that is not a failure.
+        haptic.light();
+        toast.show(RETRY_RUNNING);
+      } else {
+        haptic.success();
+      }
       // Back to processing: the detail polls until the new card is ready.
       queryClient.setQueryData<SaveDetail>(["save", id], (old) =>
         old ? { ...old, status: "pending", media_status: "pending" } : old,
       );
       queryClient.invalidateQueries({ queryKey: ["saves"] });
       queryClient.invalidateQueries({ queryKey: ["stack"] });
-    } catch {
+    } catch (e) {
       haptic.error();
-      toast.show("Couldn't retry. Try again later.");
+      if (e instanceof ApiError && e.code === "RATE_LIMITED") {
+        markRetryCapped(id);
+        setCapped(true);
+        toast.show(RETRY_CAPPED);
+      } else {
+        toast.show("Couldn't retry. Try again later.");
+      }
     } finally {
       setRetrying(false);
     }
@@ -400,7 +444,8 @@ export function CardDetailScreen() {
           <Button
             title="Back to Home"
             variant="secondary"
-            onPress={() => router.replace("/")}
+            // Back to the tabs already underneath, not a second copy of them on top.
+            onPress={() => router.dismissTo("/")}
             className="mt-3 w-full max-w-[320px]"
           />
         </View>
@@ -411,6 +456,9 @@ export function CardDetailScreen() {
     const title = cardTitle(card);
     const showCaption = card.status === "partial" || captionOpen;
     const stale = isStalePending(card, now);
+    const reason = card.status === "partial" ? card.fail_reason : null;
+    // A private or deleted reel has nothing more to read: another try cannot help it.
+    const canRetry = reason !== "unavailable";
     const place = card.places[0];
     const facts = deriveFacts(card);
     const tips = stepsBeyondFacts(card.steps, facts);
@@ -491,16 +539,23 @@ export function CardDetailScreen() {
         {card.status === "partial" || stale ? (
           <Reveal index={next()} style={{ marginTop: 16 }}>
             <Text className="font-sans text-meta text-ink-2">
-              {stale ? "This is taking longer than usual. Lately can try again." : `${PARTIAL_NOTICE} It can try again.`}
+              {capped
+                ? RETRY_CAPPED
+                : stale
+                  ? "This is taking longer than usual. Lately can try again."
+                  : partialNotice(reason)}
             </Text>
-            <Button
-              title="Try getting details again"
-              variant="secondary"
-              icon="refresh"
-              onPress={retry}
-              loading={retrying}
-              className="mt-3"
-            />
+            {canRetry ? (
+              <Button
+                title="Try getting details again"
+                variant="secondary"
+                icon="refresh"
+                onPress={retry}
+                loading={retrying}
+                disabled={capped}
+                className="mt-3"
+              />
+            ) : null}
           </Reveal>
         ) : null}
 

@@ -10,16 +10,20 @@ export interface QueuedSave {
 
 export interface FlushResult {
   saved: { item: QueuedSave; result: SaveResult }[];
-  /** Refused for good (no reel link, monthly quota): taken off the queue. */
+  /** Refused for good (no reel link, monthly quota, any other rejection): taken off the queue. */
   dropped: { item: QueuedSave; code: ApiErrorCode }[];
+  /** The part of `dropped` the server refused as a bad request (BAD_URL, BAD_REQUEST, TOO_LARGE, NOT_FOUND); not QUOTA_EXCEEDED. */
+  rejected: { item: QueuedSave; code: ApiErrorCode }[];
   remaining: QueuedSave[];
 }
 
 /** One queue per account, so a different sign-in never sends someone else's links. */
 export const queueKey = (userId: string) => `lately.save-queue.${userId}`;
 
-// Retrying cannot fix these; anything else (offline, server down, rate limit) waits for the next try.
-const PERMANENT: ApiErrorCode[] = ["BAD_URL", "QUOTA_EXCEEDED"];
+// The server refused the save itself (a 4xx): sending it again can never work.
+const REJECTED: ApiErrorCode[] = ["BAD_URL", "BAD_REQUEST", "TOO_LARGE", "NOT_FOUND"];
+// Retrying cannot fix these; anything else (offline, server down, rate limit, signed out) waits for the next try.
+const PERMANENT: ApiErrorCode[] = [...REJECTED, "QUOTA_EXCEEDED"];
 
 export async function readQueue(store: KeyValueStore, key: string): Promise<QueuedSave[]> {
   const items = await readJson<unknown>(store, key, []);
@@ -64,10 +68,13 @@ export function clearQueue(store: KeyValueStore, key: string): Promise<void> {
   return serialized(key, () => writeJson(store, key, []));
 }
 
-/** Sends queued saves oldest first; stops at the first failure a later retry might fix. */
+/**
+ * Sends queued saves oldest first; stops at the first failure a later retry might fix. A save
+ * refused for good is dropped and the ones after it are still sent.
+ */
 export async function flushQueue(store: KeyValueStore, key: string, api: Pick<LatelyApi, "createSave">): Promise<FlushResult> {
   const items = await readQueue(store, key);
-  const out: FlushResult = { saved: [], dropped: [], remaining: [] };
+  const out: FlushResult = { saved: [], dropped: [], rejected: [], remaining: [] };
   let i = 0;
   for (; i < items.length; i++) {
     const item = items[i];
@@ -76,6 +83,7 @@ export async function flushQueue(store: KeyValueStore, key: string, api: Pick<La
     } catch (e) {
       if (e instanceof ApiError && PERMANENT.includes(e.code)) {
         out.dropped.push({ item, code: e.code });
+        if (REJECTED.includes(e.code)) out.rejected.push({ item, code: e.code });
         continue;
       }
       break;

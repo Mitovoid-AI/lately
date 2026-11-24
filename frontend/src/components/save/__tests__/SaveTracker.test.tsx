@@ -10,7 +10,7 @@ test("a pending card shows its four steps with the real one in progress, what La
   await renderWithProviders(<SaveTracker status="pending" stage="vision" onOpenCard={onOpenCard} />);
   expect(screen.getByLabelText("Got the reel, done")).toBeTruthy();
   expect(screen.getByLabelText("Listening to it, in progress")).toBeTruthy();
-  expect(screen.getByLabelText("Finding places and steps, up next")).toBeTruthy();
+  expect(screen.getByLabelText("Finding places and tips, up next")).toBeTruthy();
   expect(screen.getByLabelText("Card ready, up next")).toBeTruthy();
   expect(screen.getByText(TRACKER_ESTIMATE)).toBeTruthy();
   expect(screen.queryByRole("button", { name: "Open card" })).toBeNull();
@@ -21,7 +21,7 @@ test("a pending card shows its four steps with the real one in progress, what La
 
 test("late stages say almost there", async () => {
   await renderWithProviders(<SaveTracker status="pending" stage="structure" onOpenCard={jest.fn()} />);
-  expect(screen.getByLabelText("Finding places and steps, in progress")).toBeTruthy();
+  expect(screen.getByLabelText("Finding places and tips, in progress")).toBeTruthy();
   expect(screen.getByText("Almost there")).toBeTruthy();
 });
 
@@ -39,7 +39,7 @@ test("a card whose last check failed does not claim a time", async () => {
 test("a ready card finishes every step and offers Open card", async () => {
   const onOpenCard = jest.fn();
   await renderWithProviders(<SaveTracker status="enriched" stage={null} onOpenCard={onOpenCard} />);
-  expect(screen.getByLabelText("Found places and steps, done")).toBeTruthy();
+  expect(screen.getByLabelText("Found places and tips, done")).toBeTruthy();
   expect(screen.getByLabelText("Card ready, done")).toBeTruthy();
   expect(screen.getByText("Your card is ready.")).toBeTruthy();
   await fireEvent.press(screen.getByRole("button", { name: "Open card" }));

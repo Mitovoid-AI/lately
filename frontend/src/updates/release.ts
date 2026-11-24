@@ -51,6 +51,31 @@ export function updateSource(): { repo: string; installedBuild: number } | null 
   return { repo, installedBuild };
 }
 
+/** A check's answer: a newer build, nothing newer, or no answer at all (offline, rate limit, private repository). */
+export type UpdateCheck = { status: "newer"; release: ApkRelease } | { status: "current" } | { status: "failed" };
+
+/**
+ * Asks GitHub for the latest release and compares it with the installed build. A latest release
+ * that is not a test APK counts as nothing newer; never throws.
+ */
+export async function checkForUpdate(repo: string, installedBuild: number, fetchImpl: typeof fetch = fetch): Promise<UpdateCheck> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
+  try {
+    const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases/latest`, {
+      headers: { Accept: "application/vnd.github+json" },
+      signal: controller.signal,
+    });
+    if (!res.ok) return { status: "failed" };
+    const release = parseLatestRelease(await res.json());
+    return release && release.build > installedBuild ? { status: "newer", release } : { status: "current" };
+  } catch {
+    return { status: "failed" };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 /**
  * The latest release when it is newer than the installed build. Any failure (offline, GitHub's
  * hourly limit for anonymous requests, a private repository) means "no update", never an error.
@@ -60,19 +85,6 @@ export async function findNewerRelease(
   installedBuild: number,
   fetchImpl: typeof fetch = fetch,
 ): Promise<ApkRelease | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), CHECK_TIMEOUT_MS);
-  try {
-    const res = await fetchImpl(`https://api.github.com/repos/${repo}/releases/latest`, {
-      headers: { Accept: "application/vnd.github+json" },
-      signal: controller.signal,
-    });
-    if (!res.ok) return null;
-    const release = parseLatestRelease(await res.json());
-    return release && release.build > installedBuild ? release : null;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
+  const check = await checkForUpdate(repo, installedBuild, fetchImpl);
+  return check.status === "newer" ? check.release : null;
 }

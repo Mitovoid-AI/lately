@@ -12,6 +12,9 @@ test("every endpoint in the contract is live", () => {
   expect(ENDPOINTS).toEqual(
     expect.arrayContaining(["deleteSave", "retryEnrichment", "removeFromStack", "deleteStack", "deleteAccount"]),
   );
+  expect(ENDPOINTS).toEqual(
+    expect.arrayContaining(["listCategories", "renameStack", "getInstagramLink", "createInstagramCode", "unlinkInstagram"]),
+  );
 });
 
 test("live mode sends every call to http", async () => {

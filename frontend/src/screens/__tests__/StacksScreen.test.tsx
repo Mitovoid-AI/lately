@@ -1,11 +1,12 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react-native";
 
+import { ApiError } from "../../api/contract";
 import { NOW } from "../../test/fixtures";
 import { demoApi, renderWithProviders } from "../../test/render";
 import { StackDetailScreen } from "../StackDetailScreen";
 import { StacksScreen } from "../StacksScreen";
 
-const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => true };
+const mockRouter = { push: jest.fn(), replace: jest.fn(), dismissTo: jest.fn(), back: jest.fn(), canGoBack: () => true };
 let mockParams: Record<string, string> = {};
 jest.mock("expo-router", () => ({
   useRouter: () => mockRouter,
@@ -117,17 +118,98 @@ test("a save can be removed from a stack in edit mode", async () => {
   expect(screen.queryByText("Hole-in-the-wall momo spot in Jackson Heights")).toBeNull();
 });
 
-test("a stack can be deleted after confirming", async () => {
+test("a stack can be deleted after confirming, and that returns to the Stacks tab underneath", async () => {
   mockParams = { id: "st-cafes" };
   const api = demoApi();
   const del = jest.spyOn(api, "deleteStack");
   await renderWithProviders(<StackDetailScreen />, { api });
   await screen.findByText("Hole-in-the-wall momo spot in Jackson Heights");
-  await fireEvent.press(screen.getByLabelText("Delete stack"));
+  await fireEvent.press(screen.getByLabelText("More"));
+  await fireEvent.press(screen.getByText("Delete stack"));
   expect(screen.getByText("Delete “Food and coffee”?")).toBeTruthy();
+  // A stack holds saves: one word for one thing.
+  expect(screen.getByText("The stack goes away; the saves in it stay.")).toBeTruthy();
   await fireEvent.press(screen.getByRole("button", { name: "Delete" }));
   await waitFor(() => expect(del).toHaveBeenCalledWith("st-cafes"));
-  await waitFor(() => expect(mockRouter.replace).toHaveBeenCalledWith("/stacks"));
+  // Not a replace: that stacked a second copy of the tabs on top of the first.
+  await waitFor(() => expect(mockRouter.dismissTo).toHaveBeenCalledWith("/stacks"));
+  expect(mockRouter.replace).not.toHaveBeenCalled();
+});
+
+describe("renaming a stack", () => {
+  async function openRename(api = demoApi()) {
+    mockParams = { id: "st-cafes" };
+    const view = await renderWithProviders(<StackDetailScreen />, { api });
+    await screen.findByText("Hole-in-the-wall momo spot in Jackson Heights");
+    await fireEvent.press(screen.getByLabelText("More"));
+    await fireEvent.press(screen.getByText("Rename"));
+    return view;
+  }
+
+  test("the form starts with the name; Save stays off until it changes, and never empty", async () => {
+    await openRename();
+    expect(screen.getByText("Rename stack")).toBeTruthy();
+    const field = screen.getByDisplayValue("Food and coffee");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    await fireEvent.changeText(field, "   ");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    await fireEvent.changeText(field, "Food and coffee ");
+    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    await fireEvent.changeText(field, "Coffee crawl");
+    expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled();
+  });
+
+  test("saving renames it, closes the form and shows the new name", async () => {
+    const api = demoApi();
+    const rename = jest.spyOn(api, "renameStack");
+    await openRename(api);
+    await fireEvent.changeText(screen.getByDisplayValue("Food and coffee"), "  Coffee crawl ");
+    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+    expect(rename).toHaveBeenCalledWith("st-cafes", "Coffee crawl");
+    expect(await screen.findByText("Stack renamed")).toBeTruthy();
+    // The stack's heading on this screen; the form is gone.
+    expect(screen.getByRole("header", { name: "Coffee crawl" })).toBeTruthy();
+    expect(screen.queryByText("Food and coffee")).toBeNull();
+    await waitFor(() => expect(screen.queryByText("Rename stack")).toBeNull());
+  });
+
+  test("the stacks list already loaded takes the new name at once", async () => {
+    const api = demoApi();
+    const { client } = await openRename(api);
+    client.setQueryData(["stacks"], await api.listStacks());
+    // Hold the refetch so what shows is the cache update itself.
+    jest.spyOn(api, "listStacks").mockImplementation(() => new Promise(() => {}));
+    await fireEvent.changeText(screen.getByDisplayValue("Food and coffee"), "Coffee crawl");
+    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+    await screen.findByText("Stack renamed");
+    const cached = client.getQueryData<{ id: string; name: string }[]>(["stacks"]);
+    expect(cached?.find((st) => st.id === "st-cafes")?.name).toBe("Coffee crawl");
+  });
+
+  test("a failed rename says so on the form and keeps what was typed", async () => {
+    const api = { ...demoApi(), renameStack: jest.fn(async () => Promise.reject(new ApiError("SERVER", 500))) };
+    await openRename(api);
+    await fireEvent.changeText(screen.getByDisplayValue("Food and coffee"), "Coffee crawl");
+    await fireEvent.press(screen.getByRole("button", { name: "Save" }));
+    expect(await screen.findByText("Couldn't rename the stack. Try again.")).toBeTruthy();
+    expect(screen.getByDisplayValue("Coffee crawl")).toBeTruthy();
+  });
+});
+
+test("an unknown stack says it isn't here anymore, with no retry", async () => {
+  mockParams = { id: "st-nope" };
+  await renderWithProviders(<StackDetailScreen />);
+  expect(await screen.findByText("This stack isn't here anymore")).toBeTruthy();
+  expect(screen.queryByText("Try again")).toBeNull();
+});
+
+test("a server problem is not 'gone': the stack offers Try again", async () => {
+  mockParams = { id: "st-cafes" };
+  const api = { ...demoApi(), getStack: async () => Promise.reject(new ApiError("SERVER", 404)) };
+  await renderWithProviders(<StackDetailScreen />, { api });
+  expect(await screen.findByText("Couldn't load this stack")).toBeTruthy();
+  expect(screen.queryByText("This stack isn't here anymore")).toBeNull();
+  expect(screen.getByText("Try again")).toBeTruthy();
 });
 
 test("a failed stack load shows an error with retry", async () => {

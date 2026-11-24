@@ -36,18 +36,31 @@ function tree(auth: AuthValue, incoming: string | null, store: KeyValueStore, on
   );
 }
 
-test("a share while signed in opens the save sheet with the shared text", async () => {
+test("a share while signed in opens the save sheet with the shared text, marked as a share", async () => {
   const onConsumed = jest.fn();
   const store = createMemoryStore();
   await render(tree(fakeAuth(), LINK, store, onConsumed));
+  // "from: share": closing the sheet goes back to the app the reel was shared from.
   await waitFor(() =>
-    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: "/save-sheet", params: { text: LINK } }),
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: "/save-sheet", params: { text: LINK, from: "share" } }),
   );
   expect(onConsumed).toHaveBeenCalled();
   expect(mockRouter.push).toHaveBeenCalledTimes(1);
   await waitFor(async () => expect(await store.getItem(PENDING_SHARE_KEY)).toBeFalsy());
 });
 
+test("a share that arrives while auth is still loading is a share once signed in", async () => {
+  const store = createMemoryStore();
+  const view = await render(tree(fakeAuth({ status: "loading" }), LINK, store));
+  expect(await screen.findByText(`pending: ${LINK}`)).toBeTruthy();
+  expect(mockRouter.push).not.toHaveBeenCalled();
+  await view.rerender(tree(fakeAuth({ status: "signed-in" }), null, store));
+  await waitFor(() =>
+    expect(mockRouter.push).toHaveBeenCalledWith({ pathname: "/save-sheet", params: { text: LINK, from: "share" } }),
+  );
+});
+
+// Below: no "from", so closing the sheet stays in Lately (the person may have come back from a mail app).
 test("a share while signed out waits for sign-in, then continues the save", async () => {
   const store = createMemoryStore();
   const view = await render(tree(fakeAuth({ status: "signed-out" }), LINK, store));

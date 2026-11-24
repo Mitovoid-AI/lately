@@ -5,8 +5,21 @@ import { useTheme } from "../../theme/ThemeProvider";
 import { Icon, type IconName } from "../Icon";
 import { PressableScale } from "../motion/PressableScale";
 
-/** Section heading (display face + a quiet icon: marigold is kept for actions and selection) and its card. */
-export function SettingsSection({ icon, title, children }: { icon: IconName; title: string; children: ReactNode }) {
+/**
+ * Section heading (display face + a quiet icon: marigold is kept for actions and selection) and its card.
+ * `placeholder`, when given, stands in for the children (a section whose settings haven't loaded).
+ */
+export function SettingsSection({
+  icon,
+  title,
+  children,
+  placeholder,
+}: {
+  icon: IconName;
+  title: string;
+  children: ReactNode;
+  placeholder?: ReactNode;
+}) {
   const { colors } = useTheme();
   return (
     <View className="mt-8">
@@ -20,7 +33,7 @@ export function SettingsSection({ icon, title, children }: { icon: IconName; tit
           {title}
         </Text>
       </View>
-      <View className="rounded-2xl border border-hairline bg-card p-4">{children}</View>
+      <View className="rounded-2xl border border-hairline bg-card p-4">{placeholder ?? children}</View>
     </View>
   );
 }

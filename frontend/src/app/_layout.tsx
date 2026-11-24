@@ -36,6 +36,7 @@ import { OfflineBanner } from "../components/OfflineBanner";
 import { config } from "../config";
 import { apiBaseUrl } from "../lib/apiUrl";
 import { wireAppFocus } from "../lib/appFocus";
+import { loadDevicePrefs } from "../lib/devicePrefs";
 import { createAppQueryClient } from "../lib/queryClient";
 import { loadThemePreference, useThemeLoaded } from "../theme/preference";
 import { ThemeProvider, useTheme } from "../theme/ThemeProvider";
@@ -48,6 +49,8 @@ import { UpdatePrompt } from "../updates/UpdatePrompt";
 wireAppFocus();
 // The theme this phone showed last, read while the fonts load.
 void loadThemePreference();
+// Phone-only settings (vibration, after sharing), so the first haptic already follows them.
+void loadDevicePrefs();
 // supabase-js warns once per Google sign-in that Hermes has no WebCrypto, so the PKCE
 // challenge is "plain" (which Supabase accepts). It still prints in Metro; on screen the
 // warning bar covered the bottom of the email sheet and its Send button.
@@ -137,6 +140,10 @@ function RootStack() {
         {/* Opens from Home's "See all"; Search is a tab now, so it has no stack entry. */}
         <Stack.Screen name="curated" />
         <Stack.Screen name="account" />
+        {/* Opened from Account: Help, Open-source licenses, and the Instagram connection. */}
+        <Stack.Screen name="help" />
+        <Stack.Screen name="licenses" />
+        <Stack.Screen name="instagram" />
         {/* Lately Pro: slides up over whatever sent you here (the save sheet, Account, Home). */}
         <Stack.Screen name="pro" options={{ presentation: "modal", animation: reduced ? "fade" : "slide_from_bottom" }} />
         <Stack.Screen

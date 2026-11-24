@@ -1,11 +1,12 @@
 import { act, fireEvent, render, screen } from "@testing-library/react-native";
 
-import { downloadApk, openInstaller } from "../apk";
+import { deleteOldApks, downloadApk, openInstaller } from "../apk";
+import { showUpdateOffer } from "../offer";
 import { findNewerRelease, updateSource, type ApkRelease } from "../release";
 import { UpdatePrompt } from "../UpdatePrompt";
 
 jest.mock("../release", () => ({ updateSource: jest.fn(), findNewerRelease: jest.fn() }));
-jest.mock("../apk", () => ({ downloadApk: jest.fn(), openInstaller: jest.fn() }));
+jest.mock("../apk", () => ({ downloadApk: jest.fn(), openInstaller: jest.fn(), deleteOldApks: jest.fn() }));
 
 const RELEASE: ApkRelease = {
   build: 12,
@@ -47,7 +48,14 @@ test("builds that don't update themselves never ask GitHub and show nothing", as
   mockSource.mockReturnValue(null);
   await render(<UpdatePrompt />);
   expect(mockFind).not.toHaveBeenCalled();
+  expect(deleteOldApks).not.toHaveBeenCalled();
   expect(screen.queryByText("Update available")).toBeNull();
+});
+
+test("at launch, update files already done with are deleted (by the installed build)", async () => {
+  mockFind.mockResolvedValue(null);
+  await render(<UpdatePrompt />);
+  expect(deleteOldApks).toHaveBeenCalledWith(9);
 });
 
 test("no newer build, no prompt", async () => {
@@ -114,4 +122,37 @@ test("Later hides the offer", async () => {
     await new Promise((r) => setTimeout(r, 300)); // the exit fade
   });
   expect(screen.queryByText("Update available")).toBeNull();
+});
+
+test("after Later, Settings' Check for updates brings the offer back", async () => {
+  await render(<UpdatePrompt />);
+  await fireEvent.press(await screen.findByText("Later"));
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, 300)); // the exit fade
+  });
+  await act(async () => showUpdateOffer({ release: RELEASE, installedBuild: 9 }));
+  expect(screen.getByText("Update available")).toBeTruthy();
+  expect(screen.getByText("Test build 12 is out (56 MB). You have build 9.")).toBeTruthy();
+});
+
+test("a check that finds no build at launch can still open the offer later", async () => {
+  mockFind.mockResolvedValue(null);
+  await render(<UpdatePrompt />);
+  expect(screen.queryByText("Update available")).toBeNull();
+  await act(async () => showUpdateOffer({ release: RELEASE, installedBuild: 9 }));
+  expect(screen.getByText("Update available")).toBeTruthy();
+});
+
+test("the same build keeps its progress; a newer build starts over at the offer", async () => {
+  const download = pendingDownload();
+  await render(<UpdatePrompt />);
+  await fireEvent.press(await screen.findByText("Update now"));
+  await act(async () => download.finish("file:///cache/lately-apk-12.apk"));
+  expect(screen.getByText("Ready to install")).toBeTruthy();
+
+  await act(async () => showUpdateOffer({ release: RELEASE, installedBuild: 9 }));
+  expect(screen.getByText("Ready to install")).toBeTruthy();
+
+  await act(async () => showUpdateOffer({ release: { ...RELEASE, build: 13, tag: "apk-13" }, installedBuild: 9 }));
+  expect(screen.getByText("Test build 13 is out (56 MB). You have build 9.")).toBeTruthy();
 });

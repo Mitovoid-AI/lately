@@ -2,7 +2,7 @@ import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { Image } from "expo-image";
 import { useRouter } from "expo-router";
 import { useRef, useState } from "react";
-import { Pressable, ScrollView, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, Text, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import { useAuth } from "../auth/AuthProvider";
@@ -35,18 +35,21 @@ function ProviderButton({
   brand,
   onPress,
   tone = "plain",
+  busy = false,
   className = "",
 }: {
   label: string;
   brand: Provider;
   onPress: () => void;
   tone?: "accent" | "plain";
+  /** Working on it (opening the Google window): a spinner where the glyph was, and no more taps. */
+  busy?: boolean;
   className?: string;
 }) {
   const { colors, shadows } = useTheme();
   const box = tone === "accent" ? "bg-accent" : "bg-card border border-control";
   const text = tone === "accent" ? "text-on-accent" : "text-ink";
-  const icon =
+  const glyph =
     brand === "google" ? (
       <View className="h-7 w-7 items-center justify-center rounded-full bg-card">
         <FontAwesome name="google" size={16} color={colors.google} />
@@ -54,11 +57,20 @@ function ProviderButton({
     ) : (
       <Icon name="mail-outline" size={22} color={colors.ink2} />
     );
+  const icon = busy ? (
+    <View className="h-7 w-7 items-center justify-center">
+      <ActivityIndicator color={tone === "accent" ? colors.onAccent : colors.ink2} />
+    </View>
+  ) : (
+    glyph
+  );
   return (
     <PressableScale
       accessibilityRole="button"
       // The brand glyph is a font character; naming the button keeps it out of what a screen reader says.
       accessibilityLabel={label}
+      accessibilityState={{ busy, disabled: busy }}
+      disabled={busy}
       onPress={onPress}
       highlightColor={tone === "accent" ? colors.accentPressed : colors.raised}
       containerClassName={className}
@@ -98,6 +110,8 @@ export function SignInScreen() {
   const [emailError, setEmailError] = useState("");
   const [sending, setSending] = useState(false);
   const googleInFlight = useRef(false);
+  // From the tap until the Google window is up (or the attempt fails), the button says it is working.
+  const [googleBusy, setGoogleBusy] = useState(false);
   const pendingShare = usePendingShare();
   // Measured, not guessed: the scroller's height and the heading's. Unmeasured (0) shows the Example.
   const [areaHeight, setAreaHeight] = useState(0);
@@ -117,6 +131,7 @@ export function SignInScreen() {
     // One Google window at a time: a second tap while it opens is ignored.
     if (googleInFlight.current) return;
     googleInFlight.current = true;
+    setGoogleBusy(true);
     try {
       await auth.signInWithGoogle();
     } catch (e) {
@@ -124,6 +139,7 @@ export function SignInScreen() {
       if (message) toast.show(message);
     } finally {
       googleInFlight.current = false;
+      setGoogleBusy(false);
     }
   }
 
@@ -202,7 +218,13 @@ export function SignInScreen() {
           ) : null}
 
           <View className="w-full gap-2.5">
-            <ProviderButton tone="accent" brand="google" label="Continue with Google" onPress={() => choose("google")} />
+            <ProviderButton
+              tone="accent"
+              brand="google"
+              label="Continue with Google"
+              busy={googleBusy}
+              onPress={() => choose("google")}
+            />
             {/* Google and email are the only sign-ins Lately has; no placeholder providers. */}
             <ProviderButton brand="email" label="Continue with email" onPress={() => choose("email")} />
           </View>

@@ -63,13 +63,20 @@ export function SearchScreen() {
   const [debounced, setDebounced] = useState(initial.trim());
   const [recent, setRecent] = useState<string[]>([]);
 
-  // The tab stays mounted, so a later "/search?q=..." arrives as a changed param: apply it.
+  // The tab stays mounted, so a later "/search?q=..." arrives as a changed param: apply it. Once
+  // applied the link's q is spent and cleared (below), so the same link opened again is a change
+  // too, and the q going away never touches what the person has typed since.
   const [appliedParam, setAppliedParam] = useState(initial);
   if (initial !== appliedParam) {
     setAppliedParam(initial);
-    setQuery(initial);
-    setDebounced(initial.trim());
+    if (initial) {
+      setQuery(initial);
+      setDebounced(initial.trim());
+    }
   }
+  useEffect(() => {
+    if (initial) router.setParams({ q: undefined });
+  }, [initial, router]);
 
   useEffect(() => {
     loadRecent(deviceStore).then(setRecent);

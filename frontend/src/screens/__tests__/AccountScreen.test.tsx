@@ -1,33 +1,53 @@
 import type { QueryClient } from "@tanstack/react-query";
-import { fireEvent, screen, waitFor } from "@testing-library/react-native";
+import { act, fireEvent, screen, waitFor } from "@testing-library/react-native";
 import { Linking, Text } from "react-native";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import type { LatelyApi, Me } from "../../api/contract";
+import { ApiError, type InstagramLink, type LatelyApi, type Me, type Preferences } from "../../api/contract";
 import { createDemoBilling } from "../../billing/demo";
 import { PRO_CONFIRMING } from "../../billing/plans";
 import { PLAY_SUBSCRIPTIONS_URL } from "../../billing/types";
 import { createUnavailableBilling } from "../../billing/unavailable";
+import { ISSUES_URL } from "../../components/settings/about";
 import { monthYear } from "../../lib/dates";
+import { DEVICE_PREFS_KEY, devicePrefsSnapshot, setDevicePref } from "../../lib/devicePrefs";
 import { queueKey } from "../../lib/saveQueue";
 import { fakeBilling } from "../../test/fakeBilling";
+import { createMemoryStore } from "../../test/memoryStore";
 import { PENDING_SHARE_KEY } from "../../share/ShareRouter";
-import { THEME_KEY } from "../../theme/preference";
+import { loadThemePreference, THEME_KEY } from "../../theme/preference";
 import { useTheme } from "../../theme/ThemeProvider";
 import { ThemeSync } from "../../theme/ThemeSync";
 import { demoApi, renderWithProviders } from "../../test/render";
+import { onUpdateOffer } from "../../updates/offer";
+import type { UpdateCheck } from "../../updates/release";
 import { AccountScreen } from "../AccountScreen";
 
 let mockCanGoBack = true;
 const mockRouter = { push: jest.fn(), replace: jest.fn(), back: jest.fn(), canGoBack: () => mockCanGoBack };
 jest.mock("expo-router", () => ({ useRouter: () => mockRouter }));
 const mockShare = jest.fn(async (_name: string, _json: string) => {});
-jest.mock("../../lib/exportFile", () => ({ shareExportFile: (n: string, j: string) => mockShare(n, j) }));
+const mockDeleteExports = jest.fn();
+jest.mock("../../lib/exportFile", () => ({
+  shareExportFile: (n: string, j: string) => mockShare(n, j),
+  deleteExportFiles: () => mockDeleteExports(),
+}));
+// A Play or web build unless a test says it is a GitHub test APK; the GitHub check is scripted.
+const mockUpdateSource = jest.fn<{ repo: string; installedBuild: number } | null, []>();
+const mockCheck = jest.fn<Promise<UpdateCheck>, [string, number]>();
+jest.mock("../../updates/release", () => ({
+  ...jest.requireActual("../../updates/release"),
+  updateSource: () => mockUpdateSource(),
+  checkForUpdate: (repo: string, build: number) => mockCheck(repo, build),
+}));
 
-beforeEach(() => {
+beforeEach(async () => {
   jest.clearAllMocks();
   mockCanGoBack = true;
+  mockUpdateSource.mockReturnValue(null);
+  await setDevicePref("afterShare", "ask");
+  await setDevicePref("haptics", true);
 });
 
 /** Let preference mutations finish so their cache updates happen inside the test. */
@@ -171,6 +191,9 @@ test("the delete dialog offers the export first", async () => {
   await waitFor(() => expect(requestExport).toHaveBeenCalled());
   expect(deleteAccount).not.toHaveBeenCalled();
   expect(screen.queryByText("Delete your account?")).toBeNull();
+  // The dialog closes and the archive row is usually off screen: a toast says it started.
+  expect(screen.getByText("Preparing your archive…")).toBeTruthy();
+  expect(screen.getByText("Preparing…")).toBeTruthy();
 });
 
 test("no placeholder password row (Lately has no passwords)", async () => {
@@ -186,7 +209,8 @@ test("settings that aren't built yet (weekly digest, offline reading) aren't lis
   expect(screen.queryByText("Notifications and offline")).toBeNull();
   expect(screen.queryByText("Weekly digest")).toBeNull();
   expect(screen.queryByText("Offline reading")).toBeNull();
-  expect(screen.queryByRole("switch")).toBeNull();
+  // The one switch is Vibration, which works (it is kept on the phone).
+  expect(screen.getAllByRole("switch").map((s) => s.props.accessibilityLabel)).toEqual(["Vibration"]);
 });
 
 test("sign out and back", async () => {
@@ -463,5 +487,351 @@ describe("deleting an account that has a subscription", () => {
       expect(screen.queryByText(/Google Play subscription/)).toBeNull();
       await view.unmount();
     }
+  });
+});
+
+describe("reading and appearance settings", () => {
+  test("a change the server doesn't take is undone and said, theme included", async () => {
+    const api = demoApi();
+    jest.spyOn(api, "updatePreferences").mockRejectedValueOnce(new ApiError("NETWORK", 0));
+    const { client } = await renderWithProviders(
+      <>
+        <ThemeSync />
+        <AccountScreen />
+        <SchemeProbe />
+      </>,
+      { api },
+    );
+    await screen.findByText("Sam Carter");
+    await fireEvent.press(screen.getByText("Dark"));
+    expect(await screen.findByText("Couldn't save that change. Try again.")).toBeTruthy();
+    await settled(client);
+    expect(client.getQueryData<Preferences>(["prefs"])?.theme).toBe("light");
+    expect(await screen.findByText("scheme:light")).toBeTruthy();
+    await waitFor(async () => expect(await AsyncStorage.getItem(THEME_KEY)).toBe("light"));
+  });
+
+  test("quick taps end on the last choice, sent in order, with no step back on screen", async () => {
+    const api = demoApi();
+    const real = api.updatePreferences.bind(api);
+    const replies: (() => void)[] = [];
+    const updatePreferences = jest
+      .spyOn(api, "updatePreferences")
+      .mockImplementation((p) => new Promise((resolve) => replies.push(() => resolve(real(p)))));
+    const { client } = await renderWithProviders(
+      <>
+        <ThemeSync />
+        <AccountScreen />
+        <SchemeProbe />
+      </>,
+      { api },
+    );
+    await screen.findByText("Sam Carter");
+    const theme = () => client.getQueryData<Preferences>(["prefs"])?.theme;
+    await fireEvent.press(screen.getByText("Dark"));
+    await fireEvent.press(screen.getByText("Light"));
+    expect(theme()).toBe("light");
+    // One at a time: the second waits for the first.
+    expect(updatePreferences).toHaveBeenCalledTimes(1);
+    await act(async () => replies[0]());
+    // The first reply (dark) lands while Light is still on its way: it stays light.
+    expect(theme()).toBe("light");
+    await waitFor(() => expect(updatePreferences).toHaveBeenCalledTimes(2));
+    expect(updatePreferences.mock.calls.map((c) => c[0])).toEqual([{ theme: "dark" }, { theme: "light" }]);
+    await act(async () => replies[1]());
+    await settled(client);
+    expect(theme()).toBe("light");
+    expect(await screen.findByText("scheme:light")).toBeTruthy();
+    expect((await api.getPreferences()).theme).toBe("light");
+  });
+
+  test("settings that didn't load: nothing shown as chosen, a retry, and the phone's theme left alone", async () => {
+    await AsyncStorage.setItem(THEME_KEY, "dark");
+    await loadThemePreference();
+    const base = demoApi();
+    const getPreferences = jest
+      .fn<Promise<Preferences>, []>()
+      .mockRejectedValueOnce(new ApiError("NETWORK", 0))
+      .mockImplementation(() => base.getPreferences());
+    const updatePreferences = jest.spyOn(base, "updatePreferences");
+    await renderWithProviders(
+      <>
+        <ThemeSync />
+        <AccountScreen />
+        <SchemeProbe />
+      </>,
+      { api: { ...base, getPreferences } },
+    );
+    expect(await screen.findByText(/Couldn't load your reading and theme settings/)).toBeTruthy();
+    // No font or theme cards to tap, so no default can be saved over the account's own.
+    expect(screen.queryByText("Newsreader")).toBeNull();
+    expect(screen.queryByText("Daylight")).toBeNull();
+    expect(screen.getByText("scheme:dark")).toBeTruthy();
+    expect(await AsyncStorage.getItem(THEME_KEY)).toBe("dark");
+    expect(updatePreferences).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Try again" }));
+    expect(await screen.findByText("Reading font")).toBeTruthy();
+    // Now the account's saved theme (light, in the demo) is the phone's.
+    expect(await screen.findByText("scheme:light")).toBeTruthy();
+  });
+
+  test("while they load there is a placeholder, not the defaults", async () => {
+    const base = demoApi();
+    await renderWithProviders(<AccountScreen />, { api: { ...base, getPreferences: () => new Promise<Preferences>(() => {}) } });
+    await screen.findByText("Sam Carter");
+    expect(screen.getByLabelText("Loading your settings")).toBeTruthy();
+    expect(screen.queryByText("Reading font")).toBeNull();
+  });
+});
+
+describe("deleting and signing out", () => {
+  test("an account that is already gone (an earlier reply was lost) counts as deleted", async () => {
+    await seedDeviceData();
+    const api = { ...demoApi(), deleteAccount: jest.fn(async () => Promise.reject(new ApiError("NOT_FOUND", 404))) };
+    const { auth } = await renderWithProviders(<AccountScreen />, { api });
+    await screen.findByText("Sam Carter");
+    await fireEvent.press(screen.getByText("Delete account"));
+    await fireEvent.press(screen.getByRole("button", { name: "Continue" }));
+    await fireEvent.press(screen.getByRole("button", { name: "Delete forever" }));
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalled());
+    await expectDeviceDataCleared();
+    expect(mockDeleteExports).toHaveBeenCalled();
+    expect(screen.queryByText("Couldn't delete your account. Try again.")).toBeNull();
+  });
+
+  test("signing out deletes archive files left on the phone", async () => {
+    const { auth } = await open();
+    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalled());
+    expect(mockDeleteExports).toHaveBeenCalledTimes(1);
+  });
+
+  /** Links saved offline that can't be sent yet (the connection is still down). */
+  function withUnsent(n: number) {
+    const items = Array.from({ length: n }, (_, i) => ({ id: `q${i}`, text: `https://www.instagram.com/reel/abc${i}/`, queued_at: "t" }));
+    return {
+      api: { ...demoApi(), createSave: jest.fn(() => Promise.reject(new ApiError("NETWORK", 0))) },
+      queueStore: createMemoryStore({ [queueKey("demo-user")]: JSON.stringify(items) }),
+    };
+  }
+
+  test("links waiting to be sent: sign out asks first and says how many; Cancel keeps you signed in", async () => {
+    const { auth } = await renderWithProviders(<AccountScreen />, withUnsent(2));
+    await screen.findByText("Sam Carter");
+    await waitFor(() => expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy());
+    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
+    expect(await screen.findByText("Sign out?")).toBeTruthy();
+    expect(screen.getByText("2 links haven't been sent yet. Signing out deletes them.")).toBeTruthy();
+    await fireEvent.press(screen.getByRole("button", { name: "Cancel" }));
+    expect(auth.signOut).not.toHaveBeenCalled();
+
+    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
+    const dialogButtons = screen.getAllByRole("button", { name: "Sign out" });
+    await fireEvent.press(dialogButtons[dialogButtons.length - 1]);
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalledTimes(1));
+  });
+
+  test("one waiting link reads in the singular", async () => {
+    await renderWithProviders(<AccountScreen />, withUnsent(1));
+    await screen.findByText("Sam Carter");
+    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
+    expect(await screen.findByText("1 link hasn't been sent yet. Signing out deletes it.")).toBeTruthy();
+  });
+
+  test("signing out shows that it is busy until it is done", async () => {
+    let finish = () => {};
+    const { auth } = await renderWithProviders(<AccountScreen />, {
+      auth: { signOut: jest.fn(() => new Promise<void>((resolve) => (finish = resolve))) },
+    });
+    await screen.findByText("Sam Carter");
+    await fireEvent.press(screen.getByRole("button", { name: "Sign out" }));
+    await waitFor(() => expect(auth.signOut).toHaveBeenCalled());
+    expect(screen.getByRole("button", { name: "Sign out" }).props.accessibilityState).toMatchObject({ busy: true });
+    await act(async () => finish());
+    expect(screen.getByRole("button", { name: "Sign out" }).props.accessibilityState).toMatchObject({ busy: false });
+  });
+});
+
+describe("rows that only show where they can work", () => {
+  function withMe(over: Partial<Me>): LatelyApi {
+    const base = demoApi();
+    return { ...base, getMe: async () => ({ ...(await base.getMe()), ...over }) };
+  }
+
+  test("a test build explains that Pro is bought in the Play Store version, instead of Upgrade and Restore", async () => {
+    mockUpdateSource.mockReturnValue({ repo: "Mitovoid-AI/lately", installedBuild: 9 });
+    const view = await renderWithProviders(<AccountScreen />, { billing: fakeBilling().client });
+    expect(await screen.findByText("Free plan")).toBeTruthy();
+    expect(screen.getByText("This is a test build. Lately Pro is bought in the Play Store version.")).toBeTruthy();
+    expect(screen.queryByText("Upgrade to Pro")).toBeNull();
+    expect(screen.queryByText("Restore purchases")).toBeNull();
+    await view.unmount();
+
+    const api = demoApi();
+    api.setPlan("pro");
+    await renderWithProviders(<AccountScreen />, { api, billing: fakeBilling().client });
+    expect(await screen.findByText("Lately Pro")).toBeTruthy();
+    expect(screen.queryByText("Manage subscription")).toBeNull();
+    expect(screen.queryByText("Restore purchases")).toBeNull();
+    expect(screen.getByText("This is a test build. Lately Pro is bought in the Play Store version.")).toBeTruthy();
+  });
+
+  test("Pro on a build with no store: no Manage subscription row", async () => {
+    const api = demoApi();
+    api.setPlan("pro");
+    await renderWithProviders(<AccountScreen />, { api, billing: createUnavailableBilling() });
+    expect(await screen.findByText("Lately Pro")).toBeTruthy();
+    expect(screen.queryByText("Manage subscription")).toBeNull();
+  });
+
+  test("Pro shows when it renews or ends", async () => {
+    await renderWithProviders(<AccountScreen />, { api: withMe({ plan: "pro", plan_expires_at: "2026-12-12T12:00:00.000Z" }) });
+    expect(await screen.findByText("Renews or ends on Dec 12, 2026")).toBeTruthy();
+  });
+
+  test("Sign-in methods: a placeholder while the profile loads, a word if it failed", async () => {
+    const base = demoApi();
+    const pending = await renderWithProviders(<AccountScreen />, { api: { ...base, getMe: () => new Promise<Me>(() => {}) } });
+    expect(screen.getByText("Sign-in methods")).toBeTruthy();
+    expect(screen.getByLabelText("Loading your sign-in methods")).toBeTruthy();
+    await pending.unmount();
+
+    await renderWithProviders(<AccountScreen />, { api: { ...base, getMe: () => Promise.reject(new Error("down")) } });
+    expect(await screen.findByText("Couldn't load these")).toBeTruthy();
+    expect(screen.getByText("Couldn't load your plan")).toBeTruthy();
+  });
+
+  test("an Instagram entry from an older server is not listed as a way to sign in", async () => {
+    const api = withMe({
+      connected_accounts: [
+        { provider: "google", label: "sam.carter@example.com", status: "secured" },
+        { provider: "instagram", label: "samcarter", status: "active" },
+      ],
+    });
+    await renderWithProviders(<AccountScreen />, { api });
+    expect(await screen.findByText("Google (sam.carter@example.com)")).toBeTruthy();
+    expect(screen.queryByText(/Instagram \(/)).toBeNull();
+  });
+});
+
+describe("saving from Instagram messages", () => {
+  test("offered by the server: a row under Connected accounts opens the Instagram screen", async () => {
+    await open();
+    expect(await screen.findByText("Connected accounts")).toBeTruthy();
+    expect(screen.getByText("Send reels to @lately.app on Instagram to save them")).toBeTruthy();
+    await fireEvent.press(screen.getByText("Save from Instagram DMs"));
+    expect(mockRouter.push).toHaveBeenCalledWith("/instagram");
+  });
+
+  test("linked: the row says so", async () => {
+    const base = demoApi();
+    const linked: InstagramLink = {
+      enabled: true,
+      handle: "lately.app",
+      linked: true,
+      linked_at: "2026-11-01T00:00:00Z",
+      code: null,
+      code_expires_at: null,
+    };
+    await renderWithProviders(<AccountScreen />, { api: { ...base, getInstagramLink: async () => linked } });
+    expect(await screen.findByText("Connected. Send reels to @lately.app")).toBeTruthy();
+  });
+
+  test("not offered, or not answered: no row at all", async () => {
+    const base = demoApi();
+    const off: InstagramLink = { enabled: false, handle: null, linked: false, linked_at: null, code: null, code_expires_at: null };
+    const first = await renderWithProviders(<AccountScreen />, { api: { ...base, getInstagramLink: async () => off } });
+    await screen.findByText("Free plan");
+    expect(screen.queryByText("Save from Instagram DMs")).toBeNull();
+    expect(screen.queryByText("Connected accounts")).toBeNull();
+    await first.unmount();
+
+    await renderWithProviders(<AccountScreen />, {
+      api: { ...base, getInstagramLink: () => Promise.reject(new ApiError("SERVER", 500)) },
+    });
+    await screen.findByText("Free plan");
+    expect(screen.queryByText("Save from Instagram DMs")).toBeNull();
+  });
+});
+
+describe("saving behaviour (kept on the phone)", () => {
+  test("after sharing: ask for a note, or save and go back", async () => {
+    await open();
+    expect(screen.getByText("After sharing a reel")).toBeTruthy();
+    await fireEvent.press(screen.getByText("Save and go back"));
+    expect(devicePrefsSnapshot().afterShare).toBe("return");
+    await waitFor(async () =>
+      expect(JSON.parse((await AsyncStorage.getItem(DEVICE_PREFS_KEY)) ?? "{}").afterShare).toBe("return"),
+    );
+    await fireEvent.press(screen.getByText("Ask for a note"));
+    expect(devicePrefsSnapshot().afterShare).toBe("ask");
+  });
+
+  test("vibration can be turned off and on", async () => {
+    await open();
+    const vibration = screen.getByRole("switch", { name: "Vibration" });
+    expect(vibration.props.value).toBe(true);
+    await fireEvent(vibration, "valueChange", false);
+    expect(devicePrefsSnapshot().haptics).toBe(false);
+    expect(screen.getByRole("switch", { name: "Vibration" }).props.value).toBe(false);
+    await fireEvent(screen.getByRole("switch", { name: "Vibration" }), "valueChange", true);
+    expect(devicePrefsSnapshot().haptics).toBe(true);
+  });
+});
+
+describe("help, licences and about", () => {
+  test("How to save from Instagram opens the Help screen", async () => {
+    await open();
+    await fireEvent.press(screen.getByText("How to save from Instagram"));
+    expect(mockRouter.push).toHaveBeenCalledWith("/help");
+  });
+
+  test("Report a problem opens the project's issue page when there is no support address", async () => {
+    const openUrl = jest.spyOn(Linking, "openURL").mockResolvedValue(true);
+    await open();
+    await fireEvent.press(screen.getByText("Report a problem"));
+    await waitFor(() => expect(openUrl).toHaveBeenCalledWith(ISSUES_URL));
+    openUrl.mockRestore();
+  });
+
+  test("Open-source licenses sits under Legal", async () => {
+    await open();
+    await fireEvent.press(screen.getByText("Open-source licenses"));
+    expect(mockRouter.push).toHaveBeenCalledWith("/licenses");
+  });
+
+  test("the footer names the version", async () => {
+    await open();
+    expect(screen.getByText(/^Lately \d+\.\d+\.\d+/)).toBeTruthy();
+    expect(screen.queryByText(/^Lately v/)).toBeNull();
+  });
+
+  test("the Play build (and the web) has no Check for updates row", async () => {
+    await open();
+    expect(screen.queryByText("Check for updates")).toBeNull();
+  });
+
+  test("a test build checks for updates on demand: newest, failed, or the update dialog", async () => {
+    mockUpdateSource.mockReturnValue({ repo: "Mitovoid-AI/lately", installedBuild: 9 });
+    const offers: number[] = [];
+    const off = onUpdateOffer((o) => offers.push(o.release.build));
+    await open();
+    expect(screen.getByText("You're on test build 9")).toBeTruthy();
+
+    mockCheck.mockResolvedValueOnce({ status: "current" });
+    await fireEvent.press(screen.getByText("Check for updates"));
+    expect(await screen.findByText("You're on the newest build")).toBeTruthy();
+    expect(mockCheck).toHaveBeenCalledWith("Mitovoid-AI/lately", 9);
+
+    mockCheck.mockResolvedValueOnce({ status: "failed" });
+    await fireEvent.press(screen.getByText("Check for updates"));
+    expect(await screen.findByText("Couldn't check for updates. Try again.")).toBeTruthy();
+
+    const release = { build: 12, tag: "apk-12", url: "https://example.test/lately.apk", bytes: 1, publishedAt: "" };
+    mockCheck.mockResolvedValueOnce({ status: "newer", release });
+    await fireEvent.press(screen.getByText("Check for updates"));
+    await waitFor(() => expect(offers).toEqual([12]));
+    off();
   });
 });

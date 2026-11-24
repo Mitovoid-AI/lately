@@ -7,6 +7,14 @@ import { createMemoryStore } from "../../test/memoryStore";
 import { demoApi, renderWithProviders } from "../../test/render";
 import { droppedMessage, useSaveQueue } from "../useSaveQueue";
 
+// The device-side read never settles here: the flush must not wait for it.
+jest.mock("../../lib/deviceFetch", () => ({
+  sendDeviceHint: jest.fn(() => new Promise(() => {})),
+}));
+const { sendDeviceHint: mockSendDeviceHint } = jest.requireMock("../../lib/deviceFetch") as { sendDeviceHint: jest.Mock };
+
+beforeEach(() => jest.clearAllMocks());
+
 const KEY = queueKey("demo-user");
 const LINK = "https://www.instagram.com/reel/QUEUED1/";
 
@@ -33,6 +41,38 @@ test("a queue left from last time is sent on sign-in and refreshes the library",
   expect(await screen.findByText("queued: 0")).toBeTruthy();
   expect(await screen.findByText("Saved 1 reel you shared offline")).toBeTruthy();
   expect(await readQueue(queueStore, KEY)).toEqual([]);
+});
+
+test("each save the queue delivers gets the phone's own read of the reel, one at a time, without holding up the flush", async () => {
+  const queueStore = createMemoryStore();
+  const second = "https://www.instagram.com/reel/QUEUED2/";
+  await enqueueSave(queueStore, KEY, LINK);
+  await enqueueSave(queueStore, KEY, second);
+  let finishFirst = () => {};
+  mockSendDeviceHint.mockImplementationOnce(() => new Promise<void>((resolve) => (finishFirst = resolve)));
+  const api = demoApi();
+  await renderWithProviders(<Probe />, { api, queueStore });
+  // The flush is done (toast, empty queue) while the first read is still going.
+  expect(await screen.findByText("Saved 2 reels you shared offline")).toBeTruthy();
+  expect(await screen.findByText("queued: 0")).toBeTruthy();
+  expect(mockSendDeviceHint).toHaveBeenCalledTimes(1);
+  expect(mockSendDeviceHint).toHaveBeenCalledWith(
+    expect.objectContaining({ api, mode: "demo", text: LINK, result: expect.objectContaining({ deduped: false }) }),
+  );
+  await act(async () => finishFirst());
+  await waitFor(() => expect(mockSendDeviceHint).toHaveBeenCalledTimes(2));
+  expect(mockSendDeviceHint).toHaveBeenLastCalledWith(expect.objectContaining({ text: second }));
+});
+
+test("nothing delivered, nothing read", async () => {
+  const queueStore = createMemoryStore();
+  await enqueueSave(queueStore, KEY, LINK);
+  const api = demoApi();
+  const createSave = jest.spyOn(api, "createSave").mockRejectedValue(new ApiError("NETWORK", 0));
+  await renderWithProviders(<Probe />, { api, queueStore });
+  await waitFor(() => expect(createSave).toHaveBeenCalled());
+  expect(await screen.findByText("queued: 1")).toBeTruthy();
+  expect(mockSendDeviceHint).not.toHaveBeenCalled();
 });
 
 test("still offline: the save stays queued, and coming back to the app retries it", async () => {
@@ -104,4 +144,24 @@ test("the refusal says the reason for each kind, and counts each", () => {
   expect(droppedMessage(["QUOTA_EXCEEDED", "QUOTA_EXCEEDED", "BAD_URL"])).toBe(
     "2 reels you shared offline didn't save: you've used this month's free saves. 1 share had no reel link, so nothing was saved.",
   );
+});
+
+test("other refusals are not called a missing link", () => {
+  expect(droppedMessage(["TOO_LARGE"])).toBe("1 share was too long to save.");
+  expect(droppedMessage(["TOO_LARGE", "TOO_LARGE"])).toBe("2 shares were too long to save.");
+  expect(droppedMessage(["BAD_REQUEST"])).toBe("Lately couldn't save 1 reel you shared offline.");
+  expect(droppedMessage(["NOT_FOUND", "BAD_REQUEST"])).toBe("Lately couldn't save 2 reels you shared offline.");
+  expect(droppedMessage(["BAD_URL", "TOO_LARGE", "NOT_FOUND"])).toBe(
+    "1 share had no reel link, so nothing was saved. 1 share was too long to save. Lately couldn't save 1 reel you shared offline.",
+  );
+});
+
+test("a queued share refused as too long says so in the toast", async () => {
+  const queueStore = createMemoryStore();
+  await enqueueSave(queueStore, KEY, LINK);
+  const api = demoApi();
+  jest.spyOn(api, "createSave").mockRejectedValueOnce(new ApiError("TOO_LARGE", 413));
+  await renderWithProviders(<Probe />, { api, queueStore });
+  expect(await screen.findByText("1 share was too long to save.")).toBeTruthy();
+  expect(screen.queryByText(/no reel link/)).toBeNull();
 });
