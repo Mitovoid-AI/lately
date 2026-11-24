@@ -19,7 +19,7 @@ API routes, stateless worker process(es).
 | Door | When | Notes |
 |---|---|---|
 | **1. Android share sheet** | **build first** | receives URL text only |
-| **2. IG DM bot** | later | Creator account + Meta webhook + one-time link code; payloads trusted only after `X-Hub-Signature-256` verification |
+| **2. IG DM bot** | built (2026-11-24), off until configured | Creator account + Meta webhook + one-time link code; payloads trusted only after `X-Hub-Signature-256` verification. `backend/app/routers/instagram.py`, migration 0016; switch-on steps in `docs/instagram-dm-setup.md` |
 | Clipboard, iOS share ext, Telegram, WhatsApp, bulk import | later | |
 
 **All doors converge on one function:** `saveReel(userId, text, channel)`.
@@ -69,7 +69,22 @@ Hinglish handling, reranking, thumbnails, golden-set evaluation: `SEARCH.md`.
 
 - Stage error → retry with backoff `run_at = now() + 2^attempts minutes`, max 3
 - After 3 → move to `jobs_dead` (+ `last_error`); admin re-drive
+  (`GET /admin/jobs/dead`, `POST /admin/jobs/dead/{id}/redrive`, `X-Admin-Key`)
+- A save that ends `partial` carries `reels.fail_reason` (`fetch_blocked`,
+  `unavailable`, `ai_unavailable`, `timed_out`; migration 0014) so the app can say
+  why; the API clears it whenever it re-enqueues the save
 - Cron every 1 min: `locked_at < now() - 10min` → unlock, resume from stage
+- Every stage has a deadline (`WORKER_STAGE_TIMEOUT_SECONDS`, 240 s) and every
+  database call a timeout (`DB_COMMAND_TIMEOUT_SECONDS`, 30 s); an overrun is a
+  stage error (back-off), and the heartbeat stops renewing the lease past it
+- A provider whose rate budget is spent is skipped; a save waits for budget at
+  most `WORKER_BUDGET_WAIT_MAX_MINUTES` (30) and then ends `partial`
+- Stopping the worker (SIGTERM, Ctrl+C / Ctrl+Break) stops claiming, gives running
+  stages `WORKER_SHUTDOWN_GRACE_SECONDS` (20), then hands its jobs back unlocked
+  with the interrupted attempt refunded; `scripts/dev.py` stops its children the
+  same way before killing them
+- The sweep also re-queues `embed` jobs for enriched saves left without an
+  embedding (at most 50 per sweep, 1 h after a dead embed job)
 - **Fetch fail ≠ card fail:** card becomes `partial` (caption-only), UI asks
   for a note, retry button re-enqueues from FETCH
 - User never loses a save (catch is independent of enrich)
@@ -114,9 +129,13 @@ worker's IP is often blocked) and sends `POST /saves/{id}/hint`
 - A hint that arrives after FETCH: a `partial` save is re-enqueued from FETCH
   (by the hint API when no job is queued, or by FINALIZE when the hint is newer
   than the one its FETCH saw).
-- Known limit: `reel_content` is shared per shortcode, so a device card written
-  for user B is what another saver of the same reel sees until a server fetch
-  replaces it; their save is marked `partial` (retryable), not `enriched`.
+- `reel_content` is shared per shortcode, so a device card written for user B is
+  stored where another saver's save points. Every read path (`services/saves_view.py`
+  `TRUSTED_CARD`, search, curated, stacks, export) hides such a card from anyone but
+  the user who supplied it, so the other saver sees no card until a server fetch
+  replaces it; their save is marked `partial` (retryable), not `enriched`. A server
+  fetch that replaces a device row overwrites its caption, handle and thumbnail and
+  clears the transcript.
 
 ## 9. Deferred until real load
 

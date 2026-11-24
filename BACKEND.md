@@ -221,7 +221,11 @@ and `INFRASTRUCTURE.md` §5).
 | 2 | POST | `/retries/{reel_id}` | JWT | re-enqueue enrichment from FETCH | `api/retry` |
 | 3 | GET | `/search?q=` | JWT | hybrid FTS + pgvector search | — |
 | 3 | GET | `/me` | JWT | profile + quota state | — |
-| 4 | POST | `/meta/webhook` | X-Hub-Signature-256 | Door 2 IG DM bot | — |
+| 4 | GET, POST | `/webhooks/instagram` | hub.verify_token / X-Hub-Signature-256 | Door 2 IG DM bot (404 until the `INSTAGRAM_*` settings are set; `docs/instagram-dm-setup.md`) | — |
+| 4 | GET, POST, DELETE | `/me/instagram`, `/me/instagram/code` | JWT | link state, one-time link code (15 min), unlink | — |
+| — | GET | `/saves/categories` | JWT | the user's categories with counts, most used first | — |
+| — | PATCH | `/stacks/{id}` | JWT | rename a stack | — |
+| — | GET, POST | `/admin/jobs/dead`, `/admin/jobs/dead/{id}/redrive` | X-Admin-Key | list dead jobs, re-queue one | — |
 | — | GET | `/healthz` | none | liveness for Fly/Cloud Run probes | — |
 
 Conventions: `4xx` = user's problem (quota, bad URL, rate limit), `5xx` = ours;
@@ -284,7 +288,7 @@ shared `reel_content` unless validated; prefer server-fetched data.
 **Parts 2–4:**
 - [ ] Worker processes a shared reel end-to-end: fetch → transcribe → vision → structure → finalize
 - [ ] Golden-set pytest passes ≥ current Node quality
-- [ ] IG DM bot door (Meta webhook, X-Hub-Signature-256)
+- [x] IG DM bot door (Meta webhook, X-Hub-Signature-256) — built 2026-11-24, off until configured
 - [ ] Google + magic-link sign-in working on web; Google on Android
 - [ ] RLS verified: user A cannot read user B's saves (test with two JWTs)
 - [ ] Hybrid search live; success criteria from PIPELINE.md §10 tracked

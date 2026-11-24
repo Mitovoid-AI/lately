@@ -24,18 +24,27 @@ from fastapi.responses import JSONResponse
 from ..config import settings
 from ..deps import CurrentUser, pool
 from ..enrich.device import hint_is_useful, sanitize_hint
-from ..models import DeviceHintRequest, NoteRequest, SaveRequest, SaveResponse, api_error
+from ..models import (
+    CategoryCountOut,
+    DeviceHintRequest,
+    NoteRequest,
+    SaveRequest,
+    SaveResponse,
+    api_error,
+)
 from ..services import jobs as jobs_service
 from ..services.saves_view import (
+    CATEGORIES,
     SAVE_COLUMNS,
     SAVE_FROM,
+    TRUSTED_CARD,
     SaveDetailOut,
     SaveOut,
     fetch_save_detail,
     fetch_saves,
     to_save,
 )
-from ..urls import normalize_shared_text
+from ..urls import is_saveable_link, normalize_shared_text
 
 log = logging.getLogger(__name__)
 
@@ -51,11 +60,17 @@ async def create_save(body: SaveRequest, user: CurrentUser) -> SaveResponse | JS
     url = normalize_shared_text(body.text)
     if url is None:
         raise api_error(422, "BAD_URL", "No Instagram link found.")
+    if not is_saveable_link(url):  # a profile, story, explore or audio page
+        raise api_error(422, "BAD_URL", "That link isn't a reel or post.")
 
     try:
         try:
+            # The status of a new save is `pending` (its row is not visible to this
+            # statement's snapshot); a deduped save reports its existing row's.
             row = await pool().fetchrow(
-                "select * from public.save_reel($1, $2, $3, $4, $5)",
+                "select s.reel_id, s.deduped, coalesce("
+                "(select r.status from public.reels r where r.id = s.reel_id), 'pending') as status "
+                "from public.save_reel($1, $2, $3, $4, $5) s",
                 uuid.UUID(user.id),
                 body.text,
                 body.channel,
@@ -69,7 +84,7 @@ async def create_save(body: SaveRequest, user: CurrentUser) -> SaveResponse | JS
             if isinstance(mapped, jobs_service.RateLimited):
                 raise api_error(429, "RATE_LIMITED", "Too many saves right now.") from exc
             if isinstance(mapped, jobs_service.BadUrl):
-                raise api_error(422, "BAD_URL", "No Instagram link found.") from exc
+                raise api_error(422, "BAD_URL", "That link isn't a reel or post.") from exc
             raise
     except HTTPException:
         raise
@@ -79,7 +94,8 @@ async def create_save(body: SaveRequest, user: CurrentUser) -> SaveResponse | JS
         raise api_error(500, "SERVER", "Could not save right now. Try again.") from exc
 
     assert row is not None
-    saved = SaveResponse(reel_id=row["reel_id"], deduped=bool(row["deduped"]))
+    saved = SaveResponse(reel_id=row["reel_id"], deduped=bool(row["deduped"]),
+                         status=row["status"])
     if saved.deduped:  # nothing was created: 200, not 201
         return JSONResponse(status_code=200, content=saved.model_dump(mode="json"))
     return saved
@@ -109,6 +125,27 @@ async def list_saves(
         category,
     )
     return [to_save(r) for r in rows]
+
+
+# Registered before /{save_id}, which would otherwise take "categories" as an id.
+@router.get("/categories", response_model=list[CategoryCountOut])
+async def list_categories(user: CurrentUser) -> list[CategoryCountOut]:
+    """The user's categories with how many saves each has, most used first. Only
+    the app's categories on cards trusted for this user (a save without one, or
+    with someone else's device card, has no category)."""
+    rows = await pool().fetch(
+        f"""
+        select rc.category, count(*) as n
+        from public.reels r
+        join public.reel_content rc on rc.shortcode = r.shortcode_key and {TRUSTED_CARD}
+        where r.auth_user_id = $1 and rc.category = any($2::text[])
+        group by rc.category
+        order by n desc, rc.category
+        """,
+        uuid.UUID(user.id),
+        list(CATEGORIES),
+    )
+    return [CategoryCountOut(category=r["category"], count=r["n"]) for r in rows]
 
 
 @router.get("/{save_id}", response_model=SaveDetailOut)
@@ -196,11 +233,8 @@ async def device_hint(save_id: uuid.UUID, body: DeviceHintRequest,
         if reel["status"] == "partial" and not await con.fetchval(
             "select exists (select 1 from public.jobs "
             "where kind = 'enrich' and payload->>'reel_id' = $1)", str(save_id)):
-            stage = "fetch" if reel["shortcode_key"] else "resolve"
-            await jobs_service.enqueue_enrich(con, str(save_id), str(uid), stage)
-            await con.execute("update public.reels set status = 'pending' where id = $1",
-                              save_id)
-            requeued = True
+            # Uses the save's retry budget; at the cap the hint is kept but not run now.
+            requeued = await _requeue(con, save_id, uid, reel["shortcode_key"])
     return {"status": "accepted", "requeued": requeued}
 
 
@@ -210,12 +244,45 @@ retries_router = APIRouter(prefix="/retries", tags=["saves"])
 RETRIES_PER_DAY = 3
 
 
+async def _requeue(con: asyncpg.Connection, reel_id: uuid.UUID, uid: uuid.UUID,
+                   shortcode_key: str | None) -> bool:
+    """Enqueue enrichment again for a save (from FETCH; from RESOLVE when the
+    shortcode was never resolved) and set it back to pending, if its retry
+    budget allows: RETRIES_PER_DAY per rolling day, shared by POST /retries and
+    the hint route. False (nothing changed) at the cap."""
+    # Each retry re-runs fetch + LLM calls from shared provider budgets.
+    allowed = await con.fetchval(
+        f"""
+        update public.reels set
+          retry_count = case when retry_window_start > now() - interval '1 day'
+                             then retry_count + 1 else 1 end,
+          retry_window_start = case when retry_window_start > now() - interval '1 day'
+                                    then retry_window_start else now() end
+        where id = $1
+          and not (retry_window_start > now() - interval '1 day'
+                   and retry_count >= {RETRIES_PER_DAY})
+        returning id
+        """, reel_id)
+    if allowed is None:
+        return False
+    stage = "fetch" if shortcode_key else "resolve"
+    await jobs_service.enqueue_enrich(con, str(reel_id), str(uid), stage)
+    await con.execute(
+        "update public.reels set status = 'pending', fail_reason = null where id = $1", reel_id)
+    return True
+
+
 @retries_router.post("/{reel_id}", status_code=202)
 async def retry_enrichment(reel_id: uuid.UUID, user: CurrentUser) -> dict[str, str]:
     """Re-enqueue enrichment for a partial save, or a pending one whose job
     died (PIPELINE.md §7: the retry button resumes from FETCH; a save whose
-    shortcode was never resolved starts at RESOLVE). Idempotent while a job for
-    the save is queued. An enriched save has nothing to retry: 404."""
+    shortcode was never resolved starts at RESOLVE). An enriched save has
+    nothing to retry: 404.
+
+    When the save already has a job, nothing new is queued and no retry is
+    used: a job waiting (back-off, or parked) runs now, and so does one whose
+    worker stopped heartbeating (the sweep's staleness rule); one a live
+    worker holds answers {"status": "running"}."""
     uid = uuid.UUID(user.id)
     async with pool().acquire() as con, con.transaction():
         reel = await con.fetchrow(
@@ -224,28 +291,24 @@ async def retry_enrichment(reel_id: uuid.UUID, user: CurrentUser) -> dict[str, s
             reel_id, uid)
         if reel is None or reel["status"] == "enriched":
             raise api_error(404, "NOT_FOUND", "Nothing to retry for this save.")
-        queued = await con.fetchval(
-            "select exists (select 1 from public.jobs "
-            "where kind = 'enrich' and payload->>'reel_id' = $1)", str(reel_id))
-        if not queued:
-            # Each retry re-runs fetch + LLM calls from shared provider budgets.
-            allowed = await con.fetchval(
-                f"""
-                update public.reels set
-                  retry_count = case when retry_window_start > now() - interval '1 day'
-                                     then retry_count + 1 else 1 end,
-                  retry_window_start = case when retry_window_start > now() - interval '1 day'
-                                            then retry_window_start else now() end
-                where id = $1
-                  and not (retry_window_start > now() - interval '1 day'
-                           and retry_count >= {RETRIES_PER_DAY})
-                returning id
-                """, reel_id)
-            if allowed is None:
-                raise api_error(429, "RATE_LIMITED",
-                                "Too many retries for this save. Try again tomorrow.")
-            stage = "fetch" if reel["shortcode_key"] else "resolve"
-            await jobs_service.enqueue_enrich(con, str(reel_id), str(uid), stage)
-            await con.execute(
-                "update public.reels set status = 'pending' where id = $1", reel_id)
+        moved = await con.fetchval(
+            """
+            with moved as (
+              update public.jobs
+              set run_at = now(), locked_at = null, locked_by = null, heartbeat_at = null
+              where kind = 'enrich' and payload->>'reel_id' = $1
+                and (locked_at is null
+                     or coalesce(heartbeat_at, locked_at) < now() - make_interval(mins => $2))
+              returning 1)
+            select count(*) from moved
+            """, str(reel_id), settings().worker_stuck_after_minutes)
+        if moved:
+            return {"status": "queued"}
+        if await con.fetchval(
+                "select exists (select 1 from public.jobs "
+                "where kind = 'enrich' and payload->>'reel_id' = $1)", str(reel_id)):
+            return {"status": "running"}
+        if not await _requeue(con, reel_id, uid, reel["shortcode_key"]):
+            raise api_error(429, "RATE_LIMITED",
+                            "Too many retries for this save. Try again tomorrow.")
     return {"status": "queued"}

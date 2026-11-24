@@ -17,12 +17,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from uuid import UUID
 
 import asyncpg
 
+from ..services.saves_view import TRUSTED_CARD
 from .embed import Embedder, LruCache
 from .query import ParsedQuery, parse_query
 from .retrieve import (
@@ -30,6 +31,7 @@ from .retrieve import (
     FUSED_CAP,
     Hit,
     LegRow,
+    date_rows,
     fuse,
     lexical_rows,
     meaning_rows,
@@ -40,10 +42,11 @@ log = logging.getLogger(__name__)
 
 # Place names for the 📍 hint: `place` entities (name, parent, region) of cards
 # with typed entities; cards without them (older seeds) fall back to entity_names.
-KNOWN_PLACES_SQL = """
+# Only cards trusted for the user (saves_view.TRUSTED_CARD).
+KNOWN_PLACES_SQL = f"""
 select distinct p.place
 from public.reels r
-join public.reel_content rc on rc.shortcode = r.shortcode_key
+join public.reel_content rc on rc.shortcode = r.shortcode_key and {TRUSTED_CARD}
 cross join lateral (
   select unnest(array[e->>'name', e->>'parent', e->>'region']) as place
   from jsonb_array_elements(case when jsonb_typeof(rc.entities) = 'array'
@@ -96,8 +99,12 @@ async def run_search(db: asyncpg.Pool, user_id: UUID, q: str, embedder: Embedder
                      embed_timeout: float = 2.0, now: datetime | None = None,
                      meaning_spread: float | None = None,
                      meaning_max_distance: float | None = None) -> SearchRun:
-    now = now or datetime.now(UTC)
+    now = now or datetime.now(UTC)  # its tzinfo sets where "today" starts
     base = parse_query(q, now=now, known_places=())
+    if base.date_only:  # nothing to match but the date: that period, newest first
+        dated = replace(base, text="")
+        return SearchRun(dated, await date_rows(db, user_id, dated, category=category,
+                                                limit=limit), False)
     if not base.text:
         return SearchRun(base, [], False)
 

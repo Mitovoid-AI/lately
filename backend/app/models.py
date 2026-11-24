@@ -34,6 +34,13 @@ class SaveResponse(BaseModel):
     status: str = "pending"
 
 
+class CategoryCountOut(BaseModel):
+    """GET /saves/categories item — contract `CategoryCount`."""
+
+    category: str
+    count: int
+
+
 class ReelOut(BaseModel):
     id: UUID
     auth_user_id: UUID | None = None
@@ -104,6 +111,18 @@ class PlanOut(BaseModel):
 
     plan: Literal["free", "pro", "lifetime"]
     plan_expires_at: datetime | None = None
+
+
+class InstagramLinkOut(BaseModel):
+    """GET /me/instagram and POST /me/instagram/code — contract `InstagramLink`.
+    With the feature off: enabled false and everything else empty."""
+
+    enabled: bool
+    handle: str | None = None
+    linked: bool = False
+    linked_at: datetime | None = None
+    code: str | None = None  # only while unexpired
+    code_expires_at: datetime | None = None
 
 
 ReadingFont = Literal["newsreader", "inter", "lora"]

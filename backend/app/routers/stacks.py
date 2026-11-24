@@ -15,17 +15,17 @@ from fastapi import APIRouter, HTTPException, Response
 
 from ..deps import CurrentUser, pool
 from ..models import StackAdd, StackCreate, StackDetailOut, StackOut, api_error
-from ..services.saves_view import CATEGORIES, fetch_saves, thumbnail_url
+from ..services.saves_view import CATEGORIES, TRUSTED_CARD, fetch_saves, thumbnail_url
 
 router = APIRouter(prefix="/stacks", tags=["stacks"])
 
-_STACKS_SQL = """
+_STACKS_SQL = f"""
 select s.id, s.name, s.updated_at,
   (select count(*) from public.stack_saves ss where ss.stack_id = s.id) as save_count,
   (select rc.category
      from public.stack_saves ss
      join public.reels r on r.id = ss.reel_id
-     join public.reel_content rc on rc.shortcode = r.shortcode_key
+     join public.reel_content rc on rc.shortcode = r.shortcode_key and {TRUSTED_CARD}
     where ss.stack_id = s.id and rc.category = any($2::text[])
     group by rc.category
     order by count(*) desc, rc.category
@@ -33,7 +33,7 @@ select s.id, s.name, s.updated_at,
   array(select coalesce(rc.thumbnail_path, r.thumbnail_path)
           from public.stack_saves ss
           join public.reels r on r.id = ss.reel_id
-          left join public.reel_content rc on rc.shortcode = r.shortcode_key
+          left join public.reel_content rc on rc.shortcode = r.shortcode_key and {TRUSTED_CARD}
          where ss.stack_id = s.id
            and coalesce(rc.thumbnail_path, r.thumbnail_path) is not null
          order by ss.added_at desc, r.created_at desc
@@ -85,6 +85,21 @@ async def create_stack(body: StackCreate, user: CurrentUser) -> StackOut:
     except asyncpg.ForeignKeyViolationError as exc:  # the account was deleted
         raise api_error(404, "NOT_FOUND", "Account not found.") from exc
     (stack,) = await _stacks(db, uid, sid)
+    return stack
+
+
+@router.patch("/{stack_id}", response_model=StackOut)
+async def rename_stack(stack_id: uuid.UUID, body: StackCreate, user: CurrentUser) -> StackOut:
+    """Rename (same name rules as creating one). Not a membership change, so
+    `updated_at` stays."""
+    uid = uuid.UUID(user.id)
+    db = pool()
+    renamed = await db.fetchval(
+        "update public.stacks set name = $3 where id = $1 and auth_user_id = $2 returning id",
+        stack_id, uid, body.name)
+    if renamed is None:
+        raise _not_found()
+    (stack,) = await _stacks(db, uid, stack_id)
     return stack
 
 

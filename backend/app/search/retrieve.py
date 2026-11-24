@@ -25,6 +25,7 @@ from uuid import UUID
 
 import asyncpg
 
+from ..services.saves_view import TRUSTED_CARD
 from .embed import to_pgvector
 from .query import ParsedQuery
 
@@ -57,12 +58,13 @@ class LegRow:
     distance: float | None = None  # meaning leg: cosine distance to the query
 
 
-# $1 user id · $2 filters jsonb (hard: category, saved_after, saved_before)
+# $1 user id · $2 filters jsonb (hard: category, saved_after, saved_before).
+# Someone else's device card is not joined (saves_view.TRUSTED_CARD): no card yet.
 _MINE = """
 mine as (
   select r.id, r.created_at, rc.category, rc.entity_names{extra}
   from public.reels r
-  left join public.reel_content rc on rc.shortcode = r.shortcode_key
+  left join public.reel_content rc on rc.shortcode = r.shortcode_key and """ + TRUSTED_CARD + """
   where r.auth_user_id = $1
     and ($2::jsonb->>'category' is null or rc.category = $2::jsonb->>'category')
     and ($2::jsonb->>'saved_after' is null
@@ -116,6 +118,15 @@ vec as (
 )
 select v.id, 'meaning' as src, v.rk, m.created_at, m.category, m.entity_names, v.d
 from vec v join mine m using (id)
+"""
+
+
+# A date-only query ("reels from yesterday"): the period's saves, newest first. $3 limit.
+DATE_SQL = f"""
+with {_MINE.format(extra='').strip()}
+select m.id, m.entity_names from mine m
+order by m.created_at desc, m.id
+limit $3
 """
 
 
@@ -176,6 +187,14 @@ async def meaning_rows(db: asyncpg.Pool, user_id: UUID, parsed: ParsedQuery,
         return []
     return _rows(await db.fetch(MEANING_SQL, user_id, _filters(parsed, category),
                                 to_pgvector(list(query_vec))))
+
+
+async def date_rows(db: asyncpg.Pool, user_id: UUID, parsed: ParsedQuery, *,
+                    category: str | None = None, limit: int = FUSED_CAP) -> list[Hit]:
+    """Saves inside the parsed date window (and category chip), newest first,
+    matched_by ("date",). No text legs run."""
+    rows = await db.fetch(DATE_SQL, user_id, _filters(parsed, category), limit)
+    return [Hit(r["id"], 0.0, ("date",), tuple(r["entity_names"] or ())) for r in rows]
 
 
 def fuse(rows: Iterable[LegRow], parsed: ParsedQuery, limit: int = FUSED_CAP) -> list[Hit]:

@@ -49,7 +49,8 @@ class Runtime:
     async def image_data_url(self, thumbnail_path: str | None,
                              db: asyncpg.Pool | None = None) -> str | None:
         """The thumbnail as a data: URL for the LLM (providers can't always reach
-        Instagram's CDN), or None. `db:` thumbnails are read from Postgres."""
+        Instagram's CDN), or None. `db:` thumbnails are read from Postgres, ones in
+        our Storage bucket from the SUPABASE_URL host, the rest from Instagram's CDN."""
         if local_thumbnails.is_local(thumbnail_path):
             assert thumbnail_path is not None
             found = await local_thumbnails.get(
@@ -58,13 +59,15 @@ class Runtime:
                 return None
             data, kind = found
             return f"data:{kind};base64," + base64.b64encode(data).decode("ascii")
-        url = thumbnail_url(thumbnail_path)
-        if not url:
+        if self.thumbnails.stored_url(thumbnail_path) is not None:
+            image = await self.thumbnails.read_stored(thumbnail_path)
+        elif url := thumbnail_url(thumbnail_path):
+            image = await download_limited(self.http, url, self.image_max_bytes)
+        else:
             return None
-        data = await download_limited(self.http, url, self.image_max_bytes)
-        if not data:
+        if not image:
             return None
-        return "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
+        return "data:image/jpeg;base64," + base64.b64encode(image).decode("ascii")
 
 
 def build_runtime(s: Settings | None = None) -> Runtime:

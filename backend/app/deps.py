@@ -7,17 +7,21 @@ are the backstop for any direct client access (BACKEND.md §4).
 
 from __future__ import annotations
 
+import logging
 import time
 from dataclasses import dataclass
+from datetime import UTC, timedelta, timezone
 from typing import Annotated, Any
 
 import asyncpg
 import httpx
 import jwt
-from fastapi import Depends, HTTPException, Request
+from fastapi import Depends, Header, HTTPException, Request
 
 from .config import settings
 from .search.embed import Embedder, OpenAIEmbedder
+
+log = logging.getLogger(__name__)
 
 _pool: asyncpg.Pool | None = None
 
@@ -26,7 +30,8 @@ async def init_pool() -> asyncpg.Pool:
     """Create the asyncpg pool from DATABASE_URL (idempotent; app/worker startup).
 
     statement_cache_size=0: the Supabase transaction pooler (port 6543) cannot
-    keep named prepared statements across transactions.
+    keep named prepared statements across transactions. command_timeout: a
+    query whose reply never comes fails instead of hanging its caller.
     """
     global _pool
     if _pool is None:
@@ -36,6 +41,7 @@ async def init_pool() -> asyncpg.Pool:
             min_size=1,
             max_size=s.db_pool_max_size,
             statement_cache_size=0,
+            command_timeout=s.db_command_timeout_seconds,
         )
     return _pool
 
@@ -55,20 +61,40 @@ async def close_pool() -> None:
 
 # ---------------------------------------------------------------- identity --
 
-_jwks_cache: dict[str, Any] = {"keys": None, "fetched_at": 0.0}
+_jwks_cache: dict[str, Any] = {"keys": None, "fetched_at": 0.0, "tried_at": float("-inf")}
 _JWKS_TTL = 3600.0
+# With keys cached, a refetch (after a failed refresh, or for an unknown kid) is
+# tried at most this often, so a Supabase outage or a stream of tokens with made-up
+# kids cannot cost a JWKS fetch per request.
+_JWKS_RETRY_SECONDS = 60.0
+# Supabase's clock and this host's drift apart by seconds; without slack a token
+# used right after sign-in fails "not yet valid (iat)" and the app signs out.
+_CLOCK_SKEW_SECONDS = 60
 
 
-async def _jwks() -> dict[str, Any]:
+async def _jwks(force: bool = False) -> dict[str, Any]:
+    """The project's JWKS, cached for _JWKS_TTL. A refresh that fails keeps the
+    cached keys in use; with nothing cached it is a 503. `force` refetches before
+    the TTL (a token signed with a key we don't know yet: rotation)."""
     s = settings()
     now = time.monotonic()
-    if _jwks_cache["keys"] is None or now - _jwks_cache["fetched_at"] > _JWKS_TTL:
+    cached = _jwks_cache["keys"]
+    due = cached is None or force or now - _jwks_cache["fetched_at"] > _JWKS_TTL
+    if due and (cached is None or now - _jwks_cache["tried_at"] >= _JWKS_RETRY_SECONDS):
+        _jwks_cache["tried_at"] = now
         url = f"{s.supabase_url}/auth/v1/.well-known/jwks.json"
-        async with httpx.AsyncClient(timeout=5) as client:
-            resp = await client.get(url)
-            resp.raise_for_status()
-            _jwks_cache["keys"] = resp.json()
-        _jwks_cache["fetched_at"] = now
+        try:
+            async with httpx.AsyncClient(timeout=5) as client:
+                resp = await client.get(url)
+                resp.raise_for_status()
+                _jwks_cache["keys"] = resp.json()
+            _jwks_cache["fetched_at"] = now
+        except (httpx.HTTPError, ValueError) as exc:
+            if cached is None:
+                raise HTTPException(503, {"error": {
+                    "code": "SERVER", "message": "Sign-in can't be checked right now. Try again."}}
+                ) from exc
+            log.warning("JWKS refresh failed (%s); using the cached keys", type(exc).__name__)
     return _jwks_cache["keys"]
 
 
@@ -94,6 +120,9 @@ async def get_current_user(request: Request) -> AuthUser:
         kid = jwt.get_unverified_header(token).get("kid")
         keys = (await _jwks()).get("keys", [])
         jwk = next((k for k in keys if k.get("kid") == kid), None)
+        if jwk is None:  # maybe a newly rotated key: refetch (rate-limited) once
+            keys = (await _jwks(force=True)).get("keys", [])
+            jwk = next((k for k in keys if k.get("kid") == kid), None)
         if jwk is None:
             raise HTTPException(401, "token kid not in JWKS")
         claims = jwt.decode(
@@ -102,6 +131,7 @@ async def get_current_user(request: Request) -> AuthUser:
             algorithms=["ES256", "RS256"],
             audience=s.supabase_jwt_audience or None,
             options={"verify_aud": bool(s.supabase_jwt_audience)},
+            leeway=_CLOCK_SKEW_SECONDS,
         )
     except HTTPException:
         raise
@@ -114,6 +144,24 @@ async def get_current_user(request: Request) -> AuthUser:
 
 
 CurrentUser = Annotated[AuthUser, Depends(get_current_user)]
+
+
+# ---------------------------------------------------------------- timezone --
+
+def client_timezone(x_timezone_offset: Annotated[str | None, Header()] = None) -> timezone:
+    """The app's `X-Timezone-Offset`: minutes east of UTC (India = 330), for
+    "today"-style day boundaries. Missing, not a whole number, or outside
+    -720..840 (UTC-12..UTC+14) = UTC."""
+    try:
+        minutes = int(x_timezone_offset or "")
+    except ValueError:
+        return UTC
+    if not -720 <= minutes <= 840:
+        return UTC
+    return timezone(timedelta(minutes=minutes))
+
+
+ClientTimezone = Annotated[timezone, Depends(client_timezone)]
 
 
 # --------------------------------------------------------------- embedder --

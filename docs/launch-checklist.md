@@ -21,10 +21,12 @@ personal developer accounts run a 14-day closed test before production.
 
 ## 2. Backend live (day 1, about 1 hour)
 
-1. Apply every migration, `0001` through `0013`, to the prod database (`supabase db push`). The API needs all of them. `docs/deploy.md` §1.
+1. Apply every migration, `0001` through `0016`, to the prod database (`supabase db push`). The API needs all of them. `docs/deploy.md` §1.
 2. Supabase Auth settings: redirect URL `lately://auth-callback`, the email template with `{{ .Token }}` so emails carry a 6-digit code, custom SMTP (the built-in mailer sends about 2 emails an hour), Google sign-in client IDs. `docs/auth-setup.md`.
 3. Deploy to Fly.io with the secrets, then check it: `python scripts/debug.py --live --api https://<app>.fly.dev` must print all PASS. `docs/deploy.md` §2.
-4. Your local dev database also needs migration `0013_billing.sql`, or the local backend's account page fails. From `backend/`: run `scripts/db_reset.py` only against a test database; for the dev database apply the one file in the Supabase SQL editor.
+4. Your local dev database also needs migrations `0013_billing.sql` through `0016_instagram_dm.sql` (the API reads `reels.fail_reason` from 0014 on every save list, so without it saves fail with a server error). From `backend/`: run `scripts/db_reset.py` only against a test database; for the dev database apply the files in order in the Supabase SQL editor. On 2026-11-24 the dev project `jsvgezmgvwnldcnrjdzg` no longer resolved at all (paused or removed by Supabase): restore it from the Supabase dashboard first, or every installed app fails to sign in.
+5. Optional: saving by Instagram DM. Follow `docs/instagram-dm-setup.md` (Meta app, Lately's professional Instagram account, webhook, four `INSTAGRAM_*` settings, then Meta app review before the public can use it). Until those settings exist the feature is off and the app hides it.
+6. Optional: set the repository variable `EXPO_PUBLIC_SUPPORT_EMAIL` so "Report a problem" in the app opens an email instead of GitHub's new-issue page.
 
 Instagram often blocks data-centre IPs. The app also sends what the phone reads at share time, so cards still get built; if card quality drops, set `SCRAPER_API_URL` and `SCRAPER_API_KEY` (a paid scraper).
 

@@ -10,7 +10,11 @@ success wins.
 4. Give up → an empty `FetchResult(source=None)`; the card becomes `partial`.
 
 Each provider names a `budget` (migration 0007 `provider_budget`); the chain
-takes a token before calling it and raises `BudgetExhausted` when none is left.
+takes a token before calling it and skips the provider when none is left, so
+the next one gets its turn. Only when nothing useful came back and a provider
+was skipped does it raise `BudgetExhausted` (the save waits for that budget).
+A provider that is sure the reel is gone raises `ReelUnavailable`; the give-up
+result then says so (`unavailable`).
 
 Media URLs are signed and short-lived: they live in the job payload and in
 `reel_content.fetch_meta`, never as display sources. Thumbnails are copied to
@@ -48,6 +52,7 @@ class FetchResult:
     video_url: str | None = None
     audio_url: str | None = None
     duration_s: float | None = None
+    unavailable: bool = False  # gave up because a provider found the reel gone or private
 
     @property
     def media_url(self) -> str | None:
@@ -77,21 +82,35 @@ class FetchProvider(Protocol):
 TakeToken = Callable[[str], Awaitable[int]]
 
 
+class ReelUnavailable(Exception):
+    """A provider is sure the reel is gone or private (HTTP 404/410): a retry won't help."""
+
+
 async def run_chain(providers: list[FetchProvider], shortcode: str, url: str,
                     take: TakeToken | None = None) -> FetchResult:
+    exhausted: dict[str, int] = {}  # budget → seconds until a token
+    unavailable = False
     for p in providers:
         if take is not None and p.budget:
-            wait = await take(p.budget)
+            wait = exhausted.get(p.budget) or await take(p.budget)
             if wait:
-                raise BudgetExhausted(p.budget, wait)
+                exhausted[p.budget] = wait
+                continue  # no token: the next provider gets its turn
         try:
             result = await p.fetch(shortcode, url)
+        except ReelUnavailable as exc:
+            log.info("fetch provider %s: %s unavailable: %s", p.name, shortcode, exc)
+            unavailable = True
+            continue
         except Exception as exc:  # noqa: BLE001 — a provider failing means "try the next"
             log.info("fetch provider %s failed for %s: %s", p.name, shortcode, exc)
             continue
         if result is not None and result.useful:
             return result
-    return FetchResult(source=None)
+    if exhausted:
+        budget, wait = min(exhausted.items(), key=lambda kv: kv[1])
+        raise BudgetExhausted(budget, wait)
+    return FetchResult(source=None, unavailable=unavailable)
 
 
 # ------------------------------------------------------------- embed page --
@@ -201,6 +220,8 @@ class EmbedPageProvider:
             headers={"User-Agent": DESKTOP_UA, "Accept-Language": "en-US,en;q=0.9",
                      "Sec-Fetch-Dest": "iframe", "Sec-Fetch-Mode": "navigate"},
             timeout=self._timeout, follow_redirects=True)
+        if resp.status_code in (404, 410):
+            raise ReelUnavailable(f"embed page HTTP {resp.status_code}")
         if resp.status_code != 200:
             log.info("embed page %s: HTTP %s", shortcode, resp.status_code)
             return None
@@ -257,8 +278,10 @@ class YtDlpProvider:
     async def fetch(self, shortcode: str, url: str) -> FetchResult | None:
         try:
             info = await asyncio.wait_for(asyncio.to_thread(self._extract, url), self._timeout)
-        except Exception as exc:  # noqa: BLE001 — login walls, rate limits, timeouts
+        except Exception as exc:  # login walls, rate limits, timeouts
             log.info("yt-dlp %s: %s", shortcode, exc)
+            if "HTTP Error 404" in str(exc) or "HTTP Error 410" in str(exc):
+                raise ReelUnavailable(str(exc)[:200]) from exc
             return None
         return info_to_result(info) if info else None
 
@@ -289,6 +312,8 @@ class ScraperApiProvider:
         resp = await self._client.get(self._url, params={"url": url},
                                       headers={"Authorization": f"Bearer {self._key}"},
                                       timeout=self._timeout)
+        if resp.status_code in (404, 410):
+            raise ReelUnavailable(f"scraper HTTP {resp.status_code}")
         if resp.status_code != 200:
             return None
         data = resp.json()
@@ -335,20 +360,29 @@ async def download_limited(client: httpx.AsyncClient, url: str, max_bytes: int,
                     continue
                 if resp.status_code != 200:
                     return None
-                declared = resp.headers.get("content-length")
-                if declared and declared.isdigit() and int(declared) > max_bytes:
-                    return None
-                buf = bytearray()
-                async for chunk in resp.aiter_bytes():
-                    buf += chunk
-                    if len(buf) > max_bytes:
-                        return None
-                return bytes(buf)
+                return await _read_capped(resp, max_bytes)
         except httpx.HTTPError as exc:
             log.info("download %s failed: %s", url[:80], exc)
             return None
     log.info("download gave up after %d redirects: %s", MAX_CDN_REDIRECTS, url[:80])
     return None
+
+
+async def _read_capped(resp: httpx.Response, max_bytes: int) -> bytes | None:
+    """The body of a streamed response, or None once it exceeds `max_bytes`."""
+    declared = resp.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > max_bytes:
+        return None
+    buf = bytearray()
+    async for chunk in resp.aiter_bytes():
+        buf += chunk
+        if len(buf) > max_bytes:
+            return None
+    return bytes(buf)
+
+
+STORAGE_PUBLIC_PATH = "/storage/v1/object/public/thumbnails/"
+_OBJECT_NAME = re.compile(r"^[A-Za-z0-9_-]{1,64}\.jpg$")
 
 
 class ThumbnailStore:
@@ -401,6 +435,34 @@ class ThumbnailStore:
             log.info("device thumbnail for %s not confirmed", shortcode)
             return None
         return await self._keep(shortcode, data) or image_url
+
+    def stored_url(self, path: str | None) -> str | None:
+        """The public URL of `path` when it names an object in this project's
+        thumbnails bucket (`{sc}.jpg`, or that object's public URL), else None."""
+        if not path or not self._base:
+            return None
+        prefix = self._base + STORAGE_PUBLIC_PATH
+        name = path.removeprefix(prefix)
+        return prefix + name if _OBJECT_NAME.match(name) else None
+
+    async def read_stored(self, path: str | None) -> bytes | None:
+        """A thumbnail we stored in our own Storage bucket (for STRUCTURE's image).
+
+        `download_limited` only reaches Instagram's CDN; this reaches only the
+        configured SUPABASE_URL's public thumbnails path, with the same size cap
+        and no redirects."""
+        url = self.stored_url(path)
+        if url is None:
+            return None
+        try:
+            async with self._client.stream("GET", url, timeout=15.0,
+                                           follow_redirects=False) as resp:
+                if resp.status_code != 200:
+                    return None
+                return await _read_capped(resp, self._max)
+        except httpx.HTTPError as exc:
+            log.info("stored thumbnail %s not read: %s", url[-80:], exc)
+            return None
 
     async def _keep(self, shortcode: str, data: bytes) -> str | None:
         """Storage with a key, else the local store, else nothing (None)."""

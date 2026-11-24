@@ -1,7 +1,9 @@
-"""Admin router — GET /admin/health: queue and pipeline counters for the operator.
+"""Admin router — GET /admin/health: queue and pipeline counters for the operator;
+GET /admin/jobs/dead and POST /admin/jobs/dead/{id}/redrive: the dead-letter queue
+(PIPELINE.md §7 "admin re-drive").
 
 Guarded by the `X-Admin-Key` header, compared in constant time with
-settings().admin_key. An empty admin_key disables the endpoint (404), so a
+settings().admin_key. An empty admin_key disables the endpoints (404), so a
 deploy that never set one exposes nothing. User JWTs grant nothing here.
 
 Metrics conventions read here (PIPELINE.md §8, metrics table):
@@ -14,10 +16,14 @@ Metrics conventions read here (PIPELINE.md §8, metrics table):
 
 from __future__ import annotations
 
+import contextlib
 import hmac
 import json
+from datetime import datetime
+from typing import Annotated
+from uuid import UUID
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, Query
 from pydantic import BaseModel
 
 from ..config import settings
@@ -55,13 +61,17 @@ class HealthOut(BaseModel):
     llm_calls_today: int
 
 
-@router.get("/health", response_model=HealthOut)
-async def health(x_admin_key: str | None = Header(default=None)) -> HealthOut:
+def _require_admin(x_admin_key: str | None) -> None:
     expected = settings().admin_key
     if not expected:
         raise api_error(404, "NOT_FOUND", "Not found.")
     if not x_admin_key or not hmac.compare_digest(x_admin_key.encode(), expected.encode()):
         raise api_error(401, "UNAUTHORIZED", "Admin key required.")
+
+
+@router.get("/health", response_model=HealthOut)
+async def health(x_admin_key: str | None = Header(default=None)) -> HealthOut:
+    _require_admin(x_admin_key)
     row = await pool().fetchrow(_HEALTH_SQL)
     assert row is not None
     stages = row["stage_p95_ms"]
@@ -73,3 +83,50 @@ async def health(x_admin_key: str | None = Header(default=None)) -> HealthOut:
         partial_rate_24h=float(rate) if rate is not None else None,
         enrich_p95_ms=stages.get("enrich"), stage_p95_ms=stages,
         llm_calls_today=row["llm_calls_today"])
+
+
+class DeadJobOut(BaseModel):
+    id: UUID
+    kind: str | None
+    stage: str | None
+    last_error: str | None
+    failed_at: datetime
+    reel_id: str | None  # payload reel_id (enrich / embed jobs)
+
+
+@router.get("/jobs/dead", response_model=list[DeadJobOut])
+async def dead_jobs(x_admin_key: str | None = Header(default=None),
+                    limit: Annotated[int, Query(ge=1, le=500)] = 50) -> list[DeadJobOut]:
+    """Dead-lettered jobs, the most recently failed first."""
+    _require_admin(x_admin_key)
+    rows = await pool().fetch(
+        "select id, kind, stage, last_error, failed_at, payload->>'reel_id' as reel_id "
+        "from public.jobs_dead order by failed_at desc, id limit $1", limit)
+    return [DeadJobOut(**dict(r)) for r in rows]
+
+
+@router.post("/jobs/dead/{job_id}/redrive", status_code=202)
+async def redrive_dead_job(job_id: UUID,
+                           x_admin_key: str | None = Header(default=None)) -> dict[str, str]:
+    """Move a dead job back into the queue to run now with its attempts reset
+    (it resumes from the stage it died at). An enrich job's save goes back to
+    pending, as on a retry. 404 when there is no such dead job."""
+    _require_admin(x_admin_key)
+    async with pool().acquire() as con, con.transaction():
+        job = await con.fetchrow(
+            """
+            with dead as (delete from public.jobs_dead where id = $1 returning *)
+            insert into public.jobs (id, kind, payload, stage, attempts, run_at)
+            select id, coalesce(kind, 'enrich'), coalesce(payload, '{}'::jsonb),
+                   coalesce(stage, 'resolve'), 0, now()
+            from dead
+            returning kind, payload->>'reel_id' as reel_id
+            """, job_id)
+        if job is None:
+            raise api_error(404, "NOT_FOUND", "Dead job not found.")
+        if job["kind"] == "enrich" and job["reel_id"]:
+            with contextlib.suppress(ValueError):
+                await con.execute(
+                    "update public.reels set status = 'pending', fail_reason = null "
+                    "where id = $1 and status = 'partial'", UUID(job["reel_id"]))
+    return {"status": "queued"}

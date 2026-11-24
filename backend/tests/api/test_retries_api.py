@@ -76,3 +76,64 @@ async def test_retry_404_for_other_user_or_unknown(client, db, make_user, jwt_fo
 
 async def test_retry_401_without_token(client):
     assert (await client.post(f"/retries/{uuid.uuid4()}")).status_code == 401
+
+
+# ------------------------------------------ a job already exists (GitHub #12)
+
+async def _job(db, rid, **cols):
+    """Set raw SQL values on the save's job (if any given), then read it back."""
+    if cols:
+        sets = ", ".join(f"{k} = {v}" for k, v in cols.items())
+        await db.execute(f"update public.jobs set {sets} where payload->>'reel_id' = $1", str(rid))
+    return await db.fetchrow("select *, run_at <= now() as due from public.jobs "
+                             "where payload->>'reel_id' = $1", str(rid))
+
+
+async def _retry_count(db, rid):
+    return await db.fetchval("select retry_count from public.reels where id = $1", rid)
+
+
+async def test_retry_brings_a_waiting_job_forward_for_free(client, db, make_user, jwt_for):
+    uid = await make_user()
+    rid = await _partial(db, uid)
+    await client.post(f"/retries/{rid}", headers=auth(jwt_for(uid)))  # 1 retry used
+    await _job(db, rid, run_at="now() + interval '8 minutes'", attempts="2")  # backing off
+    for _ in range(4):  # more than the daily cap: bringing a job forward is free
+        r = await client.post(f"/retries/{rid}", headers=auth(jwt_for(uid)))
+        assert r.status_code == 202 and r.json() == {"status": "queued"}
+    job = await _job(db, rid)
+    assert job["due"] and job["locked_at"] is None and job["attempts"] == 2
+    assert len(await _enrich_jobs(db, rid)) == 1 and await _retry_count(db, rid) == 1
+
+
+async def test_retry_frees_a_job_whose_worker_went_quiet(client, db, make_user, jwt_for):
+    uid = await make_user()
+    rid = await _partial(db, uid)
+    await client.post(f"/retries/{rid}", headers=auth(jwt_for(uid)))
+    await _job(db, rid, locked_at="now() - interval '1 hour'", locked_by="'w-dead'",
+               heartbeat_at="now() - interval '30 minutes'")
+    r = await client.post(f"/retries/{rid}", headers=auth(jwt_for(uid)))
+    assert r.status_code == 202 and r.json() == {"status": "queued"}
+    job = await _job(db, rid)
+    assert job["locked_at"] is None and job["locked_by"] is None and job["due"]
+    assert await _retry_count(db, rid) == 1
+
+
+async def test_retry_leaves_a_live_workers_job_alone(client, db, make_user, jwt_for):
+    uid = await make_user()
+    rid = await _partial(db, uid)
+    await client.post(f"/retries/{rid}", headers=auth(jwt_for(uid)))
+    await _job(db, rid, locked_at="now() - interval '1 hour'", locked_by="'w-live'",
+               heartbeat_at="now() - interval '20 seconds'")
+    r = await client.post(f"/retries/{rid}", headers=auth(jwt_for(uid)))
+    assert r.status_code == 202 and r.json() == {"status": "running"}
+    job = await _job(db, rid)
+    assert job["locked_by"] == "w-live" and await _retry_count(db, rid) == 1
+
+
+async def test_retry_clears_the_fail_reason(client, db, make_user, jwt_for):
+    uid = await make_user()
+    rid = await _partial(db, uid)
+    await db.execute("update public.reels set fail_reason = 'timed_out' where id = $1", rid)
+    assert (await client.post(f"/retries/{rid}", headers=auth(jwt_for(uid)))).status_code == 202
+    assert await db.fetchval("select fail_reason from public.reels where id = $1", rid) is None

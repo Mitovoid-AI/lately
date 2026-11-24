@@ -21,9 +21,19 @@ class ParsedQuery:
     saved_after: datetime | None = None
     saved_before: datetime | None = None
 
+    @property
+    def date_only(self) -> bool:
+        """A date filter and nothing else to match ("reels from yesterday",
+        "today"): the search lists that period's saves instead."""
+        has_date = self.saved_after is not None or self.saved_before is not None
+        return has_date and all(t in FILLER_WORDS for t in self.text.split())
+
 
 _NOISE = "reel reels video videos post posts saved save that wo woh jo wahi wala wali waala waali vala vali ki ka ke"
 NOISE_WORDS: frozenset[str] = frozenset(_NOISE.split())
+# Words that say nothing about a save once a date phrase is taken out.
+_FILLER = "saves from in since on of the a an my me i all show what did"
+FILLER_WORDS: frozenset[str] = NOISE_WORDS | frozenset(_FILLER.split())
 
 _CATEGORY_GROUPS: dict[str, str] = {
     "Food & Places": "recipe food cafe restaurant momo momos place trip travel trek beach",

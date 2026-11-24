@@ -22,7 +22,7 @@ No folders to maintain. No scrolling through hundreds of saves. Just search.
 |---|---|---|
 | `frontend/` | The app: Android (saves reels from Instagram's share sheet) and web. | Expo, React Native, expo-share-intent |
 | `backend/` | API + worker: saves, the enrichment pipeline (fetch → transcribe → card → embed), search. | FastAPI, asyncpg, OpenRouter, Groq, OpenAI embeddings |
-| `supabase/` | Database migrations `0001`–`0012`. | Postgres + pgvector + pg_trgm |
+| `supabase/` | Database migrations `0001`–`0016`. | Postgres + pgvector + pg_trgm |
 
 Design docs: `PIPELINE.md`, `BACKEND.md`, `SEARCH.md`, `INFRASTRUCTURE.md`.
 

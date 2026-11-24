@@ -10,7 +10,8 @@ from tests.fixtures import CARDS
 pytestmark = pytest.mark.db
 
 SAVE_KEYS = {"id", "source_url", "shortcode", "status", "note", "created_at", "title",
-             "caption", "category", "thumbnail_url", "creator", "channel", "stage"}
+             "caption", "category", "thumbnail_url", "creator", "channel", "stage",
+             "fail_reason"}
 
 
 def auth(token):
@@ -207,3 +208,88 @@ async def test_post_saves_500_hides_internal_error(client, make_user, jwt_for, m
     assert r.status_code == 500
     err = r.json()["error"]
     assert err["code"] == "SERVER" and "secret" not in err["message"]
+
+
+# --------------------------------------------------- fail_reason (GitHub #17)
+
+async def test_fail_reason_is_shown_for_partial_saves_only(client, db, make_user, jwt_for):
+    a = await make_user()
+    m = await seed_card(db, a, CARDS["MANALI1"], None)
+    await db.execute("update public.reels set status = 'partial', fail_reason = 'fetch_blocked' "
+                     "where id = $1", m)
+    h = auth(jwt_for(a))
+    assert (await client.get("/saves", headers=h)).json()[0]["fail_reason"] == "fetch_blocked"
+    assert (await client.get(f"/saves/{m}", headers=h)).json()["fail_reason"] == "fetch_blocked"
+    # A stale reason on a save that is no longer partial is not shown.
+    await db.execute("update public.reels set status = 'enriched' where id = $1", m)
+    assert (await client.get("/saves", headers=h)).json()[0]["fail_reason"] is None
+    assert (await client.get(f"/saves/{m}", headers=h)).json()["fail_reason"] is None
+
+
+# ------------------------------------------------- GET /saves/categories (#31)
+
+async def test_categories_counts_most_used_first(client, db, make_user, jwt_for):
+    a, b = await make_user(), await make_user()
+    for code in ("MANALI1", "MOMO1", "GITHUB1"):
+        await seed_card(db, a, CARDS[code], None)
+    await seed_card(db, b, CARDS["JOBS1"], None)
+    # A card category outside the app's list is not counted.
+    await seed_card(db, a, CARDS["PASTA1"] | {"shortcode": "ODD1", "category": "Misc"}, None)
+    r = await client.get("/saves/categories", headers=auth(jwt_for(a)))
+    assert r.status_code == 200
+    assert r.json() == [{"category": "Food & Places", "count": 2},
+                        {"category": "Dev & Tools", "count": 1}]
+    assert (await client.get("/saves/categories", headers=auth(jwt_for(await make_user())))
+            ).json() == []
+    assert (await client.get("/saves/categories")).status_code == 401
+
+
+# ----------------------------------------- device cards are private (GitHub #6)
+
+async def _device_card_for(db, supplier, other):
+    """MOMO1's card as built from `supplier`'s device hint; `other` saved the reel too."""
+    mine = await seed_card(db, supplier, CARDS["MOMO1"], None)
+    await db.execute("update public.reel_content set fetch_source = 'device', device_user_id = $1 "
+                     "where shortcode = 'MOMO1'", supplier)
+    theirs = await db.fetchval(
+        "insert into public.reels (auth_user_id, source_url, shortcode, shortcode_key, status) "
+        "values ($1, 'https://www.instagram.com/reel/MOMO1/', 'MOMO1', 'MOMO1', 'partial') "
+        "returning id", other)
+    return mine, theirs
+
+
+async def test_someone_elses_device_card_reads_as_no_card(client, db, make_user, jwt_for):
+    from app.deps import get_embedder
+    from app.main import app
+
+    supplier, other = await make_user(), await make_user()
+    mine, theirs = await _device_card_for(db, supplier, other)
+    hs, ho = auth(jwt_for(supplier)), auth(jwt_for(other))
+
+    seen = (await client.get(f"/saves/{theirs}", headers=ho)).json()
+    assert seen["title"] is None and seen["caption"] is None and seen["category"] is None
+    assert seen["summary"] is None and seen["tags"] is None and seen["places"] == []
+    assert seen["media_status"] == "pending"
+    assert (await client.get("/saves", headers=ho)).json()[0]["title"] is None
+    assert (await client.get("/saves", params={"category": "Food & Places"}, headers=ho)
+            ).json() == []
+    assert (await client.get("/saves/categories", headers=ho)).json() == []
+    # The supplier still sees the card built from their own phone.
+    assert (await client.get(f"/saves/{mine}", headers=hs)).json()["title"].startswith("Best momos")
+    assert (await client.get("/saves/categories", headers=hs)).json() == [
+        {"category": "Food & Places", "count": 1}]
+
+    app.dependency_overrides[get_embedder] = lambda: None
+    try:
+        assert (await client.get("/search", params={"q": "momos lajpat"}, headers=ho)).json() == []
+        hits = (await client.get("/search", params={"q": "momos lajpat"}, headers=hs)).json()
+        assert [h["save"]["id"] for h in hits] == [str(mine)]
+    finally:
+        app.dependency_overrides.pop(get_embedder, None)
+
+    feed = (await client.get("/curated", headers=ho)).json()
+    assert all(s["title"] is None for sec in feed["sections"] for s in sec["saves"])
+    stack = (await client.post("/stacks", json={"name": "food"}, headers=ho)).json()
+    await client.post(f"/stacks/{stack['id']}/saves", json={"save_id": str(theirs)}, headers=ho)
+    detail = (await client.get(f"/stacks/{stack['id']}", headers=ho)).json()
+    assert detail["category"] is None

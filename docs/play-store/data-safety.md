@@ -71,7 +71,7 @@ Notes:
 | Personal info: address, phone, race, beliefs, orientation, other | Never asked for. |
 | Financial info: payment info, credit score, other | Google Play takes the payment; Lately never receives card or bank details (`privacy.md`). |
 | Health and fitness | None. |
-| Messages (emails, SMS, other) | None. The app receives only the text the user shares to it. |
+| Messages (emails, SMS, other) | None through the app: it receives only the text the user shares to it. **[CONFIRM]** the optional Instagram DM door (`backend/app/routers/instagram.py`, off until configured): a user who connects Instagram can send reels to Lately's Instagram account; the backend reads those messages (delivered by Meta, not by the app) for a reel link, connection code or note, keeps only the link (as a save) and the note, a 7-day message ID for deduplication, and the user's Instagram-scoped ID (`instagram_links`, `0016_instagram_dm.sql`). If Google counts this as collection, declare "Other in-app messages" (not shared, optional, App functionality) and add the Instagram-scoped ID under User IDs. |
 | Photos and videos from the phone, videos | Media permissions are blocked (`blockedPermissions` in `frontend/app.json`). Reel thumbnails are public Instagram content. |
 | Audio files | Microphone and audio permissions are blocked. Reel audio is downloaded by the backend from Instagram, not from the user. |
 | Files and docs | The export is written by the app for the user; nothing is uploaded from the phone's files. |

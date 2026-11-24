@@ -26,7 +26,11 @@ class Transcript:
 
 
 class TranscribeError(Exception):
-    pass
+    """`retryable`: a temporary failure (429, 5xx, timeout, connection) worth another try."""
+
+    def __init__(self, message: str, retryable: bool = False) -> None:
+        super().__init__(message)
+        self.retryable = retryable
 
 
 def should_transcribe(fetch: FetchResult, caption: str | None, *, has_key: bool,
@@ -80,7 +84,8 @@ class GroqTranscriber:
                 name = urlsplit(media_url).path.rsplit("/", 1)[-1] or "audio.mp4"
                 resp = await self._post({"file": (name, audio)})
         if resp.status_code != 200:
-            raise TranscribeError(f"groq HTTP {resp.status_code}: {resp.text[:200]}")
+            raise TranscribeError(f"groq HTTP {resp.status_code}: {resp.text[:200]}",
+                                  retryable=resp.status_code == 429 or resp.status_code >= 500)
         body = resp.json()
         duration = body.get("duration")
         return Transcript(text=(body.get("text") or "").strip(),
@@ -93,4 +98,5 @@ class GroqTranscriber:
             return await self._client.post(self._url, headers={"Authorization": f"Bearer {self._key}"},
                                            files=fields, timeout=self._timeout)
         except httpx.HTTPError as exc:
-            raise TranscribeError(f"groq request failed: {type(exc).__name__}: {exc}") from exc
+            raise TranscribeError(f"groq request failed: {type(exc).__name__}: {exc}",
+                                  retryable=True) from exc

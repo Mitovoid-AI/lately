@@ -1,6 +1,6 @@
 """GET /curated — contract CuratedFeed built from the user's own saves (no LLM)."""
 
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -107,3 +107,12 @@ async def test_feed_only_uses_own_saves(client, db, make_user, jwt_for):
 
 async def test_curated_401_without_token(client):
     assert (await client.get("/curated")).status_code == 401
+
+
+async def test_date_label_is_the_users_local_date(client, make_user, jwt_for):
+    h = auth(jwt_for(await make_user()))
+    east = (await client.get("/curated", headers=h | {"X-Timezone-Offset": "840"})).json()
+    west = (await client.get("/curated", headers=h | {"X-Timezone-Offset": "-720"})).json()
+    # UTC+14 and UTC-12 are 26 hours apart: never the same calendar date.
+    assert east["date_label"] != west["date_label"]
+    assert east["date_label"] == date_label(datetime.now(timezone(timedelta(hours=14))))

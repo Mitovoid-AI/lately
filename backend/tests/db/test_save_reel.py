@@ -5,6 +5,8 @@ import asyncio
 import asyncpg
 import pytest
 
+from app.urls import is_saveable_link, normalize_shared_text, parse_shortcode
+
 pytestmark = pytest.mark.db
 URL = "https://www.instagram.com/reel/C8xYz12/"
 
@@ -116,3 +118,83 @@ async def test_save_reel_bad_url(db, make_user):
     uid = await make_user()
     with pytest.raises(asyncpg.RaiseError, match="BAD_URL"):
         await save(db, uid, "https://example.com/x")
+
+
+# ---------------------------------------- 0014: link rule, profile lock, rate log
+
+@pytest.mark.parametrize("text", [
+    "https://www.instagram.com/reel/C8xYz12/",
+    "instagram.com/reels/Dxyz_-9",
+    "www.instagram.com/p/Cpost123/?igsh=abc",
+    "https://www.instagram.com/tv/Ctv12345/",
+    "https://www.instagram.com/delhi.foodtrails/reel/Cuser12/",
+    "https://www.instagram.com/some_user/p/Cuser34/",
+    "https://www.instagram.com/share/AbCd12",
+    "https://www.instagram.com/share/reel/BAabc12/",
+    "https://www.instagram.com/reels/audio/123456/",
+    "https://www.instagram.com/delhi.foodtrails/",
+    "https://www.instagram.com/stories/delhi.foodtrails/3456789/",
+    "https://www.instagram.com/explore/tags/momos/",
+])
+async def test_sql_link_rule_agrees_with_python(db, make_user, text):
+    uid = await make_user()
+    url = normalize_shared_text(text)
+    assert url is not None
+    if not is_saveable_link(url):
+        with pytest.raises(asyncpg.RaiseError, match="BAD_URL"):
+            await save(db, uid, url)
+        return
+    row = await save(db, uid, url)
+    assert row["deduped"] is False
+    assert await db.fetchval("select shortcode_key from public.reels where id = $1",
+                             row["reel_id"]) == parse_shortcode(url)
+
+
+async def test_username_permalink_dedupes_with_the_plain_link(db, make_user):
+    uid = await make_user()
+    first = await save(db, uid, "https://www.instagram.com/delhi.foodtrails/reel/C8xYz12/")
+    again = await save(db, uid, URL)
+    assert again["deduped"] is True and again["reel_id"] == first["reel_id"]
+
+
+async def test_rate_limit_counts_saves_that_were_deleted(db, make_user):
+    uid = await make_user()
+    for code in ("DEL1", "DEL2"):
+        row = await save(db, uid, reel_url(code), rate_per_hour=2)
+        await db.execute("delete from public.reels where id = $1", row["reel_id"])
+    with pytest.raises(asyncpg.RaiseError, match="RATE_LIMITED"):
+        await save(db, uid, reel_url("DEL3"), rate_per_hour=2)
+
+
+async def _second_save_while_first_is_open(db, uid, first_url, second_url):
+    """Save `first_url` in an open transaction, start saving `second_url` on another
+    connection, then commit the first: what the second call returns (or raises)."""
+    sql = "select * from public.save_reel($1, $2, 'app_share', $2, 30)"
+    async with db.acquire() as c1, db.acquire() as c2:
+        tx = c1.transaction()
+        await tx.start()
+        first = await c1.fetchrow(sql, uid, first_url)
+        second = asyncio.create_task(c2.fetchrow(sql, uid, second_url))
+        await asyncio.sleep(0.3)
+        assert not second.done()  # held back until the first save commits
+        await tx.commit()
+        return first, await asyncio.gather(second, return_exceptions=True)
+
+
+async def test_simultaneous_shares_of_one_reel_are_charged_once(db, make_user):
+    uid = await make_user()
+    first, (second,) = await _second_save_while_first_is_open(db, uid, URL, URL)
+    assert first["deduped"] is False
+    assert second["deduped"] is True and second["reel_id"] == first["reel_id"]
+    assert await db.fetchval(
+        "select count(*) from public.save_events where auth_user_id = $1", uid) == 1
+
+
+async def test_simultaneous_saves_cannot_overrun_the_monthly_quota(db, make_user):
+    uid = await make_user()
+    await db.execute("insert into public.profiles (id, saves_free_limit) values ($1, 1) "
+                     "on conflict (id) do update set saves_free_limit = excluded.saves_free_limit", uid)
+    _, (second,) = await _second_save_while_first_is_open(
+        db, uid, reel_url("RACE1"), reel_url("RACE2"))
+    assert isinstance(second, asyncpg.RaiseError) and "QUOTA_EXCEEDED" in str(second)
+    assert await db.fetchval("select count(*) from public.reels where auth_user_id = $1", uid) == 1

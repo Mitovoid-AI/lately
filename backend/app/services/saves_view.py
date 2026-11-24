@@ -3,6 +3,8 @@ one query that builds them, shared by /saves, /search, /stacks and /curated.
 
 A save is the user's `reels` row joined to the shared `reel_content` card.
 Every read here is scoped to `auth_user_id`, so callers pass the verified user.
+A card built from another user's device hint is not joined (TRUSTED_CARD): that
+save reads as if no card existed yet.
 """
 
 from __future__ import annotations
@@ -31,6 +33,9 @@ ENRICH_STAGES = ("resolve", "fetch", "transcribe", "vision", "structure", "final
 # save_reel() maps app_share → app and meta_dm → telegram on the way in.
 _CHANNEL_OUT = {"app": "app_share", "telegram": "meta_dm", "web": "web"}
 
+# reels.fail_reason (migration 0014 check constraint).
+FailReason = Literal["fetch_blocked", "unavailable", "ai_unavailable", "timed_out"]
+
 
 class PlaceOut(BaseModel):
     name: str
@@ -54,6 +59,8 @@ class SaveOut(BaseModel):
     # Where the enrich job is right now, for a pending save only (null once it is done, or when
     # no job is queued). The app shows it as the named step of its progress tracker.
     stage: str | None = None
+    # Why a partial card could not be completed (written by the worker); null unless partial.
+    fail_reason: FailReason | None = None
 
 
 class SaveDetailOut(SaveOut):
@@ -73,12 +80,18 @@ SAVE_COLUMNS = """
   case when r.status = 'pending' then (
     select j.stage from public.jobs j
     where j.kind = 'enrich' and j.payload->>'reel_id' = r.id::text
-    order by j.created_at desc limit 1) end as job_stage
+    order by j.created_at desc limit 1) end as job_stage,
+  case when r.status = 'partial' then r.fail_reason end as fail_reason
 """
 
-SAVE_FROM = """
+# Is shared content `rc` trusted for save `r`? The worker's rule (worker/stages.py
+# _TRUSTED_FOR_SAVE): server-fetched, or device-sourced by this save's own user.
+TRUSTED_CARD = ("(rc.fetch_source is distinct from 'device' "
+                "or rc.device_user_id = r.auth_user_id)")
+
+SAVE_FROM = f"""
 from public.reels r
-left join public.reel_content rc on rc.shortcode = r.shortcode_key
+left join public.reel_content rc on rc.shortcode = r.shortcode_key and {TRUSTED_CARD}
 """
 
 
@@ -129,7 +142,8 @@ def to_save(row: asyncpg.Record | dict[str, Any]) -> SaveOut:
         title=row["title"], caption=row["caption"], category=category,
         thumbnail_url=thumbnail_url(row["thumbnail_path"]), creator=row["creator_handle"],
         channel=_CHANNEL_OUT.get(row["source_channel"], "app_share"),  # type: ignore[arg-type]
-        stage=stage if row["status"] == "pending" and stage in ENRICH_STAGES else None)
+        stage=stage if row["status"] == "pending" and stage in ENRICH_STAGES else None,
+        fail_reason=row.get("fail_reason") if row["status"] == "partial" else None)
 
 
 def to_save_detail(row: asyncpg.Record | dict[str, Any]) -> SaveDetailOut:

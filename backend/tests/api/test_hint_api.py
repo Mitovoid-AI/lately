@@ -135,3 +135,27 @@ async def test_hint_for_pending_or_enriched_save_adds_no_job(client, db, make_us
     r = await client.post(f"/saves/{rid}/hint", json=GOOD, headers=auth(jwt_for(uid)))
     assert r.json() == {"status": "accepted", "requeued": False}
     assert await _enrich_jobs(db, rid) == []
+
+
+# --------------------------------------- the hint requeue uses the retry cap (#8)
+
+async def test_hint_requeue_counts_as_a_retry(client, db, make_user, jwt_for):
+    uid = await make_user()
+    rid = await _save(db, uid, status="partial")
+    await db.execute("update public.reels set fail_reason = 'fetch_blocked' where id = $1", rid)
+    r = await client.post(f"/saves/{rid}/hint", json=GOOD, headers=auth(jwt_for(uid)))
+    assert r.json() == {"status": "accepted", "requeued": True}
+    row = await db.fetchrow("select retry_count, fail_reason from public.reels where id = $1", rid)
+    assert row["retry_count"] == 1 and row["fail_reason"] is None
+
+
+async def test_hint_at_the_retry_cap_is_stored_but_not_requeued(client, db, make_user, jwt_for):
+    uid = await make_user()
+    rid = await _save(db, uid, status="partial")
+    await db.execute("update public.reels set retry_count = 3, retry_window_start = now() "
+                     "where id = $1", rid)
+    r = await client.post(f"/saves/{rid}/hint", json=GOOD, headers=auth(jwt_for(uid)))
+    assert r.status_code == 202 and r.json() == {"status": "accepted", "requeued": False}
+    assert (await _hint(db, rid))["caption"] == GOOD["caption"]
+    assert await _enrich_jobs(db, rid) == []
+    assert await db.fetchval("select status from public.reels where id = $1", rid) == "partial"

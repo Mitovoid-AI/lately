@@ -180,7 +180,9 @@ async def delete_me(user: CurrentUser) -> Response:
 @router.get("/export", response_model=None)
 async def download_export(user: CurrentUser) -> Response | JSONResponse:
     """The newest finished export as a JSON download. 202 while one is still
-    being built, 404 when none was ever requested."""
+    being built, 404 when none was ever requested, 500 EXPORT_FAILED when the
+    newest request was dead-lettered (an older archive is not served in its
+    place; POST /me/export can queue a new one)."""
     uid = uuid.UUID(user.id)
     queued = await pool().fetchval(
         "select exists (select 1 from public.jobs where kind = 'export' "
@@ -190,6 +192,11 @@ async def download_export(user: CurrentUser) -> Response | JSONResponse:
     row = await pool().fetchrow(
         "select data::text as data, created_at from public.exports "
         "where user_id = $1 order by created_at desc limit 1", uid)
+    died_at = await pool().fetchval(
+        "select max(failed_at) from public.jobs_dead "
+        "where kind = 'export' and payload->>'user_id' = $1", str(uid))
+    if died_at is not None and (row is None or died_at > row["created_at"]):
+        raise api_error(500, "EXPORT_FAILED", "Your export could not be built. Request it again.")
     if row is None:
         raise api_error(404, "NOT_FOUND", "No export yet. Request one first.")
     name = f"lately-export-{row['created_at']:%Y%m%d}.json"

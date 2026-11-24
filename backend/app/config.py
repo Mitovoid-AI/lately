@@ -42,6 +42,16 @@ class Settings(BaseSettings):
     worker_stuck_after_minutes: int = 10
     worker_concurrency: int = 8
     worker_heartbeat_seconds: float = 30.0
+    # Every query on the pool (API and worker) gives up after this long.
+    db_command_timeout_seconds: float = 30.0
+    # A stage running longer is cancelled and retried with back-off; its lease stops
+    # being renewed. Must cover a 180 s transcription plus the fetch around it.
+    worker_stage_timeout_seconds: float = 240.0
+    # On stop: running stages get this long to finish before they are cancelled.
+    worker_shutdown_grace_seconds: float = 20.0
+    # A save waits at most this long (since its job was created) for provider
+    # budgets; after that it finishes as a partial card the user can retry.
+    worker_budget_wait_max_minutes: float = 30.0
 
     # Embeddings (SEARCH.md §3): any OpenAI-compatible /embeddings endpoint.
     # Empty key = search runs keyword + fuzzy only.
@@ -75,6 +85,21 @@ class Settings(BaseSettings):
     # events are ignored, and with the secret key a sandbox entitlement reads as none.
     revenuecat_allow_sandbox: bool = True
     revenuecat_api_base_url: str = "https://api.revenuecat.com/v1"
+
+    # Instagram DM door (PIPELINE.md §2 Door 2; docs/instagram-dm-setup.md). All optional:
+    # until the secret, verify token, access token and handle are all set, /webhooks/instagram
+    # is 404 and GET /me/instagram reports the feature off.
+    instagram_app_secret: str = ""       # signs every webhook POST (X-Hub-Signature-256)
+    instagram_verify_token: str = ""     # any string; the same one goes in Meta's webhook setup
+    instagram_access_token: str = ""     # the Lately account's token, used to send replies
+    instagram_handle: str = ""           # Lately's Instagram username, shown in the app
+    instagram_account_id: str = ""       # optional: ignore messages to any other account
+    instagram_graph_base_url: str = "https://graph.instagram.com/v27.0"
+
+    @property
+    def instagram_enabled(self) -> bool:
+        return all(v.strip() for v in (self.instagram_app_secret, self.instagram_verify_token,
+                                       self.instagram_access_token, self.instagram_handle))
 
     # Optional AI keys — saves work without them; cards stay partial (Part 2)
     groq_api_key: str = ""

@@ -21,12 +21,12 @@ from __future__ import annotations
 import uuid
 from collections import Counter
 from collections.abc import Sequence
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta
 from typing import Literal
 
 from fastapi import APIRouter
 
-from ..deps import CurrentUser, pool
+from ..deps import ClientTimezone, CurrentUser, pool
 from ..models import CuratedFeed, CuratedHero, CuratedSection
 from ..services.saves_view import SAVE_COLUMNS, SAVE_FROM, SaveOut, to_save
 
@@ -40,7 +40,8 @@ _MONTHS = ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct",
 
 
 def date_label(now: datetime) -> str:
-    """'Saturday, Oct 10' — the app's curatedDate() format (US order; server date, UTC)."""
+    """'Saturday, Oct 10' — the app's curatedDate() format (US order), on `now`'s
+    own date: the route passes the user's local time (X-Timezone-Offset)."""
     return f"{_DAYS[now.weekday()]}, {_MONTHS[now.month - 1]} {now.day}"
 
 
@@ -124,7 +125,7 @@ def _sections(saves: list[SaveOut], now: datetime) -> list[CuratedSection]:
 
 
 @router.get("", response_model=CuratedFeed)
-async def get_curated(user: CurrentUser) -> CuratedFeed:
+async def get_curated(user: CurrentUser, tz: ClientTimezone) -> CuratedFeed:
     rows = await pool().fetch(
         f"""select {SAVE_COLUMNS} {SAVE_FROM}
             where r.auth_user_id = $1
@@ -133,6 +134,6 @@ async def get_curated(user: CurrentUser) -> CuratedFeed:
         uuid.UUID(user.id))
     saves = [to_save(r) for r in rows]
     tags: dict[uuid.UUID, list[str]] = {r["id"]: list(r["tags"] or []) for r in rows}
-    now = datetime.now(UTC)
+    now = datetime.now(tz)
     return CuratedFeed(date_label=date_label(now), hero=_hero(saves, tags, now),
                        sections=_sections(saves, now))

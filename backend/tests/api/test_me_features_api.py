@@ -109,3 +109,43 @@ async def test_delete_me_removes_everything_of_the_user_only(client, db, make_au
 
 async def test_delete_me_401_without_token(client):
     assert (await client.delete("/me")).status_code == 401
+
+
+# ------------------------------------------- a dead export is reported (#42)
+
+async def _dead_export(db, uid):
+    await db.execute(
+        "insert into public.jobs_dead (id, kind, payload, stage, attempts, last_error) "
+        "values (gen_random_uuid(), 'export', jsonb_build_object('user_id', $1::text), "
+        "'export', 3, 'boom')", str(uid))
+
+
+async def test_export_that_died_is_reported_instead_of_an_older_archive(client, db, make_user,
+                                                                        jwt_for):
+    uid = await make_user()
+    h = auth(jwt_for(uid))
+    await db.execute("insert into public.exports (user_id, data, created_at) "
+                     "values ($1, '{\"v\": 1}', now() - interval '1 day')", uid)
+    assert (await client.get("/me/export", headers=h)).status_code == 200
+    await _dead_export(db, uid)
+    r = await client.get("/me/export", headers=h)
+    assert r.status_code == 500 and r.json()["error"]["code"] == "EXPORT_FAILED"
+    # Asking again still works, and a newer archive is served once it is built.
+    assert (await client.post("/me/export", headers=h)).status_code == 202
+    assert (await client.get("/me/export", headers=h)).status_code == 202
+    await db.execute("delete from public.jobs where kind = 'export'")
+    await db.execute("insert into public.exports (user_id, data) values ($1, '{\"v\": 2}')", uid)
+    r = await client.get("/me/export", headers=h)
+    assert r.status_code == 200 and r.json() == {"v": 2}
+
+
+async def test_first_export_that_died_is_500_not_404(client, db, make_user, jwt_for):
+    uid = await make_user()
+    h = auth(jwt_for(uid))
+    assert (await client.get("/me/export", headers=h)).status_code == 404
+    await _dead_export(db, uid)
+    r = await client.get("/me/export", headers=h)
+    assert r.status_code == 500 and r.json()["error"]["code"] == "EXPORT_FAILED"
+    # Someone else's dead export says nothing about this user's.
+    other = auth(jwt_for(await make_user()))
+    assert (await client.get("/me/export", headers=other)).status_code == 404

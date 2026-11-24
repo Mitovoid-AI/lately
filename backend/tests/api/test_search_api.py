@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timedelta, timezone
 
 import pytest
 
@@ -171,3 +172,38 @@ async def test_query_embedding_is_cached(client, seeded_api_user, jwt_for):
         r = await _search(client, seeded_api_user, jwt_for, q="manali treks")
         assert r.status_code == 200
     assert counting.calls == 1
+
+
+# ------------------------------- date-only queries (#7) in the user's day (#11)
+
+IST = timezone(timedelta(minutes=330))
+
+
+async def test_date_only_query_lists_that_days_saves_in_the_users_timezone(
+        client, seeded_api_user, jwt_for, db):
+    midnight = datetime.now(IST).replace(hour=0, minute=0, second=0, microsecond=0)
+    for code, at in (("MANALI1", midnight - timedelta(hours=1)),
+                     ("GOA1", midnight - timedelta(hours=2)),
+                     ("MOMO1", midnight)):
+        await db.execute("update public.reels set created_at = $2 "
+                         "where auth_user_id = $1 and shortcode_key = $3",
+                         seeded_api_user, at, code)
+    h = auth(jwt_for(seeded_api_user)) | {"X-Timezone-Offset": "330"}
+
+    r = await client.get("/search", params={"q": "reels from yesterday"}, headers=h)
+    assert r.status_code == 200
+    hits = r.json()
+    assert [x["save"]["shortcode"] for x in hits] == ["MANALI1", "GOA1"]  # newest first
+    assert hits[0]["matched_by"] == ["date"] and hits[0]["why"] == []
+
+    today = (await client.get("/search", params={"q": "today"}, headers=h)).json()
+    codes = [x["save"]["shortcode"] for x in today]
+    assert "MOMO1" in codes and "MANALI1" not in codes and "GOA1" not in codes
+    assert codes[-1] == "MOMO1"  # saved at midnight, the oldest of today's
+
+
+async def test_date_only_query_respects_the_category_chip(client, seeded_api_user, jwt_for):
+    r = await _search(client, seeded_api_user, jwt_for, q="saves from this month",
+                      category="Dev & Tools")
+    codes = {x["save"]["shortcode"] for x in r.json()}
+    assert codes and codes <= {"GITHUB1", "JOBS1"}

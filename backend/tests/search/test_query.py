@@ -1,4 +1,4 @@
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, timedelta, timezone
 
 import pytest
 
@@ -54,3 +54,24 @@ def test_may_only_counts_after_preposition():
 def test_place_longest_whole_word_match():
     q = parse_query("south goa beaches", now=NOW, known_places={"Goa", "South Goa", "Go"})
     assert q.place_hint == "South Goa"
+
+
+@pytest.mark.parametrize("raw,date_only", [
+    ("reels from yesterday", True),
+    ("today", True),
+    ("saves from the last week", True),
+    ("what did i save this month", True),
+    ("momos yesterday", False),     # something to match besides the date
+    ("reels", False),               # no date at all
+    ("things i may need", False),
+])
+def test_date_only_queries(raw, date_only):
+    assert parse_query(raw, now=NOW, known_places=()).date_only is date_only
+
+
+def test_today_starts_at_local_midnight():
+    ist = timezone(timedelta(minutes=330))
+    now = datetime(2026, 10, 3, 1, 0, tzinfo=ist)  # 19:30 UTC the day before
+    q = parse_query("today", now=now, known_places=())
+    assert q.saved_after == datetime(2026, 10, 3, tzinfo=ist)
+    assert q.saved_after.astimezone(UTC) == datetime(2026, 10, 2, 18, 30, tzinfo=UTC)

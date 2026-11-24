@@ -145,7 +145,7 @@ def _test_jwks(monkeypatch: pytest.MonkeyPatch, _signing_key: ec.EllipticCurvePr
     )
     public_jwk |= {"kid": _TEST_KID, "alg": "ES256", "use": "sig"}
 
-    async def fake_jwks() -> dict[str, Any]:
+    async def fake_jwks(force: bool = False) -> dict[str, Any]:
         return {"keys": [public_jwk]}
 
     monkeypatch.setattr(deps, "_jwks", fake_jwks)

@@ -15,6 +15,11 @@ Payload keys written along the way: `shortcode` (RESOLVE), `fetch` (FETCH:
 provider result incl. transient media URLs + `at` epoch), `card` and
 `structure_outcome` (STRUCTURE). External clients come from
 `app.enrich.runtime.runtime()`.
+
+A save waits for provider budgets at most `worker_budget_wait_max_minutes`
+since its job was created; after that FETCH gives up, TRANSCRIBE skips and
+STRUCTURE falls back, so the save ends `partial` (retryable) instead of waiting
+on. A save that ends `partial` gets `reels.fail_reason` (FINALIZE).
 """
 
 from __future__ import annotations
@@ -23,11 +28,13 @@ import json
 import logging
 import time
 from collections.abc import Mapping
+from datetime import UTC, datetime
 from typing import Any
 
 import asyncpg
 import httpx
 
+from ..config import settings
 from ..enrich.budget import BudgetExhausted, take_token
 from ..enrich.device import DeviceHintProvider
 from ..enrich.fetch import FetchProvider, FetchResult, run_chain
@@ -103,6 +110,17 @@ def _last_attempt(job: Mapping[str, Any]) -> bool:
     return int(job.get("attempts") or 0) >= int(job.get("max_attempts") or 3)
 
 
+def _budget_wait_over(job: Mapping[str, Any]) -> bool:
+    """Has this job waited for provider budgets long enough? Then the stage goes
+    on without that provider instead of rescheduling again."""
+    created = job.get("created_at")
+    if not isinstance(created, datetime):
+        return False
+    waited = (datetime.now(UTC) - (created if created.tzinfo else created.replace(tzinfo=UTC))
+              ).total_seconds()
+    return waited > settings().worker_budget_wait_max_minutes * 60
+
+
 async def _shortcode(db: asyncpg.Pool, job: dict[str, Any]) -> str:
     payload = job["payload"]
     if sc := payload.get("shortcode"):
@@ -149,7 +167,8 @@ async def resolve(db: asyncpg.Pool, job: dict[str, Any]) -> str | None:
         raise RuntimeError("no shortcode after resolve")
 
     # A /share/ link can turn out to be a reel this user already saved: the
-    # second save is a no-op (PIPELINE.md §3 step 4), so drop it and finish.
+    # second save is a no-op (PIPELINE.md §3 step 4), so drop it and finish,
+    # giving back the monthly save it used (one save_events row, 0010).
     if reel["shortcode_key"] is None and await db.fetchval(
         """select exists (
              select 1 from public.reels r
@@ -158,7 +177,18 @@ async def resolve(db: asyncpg.Pool, job: dict[str, Any]) -> str | None:
                and r.id <> me.id)""",
         reel_id, shortcode,
     ):
-        await db.execute("delete from public.reels where id = $1", reel_id)
+        async with db.acquire() as con, con.transaction():
+            dup = await con.fetchrow(
+                "delete from public.reels where id = $1 returning auth_user_id, created_at",
+                reel_id)
+            if dup is not None and dup["auth_user_id"] is not None:
+                await con.execute(
+                    """delete from public.save_events where id = (
+                         select id from public.save_events
+                         where auth_user_id = $1 and created_at >= $2
+                         order by created_at desc, id desc limit 1
+                         for update skip locked)""",
+                    dup["auth_user_id"], dup["created_at"])
         await _metric(db, "worker", "resolve", started, "duplicate")
         return None
 
@@ -189,20 +219,33 @@ async def resolve(db: asyncpg.Pool, job: dict[str, Any]) -> str | None:
 
 # Device-sourced data never replaces server-fetched data (the WHERE skips the
 # update); `device_user_id` follows `fetch_source` (kept when nothing was fetched).
-_UPSERT_FETCH = """
+# New fetched data replaces a device-sourced row outright (nulls included, and
+# its transcript, made from the device's video URL, is cleared), so none of one
+# phone's data stays under another source; server data over server data merges.
+_REPLACES_DEVICE = ("public.reel_content.fetch_source = 'device' "
+                    "and excluded.fetch_source is not null")
+_UPSERT_FETCH = f"""
 insert into public.reel_content
   (shortcode, source_url, caption, creator_handle, thumbnail_path, fetch_source, duration_s,
    fetch_meta, device_user_id, fetched_at)
 values ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, now())
 on conflict (shortcode) do update set
-  caption        = coalesce(excluded.caption, public.reel_content.caption),
-  creator_handle = coalesce(excluded.creator_handle, public.reel_content.creator_handle),
-  thumbnail_path = coalesce(excluded.thumbnail_path, public.reel_content.thumbnail_path),
+  caption        = case when {_REPLACES_DEVICE} then excluded.caption
+                        else coalesce(excluded.caption, public.reel_content.caption) end,
+  creator_handle = case when {_REPLACES_DEVICE} then excluded.creator_handle
+                        else coalesce(excluded.creator_handle,
+                                      public.reel_content.creator_handle) end,
+  thumbnail_path = case when {_REPLACES_DEVICE} then excluded.thumbnail_path
+                        else coalesce(excluded.thumbnail_path,
+                                      public.reel_content.thumbnail_path) end,
+  duration_s     = case when {_REPLACES_DEVICE} then excluded.duration_s
+                        else coalesce(excluded.duration_s, public.reel_content.duration_s) end,
+  transcript     = case when {_REPLACES_DEVICE} then null
+                        else public.reel_content.transcript end,
   fetch_source   = coalesce(excluded.fetch_source, public.reel_content.fetch_source),
   device_user_id = case when excluded.fetch_source is null
                         then public.reel_content.device_user_id
                         else excluded.device_user_id end,
-  duration_s     = coalesce(excluded.duration_s, public.reel_content.duration_s),
   fetch_meta     = excluded.fetch_meta,
   fetched_at     = now()
 where excluded.fetch_source is distinct from 'device'
@@ -213,12 +256,17 @@ where excluded.fetch_source is distinct from 'device'
 SERVER_SOURCES = ("embed_page", "ytdlp", "scraper")
 
 
-async def _run_chain(db: asyncpg.Pool, rt: Runtime, sc: str,
+async def _run_chain(db: asyncpg.Pool, rt: Runtime, sc: str, job: Mapping[str, Any],
                      providers: list[FetchProvider] | None = None) -> FetchResult:
+    """The provider chain; no budget left → Reschedule, or past the budget-wait
+    cap → an empty result (gave up: the card ends partial, `fetch_blocked`)."""
     try:
         return await run_chain(rt.fetchers if providers is None else providers, sc,
                                reel_url(sc), take=_taker(db))
     except BudgetExhausted as exc:
+        if _budget_wait_over(job):
+            log.info("fetch %s: %s; waited long enough, giving up", sc, exc)
+            return FetchResult(source=None)
         raise Reschedule(exc.retry_after_s, str(exc)) from exc
 
 
@@ -258,7 +306,7 @@ async def fetch(db: asyncpg.Pool, job: dict[str, Any]) -> str:
     hint, user_id = await _device_hint(db, job, sc)
     providers = ([DeviceHintProvider(hint)] if hint else []) + list(rt.fetchers)
     try:
-        result = await _run_chain(db, rt, sc, providers)
+        result = await _run_chain(db, rt, sc, job, providers)
     except Reschedule:
         await _metric(db, "worker", "fetch", started, "rescheduled")
         raise
@@ -291,7 +339,7 @@ async def _fresh_fetch(db: asyncpg.Pool, rt: Runtime, job: dict[str, Any], sc: s
     result = FetchResult.from_meta(meta)
     age = time.time() - float(meta.get("at") or 0)
     if result.source and result.media_url and age > rt.media_url_max_age_s:
-        fresh = await _run_chain(db, rt, sc)
+        fresh = await _run_chain(db, rt, sc, job)
         if fresh.useful:
             result = fresh
             job["payload"]["fetch"] = {**fresh.to_meta(), "at": time.time()}
@@ -302,14 +350,20 @@ async def _fresh_fetch(db: asyncpg.Pool, rt: Runtime, job: dict[str, Any], sc: s
 
 @stage("transcribe")
 async def transcribe(db: asyncpg.Pool, job: dict[str, Any]) -> str:
-    """Groq Whisper, only when the caption is weak and the audio is short."""
+    """Groq Whisper, only when the caption is weak and the audio is short, and
+    not again when a server-sourced transcript is already stored."""
     started = time.monotonic()
     rt = runtime()
     sc = await _shortcode(db, job)
-    caption = await db.fetchval("select caption from public.reel_content where shortcode = $1",
-                                sc)
+    row = await db.fetchrow(
+        "select caption, transcript, fetch_source from public.reel_content where shortcode = $1",
+        sc)
+    if row is not None and row["transcript"] and row["fetch_source"] in SERVER_SOURCES:
+        await _metric(db, "worker", "transcribe", started, "skipped", {"reason": "stored"})
+        return "vision"
     result = FetchResult.from_meta(job["payload"].get("fetch"))
-    ok, reason = should_transcribe(result, caption, has_key=rt.transcriber is not None,
+    ok, reason = should_transcribe(result, row["caption"] if row else None,
+                                   has_key=rt.transcriber is not None,
                                    max_duration_s=rt.transcribe_max_duration_s,
                                    caption_max_words=rt.transcribe_caption_max_words)
     if not ok:
@@ -321,13 +375,18 @@ async def transcribe(db: asyncpg.Pool, job: dict[str, Any]) -> str:
         await _metric(db, "worker", "transcribe", started, "skipped", {"reason": "no_audio"})
         return "vision"
     if wait := await take_token(db, "groq"):
+        if _budget_wait_over(job):  # waited long enough: the card goes on without it
+            await _metric(db, "worker", "transcribe", started, "skipped", {"reason": "budget"})
+            return "vision"
         await _metric(db, "worker", "transcribe", started, "rescheduled")
         raise Reschedule(wait, f"budget exhausted for groq; retry in {wait}s")
     try:
         t = await rt.transcriber.transcribe(result.media_url)
-    except TranscribeError as exc:  # a transcript is a bonus; the card goes on without it
+    except TranscribeError as exc:
         await _metric(db, "worker", "transcribe", started, "error", {"error": str(exc)[:300]})
-        return "vision"
+        if exc.retryable and not _last_attempt(job):
+            raise  # temporary (429, 5xx, timeout): back off and try again
+        return "vision"  # a transcript is a bonus; the card goes on without it
     await db.execute(
         """update public.reel_content
            set transcript = nullif($2, ''), duration_s = coalesce(duration_s, $3)
@@ -368,14 +427,17 @@ async def structure(db: asyncpg.Pool, job: dict[str, Any]) -> str:
     try:
         r = await structure_reel(rt.llm, inp, take=_taker(db))
     except BudgetExhausted as exc:
-        await _metric(db, "worker", "structure", started, "rescheduled")
-        raise Reschedule(exc.retry_after_s, str(exc)) from exc
+        if not _budget_wait_over(job):
+            await _metric(db, "worker", "structure", started, "rescheduled")
+            raise Reschedule(exc.retry_after_s, str(exc)) from exc
+        r = StructureResult(card=fallback_card(inp), outcome="fallback", error=str(exc))
     except LLMUnavailable as exc:
         if not _last_attempt(job):
             await _metric(db, "worker", "structure", started, "error", {"error": str(exc)[:300]})
             raise RuntimeError(f"llm unavailable: {exc}") from exc
         r = StructureResult(card=fallback_card(inp), outcome="fallback", error=str(exc))
-    job["payload"]["card"] = r.card
+    # The payload is stored as jsonb: no NUL or lone surrogates from the model.
+    job["payload"]["card"] = clean(r.card)
     job["payload"]["structure_outcome"] = r.outcome
     await _metric(db, "worker", "structure", started, r.outcome,
                   {"model": r.model, "usage": r.usage, "error": (r.error or "")[:300] or None},
@@ -445,7 +507,10 @@ async def finalize(db: asyncpg.Pool, job: dict[str, Any]) -> None:
     sc = await _shortcode(db, job)
     card = payload.get("card")
     if card is not None:
-        fetched = (payload.get("fetch") or {}).get("source") is not None
+        # Fetched = this run's FETCH found data, or data trusted for this save is
+        # already stored (a retry whose re-fetch was blocked can still finish).
+        fetched = (payload.get("fetch") or {}).get("source") is not None or bool(
+            await db.fetchval(_STORED_FETCH, sc, str(payload["reel_id"])))
         good = payload.get("structure_outcome") in ("ok", "repaired")
         media_status = "ready" if fetched and good else "partial"
         creator = (payload.get("fetch") or {}).get("creator_handle")
@@ -453,14 +518,15 @@ async def finalize(db: asyncpg.Pool, job: dict[str, Any]) -> None:
         # Shared content changed: every save of this reel gets the card + a re-embed.
         current = await db.fetchval(
             "select media_status from public.reel_content where shortcode = $1", sc)
-        rows = await db.fetch(_MARK_SAVES + "r.shortcode_key = $1 returning r.id", sc)
+        rows = await db.fetch(_MARK_SAVES + "r.shortcode_key = $1 returning r.id",
+                              sc, _fail_reason(payload, fetched, good))
     else:
         # Cache hit (RESOLVE found a ready card): only this save needs finishing.
         current = await db.fetchval(
             "select media_status from public.reel_content where shortcode = $1", sc)
         await db.execute("select public.refresh_search_columns($1)", sc)
-        rows = await db.fetch(_MARK_SAVES + "r.id = $2::uuid returning r.id",
-                              sc, str(payload["reel_id"]))
+        rows = await db.fetch(_MARK_SAVES + "r.id = $3::uuid returning r.id",
+                              sc, None, str(payload["reel_id"]))
     await enqueue_embed_jobs(db, [r["id"] for r in rows])
     await _metric(db, "worker", "finalize", started, "ok",
                   {"media_status": current, "saves": len(rows), "cache_hit": card is None})
@@ -468,22 +534,60 @@ async def finalize(db: asyncpg.Pool, job: dict[str, Any]) -> None:
     await _requeue_for_late_hint(db, payload, sc)
 
 
+# Has stored content been fetched (by anyone) and is it trusted for save $2?
+_STORED_FETCH = f"""
+select rc.fetch_source is not null and {_TRUSTED_FOR_SAVE}
+from public.reel_content rc join public.reels r on r.id = $2::uuid
+where rc.shortcode = $1
+"""
+
 # Every save gets `enriched` only when the shared card is ready AND trusted for
 # that save's user (a device-sourced card is trusted only for its supplier);
-# otherwise `partial`, which the user can retry (PIPELINE.md §8).
+# otherwise `partial`, which the user can retry (PIPELINE.md §8), with a
+# `fail_reason`: this run's ($2), else the one it had, else fetch_blocked.
+_CARD_OK = f"""coalesce(
+  (select rc.media_status = 'ready' and {_TRUSTED_FOR_SAVE}
+   from public.reel_content rc where rc.shortcode = $1), false)"""
 _MARK_SAVES = f"""
 update public.reels r
-set status = coalesce(
-  (select case when rc.media_status = 'ready' and {_TRUSTED_FOR_SAVE}
-               then 'enriched' else 'partial' end
-   from public.reel_content rc where rc.shortcode = $1),
-  'partial')
+set status = case when {_CARD_OK} then 'enriched' else 'partial' end,
+    fail_reason = case when {_CARD_OK} then null
+                       else coalesce($2::text, r.fail_reason, 'fetch_blocked') end
 where """
+
+
+def _fail_reason(payload: Mapping[str, Any], fetched: bool, good: bool) -> str | None:
+    """Why this run's card is partial (reels.fail_reason, migration 0014), or None.
+    A budget-wait give-up in FETCH reads as fetch_blocked, one in STRUCTURE as
+    ai_unavailable; stage errors that dead-letter the job get theirs from the
+    jobs_dead trigger (0015)."""
+    if fetched and good:
+        return None
+    if not fetched:
+        return "unavailable" if (payload.get("fetch") or {}).get("unavailable") else "fetch_blocked"
+    return "ai_unavailable"
+
+
+# The API's per-save retry budget (routers/saves.py RETRIES_PER_DAY, _requeue):
+# a requeue for a late hint uses it too. Returns the id, or nothing at the cap.
+RETRIES_PER_DAY = 3
+_TAKE_RETRY = f"""
+update public.reels set
+  retry_count = case when retry_window_start > now() - interval '1 day'
+                     then retry_count + 1 else 1 end,
+  retry_window_start = case when retry_window_start > now() - interval '1 day'
+                            then retry_window_start else now() end
+where id = $1::uuid
+  and not (retry_window_start > now() - interval '1 day'
+           and retry_count >= {RETRIES_PER_DAY})
+returning id
+"""
 
 
 async def _requeue_for_late_hint(db: asyncpg.Pool, payload: Mapping[str, Any], sc: str) -> None:
     """A device hint that landed after this job's FETCH (newer than `hint_seen`)
-    and a save that ended `partial`: run it again from FETCH so the hint is used."""
+    and a save that ended `partial`: run it again from FETCH so the hint is used,
+    if the save's daily retry budget allows (else it stays partial)."""
     row = await db.fetchrow(
         "select status, auth_user_id, device_hint->>'at' as at from public.reels "
         "where id = $1::uuid", str(payload["reel_id"]))
@@ -495,15 +599,16 @@ async def _requeue_for_late_hint(db: asyncpg.Pool, payload: Mapping[str, Any], s
         queued = await con.fetchval(
             "select exists (select 1 from public.jobs where kind = 'enrich' "
             "and payload->>'reel_id' = $1 and locked_at is null)", str(payload["reel_id"]))
-        if queued:
+        if queued or await con.fetchval(_TAKE_RETRY, str(payload["reel_id"])) is None:
             return
         await con.execute(
             """insert into public.jobs (kind, payload, stage)
                values ('enrich', jsonb_build_object('reel_id', $1::uuid, 'user_id', $2::uuid,
                                                     'shortcode', $3::text), 'fetch')""",
             str(payload["reel_id"]), row["auth_user_id"], sc)
-        await con.execute("update public.reels set status = 'pending' where id = $1::uuid",
-                          str(payload["reel_id"]))
+        await con.execute(
+            "update public.reels set status = 'pending', fail_reason = null where id = $1::uuid",
+            str(payload["reel_id"]))
 
 
 async def _total_metric(db: asyncpg.Pool, reel_id: Any, outcome: str) -> None:

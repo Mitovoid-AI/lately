@@ -131,3 +131,42 @@ async def test_stacks_401_without_token(client):
         ("DELETE", f"/stacks/{sid}", None),
     ):
         assert (await client.request(method, path, json=body)).status_code == 401, path
+
+
+# ---------------------------------------------------------- rename (GitHub #35)
+
+async def test_rename_stack_returns_the_stack(client, db, make_user, jwt_for):
+    a = await make_user()
+    h = auth(jwt_for(a))
+    st = await _stack(client, h, "Trips")
+    m = await seed_card(db, a, CARDS["MANALI1"], None)
+    await client.post(f"/stacks/{st['id']}/saves", json={"save_id": str(m)}, headers=h)
+    r = await client.patch(f"/stacks/{st['id']}", json={"name": "  Hill trips "}, headers=h)
+    assert r.status_code == 200
+    body = r.json()
+    assert set(body) == STACK_KEYS
+    assert body["id"] == st["id"] and body["name"] == "Hill trips"
+    assert body["save_count"] == 1 and body["category"] == "Food & Places"
+    assert (await client.get("/stacks", headers=h)).json()[0]["name"] == "Hill trips"
+
+
+async def test_rename_stack_validates_like_create(client, make_user, jwt_for):
+    h = auth(jwt_for(await make_user()))
+    st = await _stack(client, h)
+    for bad in ({"name": "   "}, {"name": "x" * 81}, {}):
+        r = await client.patch(f"/stacks/{st['id']}", json=bad, headers=h)
+        assert r.status_code == 422 and r.json()["error"]["code"] == "BAD_REQUEST"
+    # Same name as another stack is allowed, as on create.
+    await _stack(client, h, "Code")
+    assert (await client.patch(f"/stacks/{st['id']}", json={"name": "Code"},
+                               headers=h)).status_code == 200
+
+
+async def test_rename_someone_elses_stack_is_404(client, make_user, jwt_for):
+    ha, hb = auth(jwt_for(await make_user())), auth(jwt_for(await make_user()))
+    st = await _stack(client, ha)
+    for sid in (st["id"], str(uuid.uuid4())):
+        r = await client.patch(f"/stacks/{sid}", json={"name": "mine"}, headers=hb)
+        assert r.status_code == 404 and r.json()["error"]["code"] == "NOT_FOUND"
+    assert (await client.get("/stacks", headers=ha)).json()[0]["name"] == "Trips"
+    assert (await client.patch(f"/stacks/{st['id']}", json={"name": "x"})).status_code == 401

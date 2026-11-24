@@ -12,13 +12,14 @@ import json
 import logging
 import time
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from pydantic import BaseModel
 
 from ..config import settings
-from ..deps import CurrentUser, get_embedder, pool
+from ..deps import ClientTimezone, CurrentUser, get_embedder, pool
 from ..search.embed import Embedder, LruCache
 from ..search.run import run_search
 from ..search.why import build_why
@@ -54,6 +55,7 @@ async def _metric(duration_ms: int, outcome: str, hits: int) -> None:
 @router.get("/search", response_model=list[SearchHitOut])
 async def search(
     user: CurrentUser,
+    tz: ClientTimezone,
     background: BackgroundTasks,
     embedder: Annotated[Embedder | None, Depends(get_embedder)],
     q: Annotated[str, Query(min_length=1, max_length=200)],
@@ -64,8 +66,9 @@ async def search(
     uid = uuid.UUID(user.id)
     db = pool()
     q = clean_text(q)
+    # "today" / "yesterday" / "this month" start at the user's midnight, not UTC's.
     run = await run_search(db, uid, q, embedder, category=category or None, limit=limit,
-                           cache=QUERY_CACHE,
+                           now=datetime.now(tz), cache=QUERY_CACHE,
                            embed_timeout=settings().search_embed_timeout_seconds,
                            meaning_spread=settings().search_meaning_spread,
                            meaning_max_distance=settings().search_meaning_max_distance)

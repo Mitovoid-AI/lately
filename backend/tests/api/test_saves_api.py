@@ -97,3 +97,56 @@ async def test_patch_note_404_for_other_users_reel(client, make_user, jwt_for):
     r = await client.patch(f"/saves/{saved.json()['reel_id']}", json={"note": "mine now"},
                            headers=auth(jwt_for(b)))
     assert r.status_code == 404
+
+
+# ---------------------------------------------------- which links save (GitHub #3)
+
+@pytest.mark.parametrize("text", [
+    "https://www.instagram.com/delhi.foodtrails/",
+    "https://www.instagram.com/stories/delhi.foodtrails/3456789/",
+    "https://www.instagram.com/reels/audio/123456/",
+    "check instagram.com/explore/tags/momos/",
+])
+async def test_post_saves_refuses_instagram_pages_that_are_not_reels(client, make_user, jwt_for,
+                                                                     db, text):
+    uid = await make_user()
+    r = await client.post("/saves", json={"text": text}, headers=auth(jwt_for(uid)))
+    assert r.status_code == 422
+    assert r.json()["error"] == {"code": "BAD_URL", "message": "That link isn't a reel or post."}
+    assert await db.fetchval("select count(*) from public.reels where auth_user_id = $1", uid) == 0
+
+
+async def test_post_saves_without_any_link_keeps_its_message(client, make_user, jwt_for):
+    r = await client.post("/saves", json={"text": "https://notinstagram.com/reel/X1/"},
+                          headers=auth(jwt_for(await make_user())))
+    assert r.status_code == 422
+    assert r.json()["error"] == {"code": "BAD_URL", "message": "No Instagram link found."}
+
+
+async def test_post_saves_accepts_links_without_a_scheme_and_permalinks(client, make_user,
+                                                                         jwt_for, db):
+    headers = auth(jwt_for(await make_user()))
+    r = await client.post("/saves", json={"text": "saving instagram.com/reel/NOSCH1/?igsh=x"},
+                          headers=headers)
+    assert r.status_code == 201
+    reel = await db.fetchrow("select source_url, shortcode_key from public.reels where id = $1",
+                             uuid.UUID(r.json()["reel_id"]))
+    assert reel["source_url"] == "https://instagram.com/reel/NOSCH1/"
+    assert reel["shortcode_key"] == "NOSCH1"
+    r = await client.post("/saves", json={"text": "https://www.instagram.com/some.user/p/PERMA1/"},
+                          headers=headers)
+    assert r.status_code == 201
+    assert await db.fetchval("select shortcode_key from public.reels where id = $1",
+                             uuid.UUID(r.json()["reel_id"])) == "PERMA1"
+
+
+async def test_post_saves_returns_the_saves_real_status(client, make_user, jwt_for, db):
+    headers = auth(jwt_for(await make_user()))
+    first = await client.post("/saves", json={"text": URL}, headers=headers)
+    assert first.status_code == 201 and first.json()["status"] == "pending"
+    await db.execute("update public.reels set status = 'enriched' where id = $1",
+                     uuid.UUID(first.json()["reel_id"]))
+    again = await client.post("/saves", json={"text": URL}, headers=headers)
+    assert again.status_code == 200
+    assert again.json() == {"reel_id": first.json()["reel_id"], "deduped": True,
+                            "status": "enriched"}
