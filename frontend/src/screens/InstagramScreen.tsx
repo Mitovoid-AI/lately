@@ -134,7 +134,17 @@ export function InstagramScreen({ required = false }: { required?: boolean } = {
     }
   }
 
-  async function openChat(handle: string) {
+  // Instagram has no way to pre-type a DM, so the code goes on the clipboard on the way there:
+  // in the chat it's paste (or the keyboard's clipboard suggestion) and Send.
+  async function openChat(handle: string, code?: string) {
+    if (code) {
+      try {
+        await Clipboard.setStringAsync(code);
+        toast.show("Code copied. Paste it in the chat and tap Send.");
+      } catch {
+        // Opening Instagram still helps; the code stays on screen to copy by hand.
+      }
+    }
     try {
       await Linking.openURL(`https://ig.me/m/${handle}`);
     } catch {
@@ -189,7 +199,9 @@ export function InstagramScreen({ required = false }: { required?: boolean } = {
     const expiresAt = Date.parse(link.code_expires_at!);
     content = (
       <>
-        <Text className="font-sans text-body text-ink-2">{`Send this code to @${handle} as a message.`}</Text>
+        <Text className="font-sans text-body text-ink-2">
+          {`Send this code to @${handle} as a message. Open Instagram copies it for you: paste it in the chat and tap Send.`}
+        </Text>
         <View className="mt-4 flex-row items-center rounded-2xl border border-hairline bg-card p-4">
           <View className="flex-1">
             <Text selectable accessibilityLabel={`Your code: ${code.split("").join(" ")}`} className="font-display text-display-md text-ink">
@@ -199,7 +211,7 @@ export function InstagramScreen({ required = false }: { required?: boolean } = {
           </View>
           <Button title="Copy" variant="secondary" onPress={() => void copy(code)} className="ml-3" />
         </View>
-        <Button title="Open Instagram" icon="open-in-new" onPress={() => void openChat(handle)} className="mt-4" />
+        <Button title="Open Instagram" icon="open-in-new" onPress={() => void openChat(handle, code)} className="mt-4" />
         <View className="mt-6 flex-row items-center justify-center" accessibilityLiveRegion="polite">
           <ActivityIndicator color={colors.ink2} />
           <Text className="ml-2 font-sans text-meta text-ink-2">Waiting for your message…</Text>

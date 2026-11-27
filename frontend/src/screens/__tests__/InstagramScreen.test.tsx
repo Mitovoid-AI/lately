@@ -79,15 +79,25 @@ test("not linked: says how it works, then Connect shows the code to send, with C
   await fireEvent.press(screen.getByRole("button", { name: "Connect Instagram" }));
   await tick(0);
   const code = screen.getByText(/^LATELY-[A-Z0-9]{6}$/);
-  expect(screen.getByText("Send this code to @lately.app as a message.")).toBeTruthy();
+  expect(
+    screen.getByText(
+      "Send this code to @lately.app as a message. Open Instagram copies it for you: paste it in the chat and tap Send.",
+    ),
+  ).toBeTruthy();
   expect(screen.getByText("Expires in 15 minutes")).toBeTruthy();
 
   await fireEvent.press(screen.getByRole("button", { name: "Copy" }));
   expect(Clipboard.setStringAsync).toHaveBeenCalledWith(code.props.children);
   expect(await screen.findByText("Code copied")).toBeTruthy();
 
+  // Open Instagram copies the code first (Instagram can't pre-type a DM), then opens the chat.
+  (Clipboard.setStringAsync as jest.Mock).mockClear();
   await fireEvent.press(screen.getByRole("button", { name: "Open Instagram" }));
+  expect(Clipboard.setStringAsync).toHaveBeenCalledWith(code.props.children);
   expect(openUrl).toHaveBeenCalledWith("https://ig.me/m/lately.app");
+  const copiedAt = (Clipboard.setStringAsync as jest.Mock).mock.invocationCallOrder[0];
+  expect(copiedAt).toBeLessThan(openUrl.mock.invocationCallOrder[0]);
+  expect(await screen.findByText("Code copied. Paste it in the chat and tap Send.")).toBeTruthy();
   openUrl.mockRestore();
 });
 
