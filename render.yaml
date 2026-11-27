@@ -32,6 +32,17 @@ services:
         sync: false
       - key: GROQ_API_KEY
         sync: false
+      # Instagram DM door (docs/instagram-dm-setup.md); off until all are set.
+      - key: INSTAGRAM_APP_SECRET
+        sync: false
+      - key: INSTAGRAM_ACCESS_TOKEN
+        sync: false
+      - key: INSTAGRAM_VERIFY_TOKEN
+        sync: false
+      - key: INSTAGRAM_HANDLE
+        sync: false
+      - key: INSTAGRAM_ACCOUNT_ID
+        sync: false
       # Settings (not secret).
       - key: SUPABASE_JWT_AUDIENCE
         value: authenticated

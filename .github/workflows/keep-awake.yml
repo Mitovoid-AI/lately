@@ -1,0 +1,24 @@
+name: keep-awake
+# Render's free plan (render.yaml) sleeps after 15 minutes without requests and takes about a
+# minute to wake, which is too slow for Meta's Instagram webhooks. This pings /healthz every
+# 5 minutes so it stays awake (one always-on free service uses ~744 of the 750 free hours a
+# month). GitHub can delay scheduled runs, hence 5 minutes rather than 14. It pings only when
+# the repository variable EXPO_PUBLIC_API_URL points at Render, so it does nothing while the
+# laptop backend is in use. GitHub pauses scheduled workflows after 60 days without commits.
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  ping:
+    if: ${{ contains(vars.EXPO_PUBLIC_API_URL, 'onrender.com') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Ping /healthz
+        env:
+          API_URL: ${{ vars.EXPO_PUBLIC_API_URL }}
+        run: curl -fsS --max-time 100 --retry 2 --retry-delay 5 "${API_URL%/}/healthz"

@@ -19,9 +19,12 @@ and the app shows it as unavailable.
 
 ## What you need
 
-- An Instagram **professional** account (Business or Creator) for Lately, e.g. `lately.app`.
+- An Instagram **professional** account (Business or Creator) for Lately, set to **public**
+  (Meta only makes tokens for public accounts). Ours is `latelyinsta02`.
 - A Meta developer account (developers.facebook.com), logged in as someone who can manage
   that Instagram account.
+- A Meta **business portfolio** to own the app. Unified login (below) refuses to open
+  without one. Creating it is free and verification isn't needed to test; ours is "Lately app".
 - The backend reachable over `https://` (the laptop backend's ngrok address, or a cloud
   deploy, `docs/deploy.md`). Meta does not call `http://` or `localhost`.
 
@@ -29,15 +32,17 @@ and the app shows it as unavailable.
 
 | Setting (backend env) | Value | Where it comes from |
 |---|---|---|
-| `INSTAGRAM_APP_SECRET` | the Instagram app secret | Meta app → Instagram → API setup with Instagram login → Business login settings / app details |
+| `INSTAGRAM_APP_SECRET` | the Meta **App secret** (signs the webhooks) | Meta app → App settings → Basic → App secret → Show |
 | `INSTAGRAM_VERIFY_TOKEN` | any long random string you make up | you; typed again in Meta's webhook setup |
-| `INSTAGRAM_ACCESS_TOKEN` | Lately's account token (long-lived) | Meta app → API setup with Instagram login → Generate token |
-| `INSTAGRAM_HANDLE` | `lately.app` (no `@`) | the Instagram username; the app shows it to users |
-| `INSTAGRAM_ACCOUNT_ID` | optional; Lately's Instagram account id | shown next to the account in the same page |
+| `INSTAGRAM_ACCESS_TOKEN` | Lately's system-user token (never expires; starts `EA`) | Meta app → API setup with Unified login → Generate access tokens → Generate token |
+| `INSTAGRAM_HANDLE` | `latelyinsta02` (no `@`) | the Instagram username; the app shows it to users |
+| `INSTAGRAM_ACCOUNT_ID` | Lately's Instagram account id; **needed for replies** | the `id` from `GET /me/assigned_instagram_accounts` (step 2.5) |
 | Webhook callback URL | `https://<API host>/webhooks/instagram` | typed in Meta's webhook setup |
 | Webhook field | `messages` | subscribed in Meta's webhook setup |
 
-The feature is on only when the first four are all set. Make the verify token with:
+The feature is on only when the first four are all set. Replies also need
+`INSTAGRAM_ACCOUNT_ID`: without it they go to `/me/messages`, which with a system-user token
+is the system user, not the Instagram account, so Meta rejects them. Make the verify token with:
 
 ```
 python -c "import secrets; print(secrets.token_urlsafe(32))"
@@ -53,27 +58,46 @@ python -c "import secrets; print(secrets.token_urlsafe(32))"
    controls → Connected tools → **Allow access to messages** on. (Without this Meta sends no
    message webhooks. The menu wording moves between Instagram versions.)
 
-### 2. The Meta app
+### 2. The Meta app (Unified login)
 
-1. developers.facebook.com → My Apps → Create app. Pick the use case for managing messaging
-   and content on Instagram, so the app gets the **Instagram** product, then open
-   Instagram → **API setup with Instagram login**.
-2. Under "Generate access tokens", **Add account** and log in as Lately's Instagram account.
-   The account appears with its id (that is `INSTAGRAM_ACCOUNT_ID`) and a **Generate token**
-   button. Generate it: that is `INSTAGRAM_ACCESS_TOKEN`.
-3. The token is long-lived: about **60 days**. Refresh it before then (any time after it is
-   a day old) and put the new one in the env:
+Since late October 2026 new Meta apps no longer offer "API setup with Instagram login" (the
+page says so in a banner). They get **API setup with Unified login**: a system-user token
+that belongs to the business portfolio, on `graph.facebook.com`. The backend is built for it.
+
+1. developers.facebook.com → My Apps → Create app, use case **Manage messaging & content on
+   Instagram**. Then Use cases → Customize → **API setup with Unified login**, and connect the
+   business portfolio when it asks.
+2. **1. Configure your app** → Create new configuration → **Create from template**. The
+   template can't be edited here: next to `instagram_basic` and `instagram_manage_messages`
+   it adds `ads_management`, `ads_read`, `instagram_content_publish`,
+   `instagram_manage_comments` and ad-account access. Lately uses only the first two. The
+   token type is system-user and never expires.
+3. App roles → Roles → **Add People** → **Instagram Tester** (under "Additional roles"), and
+   add Lately's account and your own test account. Accept each invite **on the website**,
+   logged in as that account: instagram.com/accounts/manage_access/ → **Tester invites**. The
+   Instagram phone app doesn't show tester invites.
+4. **2. Generate access tokens**: the tester accounts now appear in the list. Click
+   **Generate token** next to Lately's account; in the Meta login window choose **Continue with
+   Instagram** and log in as Lately's account. The token is shown once: that is
+   `INSTAGRAM_ACCESS_TOKEN`. It doesn't expire, so there is nothing to refresh. If it is
+   revoked, saving keeps working (the webhook doesn't use it) but replies stop; the backend log
+   shows `instagram reply not sent: HTTP 400 (code 190 ...)`.
+5. Get the account id the token works on (the dashboard shows it next to the account too):
    ```
-   curl "https://graph.instagram.com/refresh_access_token?grant_type=ig_refresh_token&access_token=<current token>"
+   curl -H "Authorization: Bearer <token>" "https://graph.facebook.com/v27.0/me/assigned_instagram_accounts"
    ```
-   If it expires, saving keeps working (the webhook does not use it) but replies stop; the
-   backend log shows `instagram reply not sent: HTTP 400 (code 190 ...)`.
-4. Copy the **Instagram app secret** from the same page: that is `INSTAGRAM_APP_SECRET`.
+   The `id` is `INSTAGRAM_ACCOUNT_ID`. A 200 here also proves the token works with the
+   `Authorization: Bearer` header the backend sends.
+6. App settings → Basic → **App secret** → Show (Meta asks for your Facebook password): that
+   is `INSTAGRAM_APP_SECRET`. Under Unified login the Meta App secret signs the webhooks; there
+   is no separate Instagram app secret.
 
 ### 3. Set the env and restart the backend
 
-- Laptop backend: add the five values to `backend/.env` and restart `scripts/dev.py`.
-- Fly.io: `fly secrets set INSTAGRAM_APP_SECRET=... INSTAGRAM_VERIFY_TOKEN=... INSTAGRAM_ACCESS_TOKEN=... INSTAGRAM_HANDLE=lately.app`
+- Laptop backend: add the five values to `backend/.env` and restart `scripts/dev.py` (the
+  `Lately Backend` launcher). Make sure the old one really stopped: an earlier window left
+  open keeps holding port 1234 with the old settings, and the check below then still says 404.
+- Fly.io: `fly secrets set INSTAGRAM_APP_SECRET=... INSTAGRAM_VERIFY_TOKEN=... INSTAGRAM_ACCESS_TOKEN=... INSTAGRAM_HANDLE=latelyinsta02 INSTAGRAM_ACCOUNT_ID=...`
 - Render: dashboard → the service → Environment, add them, save (it redeploys).
 
 Check it is on (prints `123`; a 404 means a setting is missing, a 403 a different token):
@@ -84,20 +108,24 @@ curl "https://<API host>/webhooks/instagram?hub.mode=subscribe&hub.verify_token=
 
 ### 4. The webhook
 
-1. Back in API setup with Instagram login → **Configure webhooks**: callback URL
+1. Back in API setup with Unified login → **3. Configure webhooks**: callback URL
    `https://<API host>/webhooks/instagram`, verify token = `INSTAGRAM_VERIFY_TOKEN`,
    **Verify and save**. Meta calls the URL once; the backend must already be running with
    the settings from step 3.
-2. Subscribe to the **`messages`** field.
-3. Make sure the webhook subscription is switched on for Lately's account in the account
-   list on the same page.
+2. Under Webhook fields, switch **`messages`** to Subscribed.
+3. In **2. Generate access tokens**, switch **Webhook Subscription** on for Lately's account.
+4. Subscribe the account itself through the API (Meta's Unified login docs require it; the
+   switch above subscribes it to every field, this narrows it to `messages`). Expect
+   `{"success":true}`:
+   ```
+   curl -X POST -H "Authorization: Bearer <token>" "https://graph.facebook.com/v27.0/<account id>/subscribed_apps?subscribed_fields=messages"
+   ```
 
 ### 5. Test with an account that has a role on the app
 
 Until Meta approves the app (step 6), only Instagram accounts with a role on the Meta app
-can use it. Add your personal Instagram account as an Instagram tester (App roles → Roles)
-and accept the invite in Instagram (Settings → Apps and websites → Tester invites; the
-wording varies). Then:
+can use it: your test account from step 2.3. Webhooks for their DMs do arrive while the app
+is still in Development mode (seen on 2026-11-25). Then:
 
 1. In the Lately app: Save from Instagram DMs → get a code.
 2. From your personal Instagram account, DM the code to Lately's account. Reply:
@@ -106,29 +134,34 @@ wording varies). Then:
    about 30 seconds." The save appears in the app.
 
 If nothing happens, the uvicorn access log tells you why: no `POST /webhooks/instagram` line
-means Meta isn't sending (step 1.2, 4 or 5); `401` means the signature didn't match. If every
-POST is 401 with the Instagram app secret, try the Meta app's App secret (App settings →
-Basic) in `INSTAGRAM_APP_SECRET` instead: Meta's docs aren't explicit about which one signs
-Instagram Login webhooks.
+means Meta isn't sending (step 1.2, 2.3, 4 or 5); `401` means the signature didn't match
+(`INSTAGRAM_APP_SECRET` must be the Meta App secret from step 2.6). On the laptop, ngrok's
+own request log at http://127.0.0.1:4040 lists every call Meta made, with the payloads.
 
 ### 6. Before the public can use it
 
-1. App review: request **Advanced Access** for `instagram_business_basic` and
-   `instagram_business_manage_messages` (a screencast of linking and saving a reel).
+The full pack (order, verification documents, permission answers, screencast script,
+data-handling answers) is in `docs/meta-app-review.md`. In this dashboard, adding a
+permission to App Review first requires becoming a Tech Provider, which can't be reversed.
+
+1. App review: request **Advanced Access** for `instagram_basic` and
+   `instagram_manage_messages` (a screencast of linking and saving a reel). These are the
+   Unified login names; the `instagram_business_*` ones belong to Instagram login and don't apply.
 2. Business verification of the Meta business portfolio that owns the app.
 3. Switch the app to Live.
 4. The DM door stores each linked user's Instagram-scoped id and the ids of handled
    messages for 7 days (never message text). Check the privacy policy and Play Data safety
    answers mention it.
 
-## The one thing nobody knows yet: what a shared reel looks like
+## What a shared reel looks like
 
-Meta's docs show every attachment with only a `url` and don't say whether a shared reel's
-`url` is the public link (`instagram.com/reel/<code>/`) or a CDN media URL. The backend
-takes a reel link from any field of any attachment, or from the message text. If it finds
-none, it replies "I couldn't get the reel's link from that. In Instagram, tap Share on the
-reel, then Copy link, and send me the link." and logs the attachment types and field names
-(never values):
+Seen on 2026-11-25 (Unified login): a reel shared into the chat arrives as one attachment of
+type `ig_reel` whose payload has `reel_video_id`, `title` and `url`, and the `url` is the
+public link (`https://www.instagram.com/reel/<code>/...`). So shared reels save as they are.
+The backend takes a reel link from any field of any attachment, or from the message text. If
+Meta ever changes this and it finds none, it replies "I couldn't get the reel's link from
+that. In Instagram, tap Share on the reel, then Copy link, and send me the link." and logs
+the attachment types and field names (never values):
 
 ```
 instagram DM without a reel link; attachments: ig_reel[title,url]
@@ -137,8 +170,7 @@ instagram DM without a reel link; attachments: ig_reel[title,url]
 That line is logged as a WARNING, so it shows in the API window (the `Lately Backend` launcher's
 console) without any extra logging setup.
 
-Share a reel to Lately's account. If the reply is "Saved to Lately", shared reels work as
-they are. If you get the "Copy link" reply and that log line, shares carry no public link:
+If you get the "Copy link" reply and that log line, shares stopped carrying the public link:
 users can still paste links, and the payload's field names tell us what to build next.
 
 ## What users see

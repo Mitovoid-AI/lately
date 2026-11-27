@@ -34,7 +34,8 @@ worker next to the API in the same container.
    to this repository.
 2. **New** → **Blueprint** → pick the repository (branch `main`). Render reads `render.yaml`
    and asks for each secret: `DATABASE_URL`, `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-   `EMBEDDINGS_API_KEY`, `LLM_API_KEY`, `GROQ_API_KEY`. Copy the values from `backend/.env`.
+   `EMBEDDINGS_API_KEY`, `LLM_API_KEY`, `GROQ_API_KEY` and the five `INSTAGRAM_*` settings
+   (`docs/instagram-dm-setup.md`). Copy the values from `backend/.env`.
 3. **Apply**. The first build takes a few minutes. Then
    `curl https://<service>.onrender.com/healthz` answers `{"status":"ok"}`.
 4. Put `https://<service>.onrender.com` in the GitHub repository variable
@@ -43,8 +44,11 @@ worker next to the API in the same container.
 
 Limits of the free plan: 0.1 CPU and 512 MB; it sleeps after 15 minutes without requests and
 takes about a minute to wake (the app's offline queue retries a save made meanwhile); 750 free
-hours a month per workspace. Pushes to `main` that change `backend/` redeploy it. For real
-users, move to a paid instance or Fly.io below.
+hours a month per workspace. `.github/workflows/keep-awake.yml` pings `/healthz` every 5
+minutes while `EXPO_PUBLIC_API_URL` points at Render, so it stays awake for Meta's Instagram
+webhooks (one always-on service uses ~744 of the 750 hours). After switching, repoint Meta's
+webhook callback URL to `https://<service>.onrender.com/webhooks/instagram`. Pushes to `main`
+that change `backend/` redeploy it. For real users, move to a paid instance or Fly.io below.
 
 ## 2. Backend on Fly.io
 
