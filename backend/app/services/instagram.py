@@ -385,7 +385,10 @@ async def send_reply(recipient: str, text: str) -> None:
     answered (a background task), so it never raises: a failure is logged and the
     reply dropped."""
     s = settings()
-    url = f"{s.instagram_graph_base_url.rstrip('/')}/me/messages"
+    # Unified login: POST /{ig-user-id}/messages (with a system-user token /me is the system
+    # user, not the Instagram account). No account id set: /me, the old Instagram Login path.
+    account = s.instagram_account_id.strip() or "me"
+    url = f"{s.instagram_graph_base_url.rstrip('/')}/{account}/messages"
     body = {"recipient": {"id": recipient}, "message": {"text": _fit(text)}}
     try:
         async with _client() as client:

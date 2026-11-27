@@ -201,6 +201,7 @@ def graph_settings(monkeypatch):
     s = settings()
     monkeypatch.setattr(s, "instagram_access_token", TOKEN)
     monkeypatch.setattr(s, "instagram_graph_base_url", "https://graph.test/v27.0/")
+    monkeypatch.setattr(s, "instagram_account_id", "")  # backend/.env may set one
 
 
 async def test_send_reply_posts_to_the_graph_api(monkeypatch, graph_settings):
@@ -218,6 +219,22 @@ async def test_send_reply_posts_to_the_graph_api(monkeypatch, graph_settings):
     assert r.headers["authorization"] == f"Bearer {TOKEN}"
     body = json.loads(r.content)
     assert body == {"recipient": {"id": "9001"}, "message": {"text": "é" * 500}}
+
+
+async def test_send_reply_uses_the_account_id_path_when_set(monkeypatch, graph_settings):
+    """Unified login: a system-user token's /me is not the Instagram account."""
+    monkeypatch.setattr(settings(), "instagram_account_id", " 17841400000000001 ")
+    seen: list[httpx.Request] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request)
+        return httpx.Response(200, json={"recipient_id": "9001", "message_id": "x"})
+
+    monkeypatch.setattr(instagram, "_client",
+                        lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+    await instagram.send_reply("9001", "hi")
+    (r,) = seen
+    assert str(r.url) == "https://graph.test/v27.0/17841400000000001/messages"
 
 
 @pytest.mark.parametrize("failure", ["http", "network"])

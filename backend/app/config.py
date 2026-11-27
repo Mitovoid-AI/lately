@@ -93,8 +93,9 @@ class Settings(BaseSettings):
     instagram_verify_token: str = ""     # any string; the same one goes in Meta's webhook setup
     instagram_access_token: str = ""     # the Lately account's token, used to send replies
     instagram_handle: str = ""           # Lately's Instagram username, shown in the app
-    instagram_account_id: str = ""       # optional: ignore messages to any other account
-    instagram_graph_base_url: str = "https://graph.instagram.com/v27.0"
+    instagram_account_id: str = ""       # Lately's IG user id: replies go to /{id}/messages
+                                         # (needed with Unified login); other accounts ignored
+    instagram_graph_base_url: str = "https://graph.facebook.com/v27.0"
 
     @property
     def instagram_enabled(self) -> bool:
