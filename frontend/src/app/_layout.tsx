@@ -144,6 +144,8 @@ function RootStack() {
         <Stack.Screen name="help" />
         <Stack.Screen name="licenses" />
         <Stack.Screen name="instagram" />
+        {/* A new account's first stop: connect Instagram. No back swipe; Home opens once connected. */}
+        <Stack.Screen name="connect-instagram" options={{ gestureEnabled: false }} />
         {/* Lately Pro: slides up over whatever sent you here (the save sheet, Account, Home). */}
         <Stack.Screen name="pro" options={{ presentation: "modal", animation: reduced ? "fade" : "slide_from_bottom" }} />
         <Stack.Screen

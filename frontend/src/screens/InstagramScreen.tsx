@@ -1,11 +1,13 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import * as Clipboard from "expo-clipboard";
-import { useFocusEffect } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { AccessibilityInfo, ActivityIndicator, Linking, Text, View } from "react-native";
+import { AccessibilityInfo, ActivityIndicator, Linking, ScrollView, Text, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
 import type { InstagramLink } from "../api/contract";
 import { useApi } from "../api/index";
+import { useAuth } from "../auth/AuthProvider";
 import { Button } from "../components/Button";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { ErrorState } from "../components/ErrorState";
@@ -16,6 +18,7 @@ import { codeIsLive, INSTAGRAM_KEY, useInstagramLink } from "../components/setti
 import { Skeleton, SkeletonGroup } from "../components/Skeleton";
 import { useToast } from "../components/Toast";
 import { useNow } from "../hooks/useNow";
+import { forgetDeviceData } from "../lib/deviceData";
 import { haptic } from "../lib/haptics";
 import { useTheme } from "../theme/ThemeProvider";
 
@@ -38,9 +41,16 @@ function expiresIn(expiresAt: number, now: number): string {
  * the person sends it to Lately's Instagram account, and this screen asks every 3 s (while the
  * code is shown and the screen is in front) until the server has seen it. Once linked, any reel
  * they send there is saved to their library.
+ *
+ * `required`: the same flow as a new account's first screen (/connect-instagram). No back
+ * button and no skip; Home opens as soon as the account is connected, and Sign out is the only
+ * other way out.
  */
-export function InstagramScreen() {
+export function InstagramScreen({ required = false }: { required?: boolean } = {}) {
   const { colors } = useTheme();
+  const router = useRouter();
+  const auth = useAuth();
+  const insets = useSafeAreaInsets();
   const api = useApi();
   const client = useQueryClient();
   const toast = useToast();
@@ -58,6 +68,25 @@ export function InstagramScreen() {
   const link = query.data;
   const codeLive = codeIsLive(link, now);
   const expired = !!link && !link.linked && !!link.code && !codeLive;
+
+  // Required: connected (or the feature is off, so there's nothing to connect) means Home.
+  const done = !!link && (link.linked || !link.enabled || !link.handle);
+  useEffect(() => {
+    if (required && done) router.replace("/");
+  }, [required, done, router]);
+
+  const [signingOut, setSigningOut] = useState(false);
+  async function signOut() {
+    if (signingOut) return;
+    setSigningOut(true);
+    try {
+      await forgetDeviceData(auth.user?.id);
+      await auth.signOut();
+    } catch {
+      toast.show("Couldn't sign out. Try again.");
+      setSigningOut(false);
+    }
+  }
 
   // The code arrived while it was on screen: say so, with the success haptic.
   const sawCode = useRef(false);
@@ -200,6 +229,29 @@ export function InstagramScreen() {
           className="mt-6"
         />
       </>
+    );
+  }
+
+  if (required) {
+    return (
+      <View className="flex-1 bg-canvas" style={{ paddingTop: insets.top }}>
+        <ScrollView contentContainerStyle={{ paddingBottom: insets.bottom + 40 }}>
+          <View className="w-full max-w-[560px] self-center px-4 pt-10">
+            <Text accessibilityRole="header" className="mb-4 font-display text-display-lg text-ink">
+              Connect your Instagram
+            </Text>
+            {content}
+            <Button
+              title="Sign out"
+              variant="secondary"
+              icon="logout"
+              loading={signingOut}
+              onPress={() => void signOut()}
+              className="mt-10"
+            />
+          </View>
+        </ScrollView>
+      </View>
     );
   }
 

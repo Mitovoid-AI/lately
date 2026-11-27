@@ -34,6 +34,13 @@ test("Help, Open-source licenses and the Instagram connection are signed-in stac
   for (const name of ["help", "licenses", "instagram"]) expect(signedIn).toContain(`<Stack.Screen name="${name}" />`);
 });
 
+test("connecting Instagram first is a signed-in stack screen with no back swipe", () => {
+  expect(has("connect-instagram.tsx")).toBe(true);
+  const layout = fs.readFileSync(path.join(APP, "_layout.tsx"), "utf8");
+  const signedIn = layout.slice(layout.indexOf("<Stack.Protected guard={signedIn}>"), layout.indexOf("</Stack.Protected>"));
+  expect(signedIn).toContain('<Stack.Screen name="connect-instagram" options={{ gestureEnabled: false }} />');
+});
+
 test("the root stack lists Curated and no longer lists a stack-level search", () => {
   const layout = fs.readFileSync(path.join(APP, "_layout.tsx"), "utf8");
   expect(layout).toContain('<Stack.Screen name="curated" />');

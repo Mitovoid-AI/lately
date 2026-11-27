@@ -5,8 +5,12 @@ Lately's Instagram account. Lately saves it to their library and replies in the 
 
 How the pieces fit:
 
-1. In the app (Account → Connected accounts → Save from Instagram DMs) the user gets a
-   one-time code, `LATELY-` plus 6 characters, valid 15 minutes (`POST /me/instagram/code`).
+1. In the app the user gets a one-time code, `LATELY-` plus 6 characters, valid 15 minutes
+   (`POST /me/instagram/code`). While the feature is on, this is required: a signed-in account
+   that hasn't connected yet lands on `/connect-instagram` (no back, no skip, only Sign out) before
+   any tab opens, and Home opens once the code arrives. Later it lives under Account → Connected
+   accounts → Save from Instagram DMs. Until Meta's App Review passes, only Instagram Testers get
+   a reply, so anyone else can't get past that screen; don't open sign-ups widely before then.
 2. They DM the code to Lately's Instagram account. Meta sends the message to the backend
    (`POST /webhooks/instagram`), which links that Instagram account to their Lately account.
 3. From then on every reel they send there goes through the same `save_reel()` as the app's

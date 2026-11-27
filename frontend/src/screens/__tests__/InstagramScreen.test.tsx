@@ -187,3 +187,50 @@ test("a failed load shows Try again; a failed code says so", async () => {
   await tick(0);
   expect(screen.getByText("Couldn't get a code. Try again.")).toBeTruthy();
 });
+
+// Required: a new account's first screen (/connect-instagram).
+test("required: no back button, a 'Connect your Instagram' title, and Sign out instead of a skip", async () => {
+  await renderWithProviders(<InstagramScreen required />, { api: demoApi(() => Date.now()) });
+  expect(await screen.findByRole("button", { name: "Connect Instagram" })).toBeTruthy();
+  expect(screen.getByText("Connect your Instagram")).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Back" })).toBeNull();
+  expect(screen.queryByText(/skip/i)).toBeNull();
+  expect(screen.getByRole("button", { name: "Sign out" })).toBeTruthy();
+});
+
+test("required: once the code arrives, Home opens (replace, so Back can't return here)", async () => {
+  await renderWithProviders(<InstagramScreen required />, { api: demoApi(() => Date.now()) });
+  await fireEvent.press(await screen.findByRole("button", { name: "Connect Instagram" }));
+  await tick(0);
+  expect(mockRouter.replace).not.toHaveBeenCalled();
+  // The demo's second check after the code finds it sent (as in the Connected test above).
+  await tick(LINK_POLL_MS);
+  await tick(LINK_POLL_MS);
+  expect(await screen.findByText("Connected")).toBeTruthy();
+  expect(mockRouter.replace).toHaveBeenCalledWith("/");
+});
+
+test("required: with the feature switched off there is nothing to connect, so Home opens", async () => {
+  const api = demoApi(() => Date.now());
+  jest.spyOn(api, "getInstagramLink").mockResolvedValue({
+    enabled: false, handle: null, linked: false, linked_at: null, code: null, code_expires_at: null,
+  });
+  await renderWithProviders(<InstagramScreen required />, { api });
+  await tick(0);
+  expect(mockRouter.replace).toHaveBeenCalledWith("/");
+});
+
+test("required: Sign out signs out (the only way out besides connecting)", async () => {
+  const signOut = jest.fn(async () => {});
+  await renderWithProviders(<InstagramScreen required />, { api: neverLinked().api, auth: { signOut } });
+  await fireEvent.press(await screen.findByRole("button", { name: "Sign out" }));
+  await tick(0);
+  expect(signOut).toHaveBeenCalledTimes(1);
+  expect(mockRouter.replace).not.toHaveBeenCalled();
+});
+
+test("not required: the Account page keeps its back button and has no Sign out", async () => {
+  await open();
+  expect(await screen.findByRole("button", { name: "Back" })).toBeTruthy();
+  expect(screen.queryByRole("button", { name: "Sign out" })).toBeNull();
+});
