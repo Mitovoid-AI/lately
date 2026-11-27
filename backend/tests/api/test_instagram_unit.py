@@ -254,3 +254,78 @@ async def test_send_reply_never_raises_and_never_logs_the_token(
     assert TOKEN not in caplog.text
     if failure == "http":
         assert "HTTP 400" in caplog.text and "code 190" in caplog.text
+
+
+# ------------------------------------------------------------- shared posts --
+
+POST_CDN = "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=18139494541428835&signature=SIGNED"
+
+
+def shared_post(media_id="18139494541428835") -> tuple:
+    return ({"type": "ig_post", "payload": {
+        "ig_post_media_id": media_id, "title": "Rough week", "url": POST_CDN}},)
+
+
+def test_a_shared_post_has_no_link_but_has_a_media_id():
+    m = msg("", shared_post())
+    assert instagram.find_link(m) == (None, False)
+    assert instagram.post_media_ids(m) == ["18139494541428835"]
+    assert instagram.post_media_ids(msg("", shared_post("not-a-number"))) == []
+    assert instagram.post_media_ids(msg("", (
+        {"type": "ig_reel", "payload": {"ig_post_media_id": "1"}},))) == []
+
+
+@pytest.fixture
+def lookup(monkeypatch):
+    """post_link against a fake Graph API; returns the requests it saw."""
+    s = settings()
+    monkeypatch.setattr(s, "instagram_access_token", TOKEN)
+    monkeypatch.setattr(s, "instagram_graph_base_url", "https://graph.test/v27.0/")
+    seen: list[httpx.Request] = []
+
+    def answer(response):
+        def handler(request: httpx.Request) -> httpx.Response:
+            seen.append(request)
+            if isinstance(response, Exception):
+                raise response
+            return response
+        monkeypatch.setattr(instagram, "_client",
+                            lambda: httpx.AsyncClient(transport=httpx.MockTransport(handler)))
+        return seen
+
+    return answer
+
+
+async def test_post_link_uses_the_permalink_meta_returns(lookup):
+    seen = lookup(httpx.Response(200, json={
+        "permalink": "https://www.instagram.com/p/DgPOST1/?igsh=xyz", "id": "18139494541428835"}))
+    assert await instagram.post_link("18139494541428835") == "https://www.instagram.com/p/DgPOST1/"
+    (r,) = seen
+    assert r.method == "GET"
+    assert str(r.url) == "https://graph.test/v27.0/18139494541428835?fields=permalink%2Cshortcode"
+    assert r.headers["authorization"] == f"Bearer {TOKEN}"
+
+
+async def test_post_link_builds_the_link_from_a_shortcode_alone(lookup):
+    lookup(httpx.Response(200, json={"shortcode": "DgPOST2"}))
+    assert await instagram.post_link("1") == "https://www.instagram.com/p/DgPOST2/"
+
+
+@pytest.mark.parametrize("response", [
+    httpx.Response(400, json={"error": {"message": "Unsupported get request", "code": 100}}),
+    httpx.Response(200, json={"id": "1"}),
+    httpx.ConnectError("boom"),
+])
+async def test_post_link_failures_return_none_and_never_log_the_token(lookup, caplog, response):
+    lookup(response)
+    caplog.set_level(logging.WARNING, logger="app.services.instagram")
+    assert await instagram.post_link("1") is None
+    assert "instagram post lookup" in caplog.text
+    assert TOKEN not in caplog.text
+
+
+async def test_post_link_without_a_token_asks_nobody(lookup, monkeypatch):
+    seen = lookup(httpx.Response(200, json={"shortcode": "X"}))
+    monkeypatch.setattr(settings(), "instagram_access_token", "")
+    assert await instagram.post_link("1") is None
+    assert seen == []

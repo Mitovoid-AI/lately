@@ -177,6 +177,14 @@ console) without any extra logging setup.
 If you get the "Copy link" reply and that log line, shares stopped carrying the public link:
 users can still paste links, and the payload's field names tell us what to build next.
 
+**Shared posts are different** (seen 2026-11-27): a photo or carousel post arrives as
+`ig_post[ig_post_media_id,title,url]`, where `url` is a temporary CDN image
+(`lookaside.fbsbx.com/…`), not the post's link. The backend then asks Meta for the link with
+`GET /{ig_post_media_id}?fields=permalink,shortcode` and saves it if Meta answers. Meta's docs
+don't say this works for other accounts' posts; the API log says either "instagram post
+lookup found the post's link" or "instagram post lookup refused: HTTP …". When refused, the
+sender is asked to copy the post's link.
+
 ## What users see
 
 | When | Reply |
@@ -191,6 +199,7 @@ users can still paste links, and the payload's field names tell us what to build
 | A profile or story link | That link isn't a reel or post. |
 | A text within 5 minutes of a save | Added your note. |
 | An attachment without a reel link | I couldn't get the reel's link from that. In Instagram, tap Share on the reel, then Copy link, and send me the link. |
+| A shared post whose link Meta won't give | Instagram doesn't send a post's link in messages. On the post, tap Share, then Copy link, and send me the link. |
 | Anything else | I couldn't find a reel in that message. In Instagram, tap Share on a reel and send it here. |
 
 Users unlink in the app (`DELETE /me/instagram`); deleting the account removes the link too.

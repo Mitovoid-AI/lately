@@ -54,13 +54,21 @@ def _refuse(request: httpx.Request) -> httpx.Response:
 
 
 class FakeGraph:
-    """Stands in for graph.instagram.com: records every reply."""
+    """Stands in for the Graph API: records every reply (POST) and every shared-post
+    lookup (GET), which Meta refuses unless `post_lookup` says what to answer."""
 
     def __init__(self) -> None:
         self.requests: list[httpx.Request] = []
+        self.lookups: list[httpx.Request] = []
+        self.post_lookup: dict | None = None
         self.status = 200
 
     def handler(self, request: httpx.Request) -> httpx.Response:
+        if request.method == "GET":
+            self.lookups.append(request)
+            if self.post_lookup is None:
+                return httpx.Response(400, json={"error": {"message": "Unsupported get request", "code": 100}})
+            return httpx.Response(200, json=self.post_lookup)
         self.requests.append(request)
         if self.status != 200:
             return httpx.Response(self.status, json={"error": {"message": "nope", "code": 10}})
@@ -415,6 +423,30 @@ async def test_a_cdn_only_attachment_asks_for_the_link_and_logs_its_shape(
     assert "ig_reel[reel_video_id,url]" in caplog.text
     assert cdn not in caplog.text and "SIGNED" not in caplog.text
     assert "secret words" not in caplog.text and "9001" not in caplog.text
+
+
+def _shared_post(media_id: str = "18139494541428835") -> list[dict]:
+    return [{"type": "ig_post", "payload": {
+        "ig_post_media_id": media_id, "title": "Rough week",
+        "url": "https://lookaside.fbsbx.com/ig_messaging_cdn/?asset_id=1&signature=SIGNED"}}]
+
+
+async def test_a_shared_post_is_saved_when_meta_gives_its_link(send, graph, db, linked):
+    uid, _ = await linked("9001")
+    graph.post_lookup = {"permalink": "https://www.instagram.com/p/POSTOK1/"}
+    await send(dm("9001", attachments=_shared_post()))
+    assert graph.sent == [("9001", instagram.SAVED)]
+    (lookup,) = graph.lookups
+    assert lookup.url.path.endswith("/18139494541428835")
+    assert [s["source_url"] for s in await saves_of(db, uid)] == ["https://www.instagram.com/p/POSTOK1/"]
+
+
+async def test_a_shared_post_meta_wont_resolve_asks_for_the_post_link(send, graph, db, linked):
+    uid, _ = await linked("9001")
+    await send(dm("9001", attachments=_shared_post()))
+    assert graph.sent == [("9001", instagram.ASK_FOR_POST_LINK)]
+    assert len(graph.lookups) == 1
+    assert await saves_of(db, uid) == []
 
 
 # --------------------------------------------------------------------- notes --

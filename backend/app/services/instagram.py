@@ -75,6 +75,12 @@ NO_REEL = ("I couldn't find a reel in that message. In Instagram, tap Share on a
 # media URL): ask for the link itself.
 ASK_FOR_LINK = ("I couldn't get the reel's link from that. In Instagram, tap Share on the "
                 "reel, then Copy link, and send me the link.")
+# A shared post (photo or carousel) arrives as an `ig_post` attachment: a media id, the
+# caption and a temporary CDN image URL, never its instagram.com/p/ link. When asking Meta
+# for the link by the media id doesn't work either, the sender is asked for it.
+ASK_FOR_POST_LINK = ("Instagram doesn't send a post's link in messages. On the post, tap "
+                     "Share, then Copy link, and send me the link.")
+POST_LOOKUP_TIMEOUT_S = 5.0  # inside the webhook's answer, so short
 
 # Message flags that mean "nothing for us to answer" (Meta's messaging webhook).
 _SKIP_FLAGS = ("is_echo", "is_deleted", "is_unsupported", "is_self")
@@ -233,6 +239,58 @@ def find_link(msg: Incoming) -> tuple[str | None, bool]:
     return None, other
 
 
+def post_media_ids(msg: Incoming) -> list[str]:
+    """The `ig_post_media_id` of each shared post (`ig_post` attachment), digits only."""
+    ids = []
+    for a in msg.attachments:
+        payload = a.get("payload")
+        if a.get("type") == "ig_post" and isinstance(payload, dict):
+            media_id = str(payload.get("ig_post_media_id") or "").strip()
+            if media_id.isdigit():
+                ids.append(media_id)
+    return ids
+
+
+async def post_link(media_id: str) -> str | None:
+    """A shared post's link, asked of Meta by its media id (GET /{id}?fields=permalink,
+    shortcode with Lately's token). Meta's docs don't say whether this works for posts
+    owned by other accounts, so any failure is None and logged (status and Meta's error,
+    never the token): the caller then asks the sender for the link."""
+    s = settings()
+    if not s.instagram_access_token.strip():
+        return None
+    url = f"{s.instagram_graph_base_url.rstrip('/')}/{media_id}"
+    try:
+        async with _client() as client:
+            resp = await client.get(
+                url, params={"fields": "permalink,shortcode"},
+                headers={"Authorization": f"Bearer {s.instagram_access_token}"},
+                timeout=POST_LOOKUP_TIMEOUT_S)
+    except Exception as exc:  # noqa: BLE001 — logged by type only, never the request
+        log.warning("instagram post lookup failed: %s", type(exc).__name__)
+        return None
+    if resp.is_error:
+        log.warning("instagram post lookup refused: HTTP %s%s", resp.status_code, _graph_error(resp))
+        return None
+    try:
+        data = resp.json()
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    shortcode = data.get("shortcode")
+    for candidate in (data.get("permalink"),
+                      f"https://www.instagram.com/p/{shortcode}/" if isinstance(shortcode, str) else None):
+        if isinstance(candidate, str):
+            found = normalize_shared_text(candidate)
+            if found is not None and is_saveable_link(found):
+                # WARNING so it shows in the API log: this is how we learn the lookup works.
+                log.warning("instagram post lookup found the post's link")
+                return found
+    log.warning("instagram post lookup answered without a usable link")
+    return None
+
+
 def _attachment_shape(attachments: tuple[dict[str, Any], ...]) -> str:
     """Attachment types and payload keys only: never a value (URLs are signed)."""
     parts = []
@@ -284,12 +342,16 @@ async def handle_message(db: asyncpg.Pool, msg: Incoming) -> str | None:
         return await _save(db, msg.sender, user_id, url)
     if other_link:
         return NOT_A_REEL
+    shared_posts = post_media_ids(msg)
+    for media_id in shared_posts:
+        if (post_url := await post_link(media_id)) is not None:
+            return await _save(db, msg.sender, user_id, post_url)
     if msg.attachments:
         # WARNING, not INFO: the API never enables INFO logs, and this line is how the
         # founder learns what Meta sends for a shared reel (docs/instagram-dm-setup.md).
         log.warning("instagram DM without a reel link; attachments: %s",
                     _attachment_shape(msg.attachments))
-        return ASK_FOR_LINK
+        return ASK_FOR_POST_LINK if shared_posts else ASK_FOR_LINK
     note = msg.text.strip()[:NOTE_MAX_CHARS].strip()
     if note and await _add_note(db, msg.sender, note):
         return NOTE_ADDED
