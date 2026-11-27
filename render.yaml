@@ -59,8 +59,8 @@ services:
       - key: LLM_BASE_URL
         value: https://openrouter.ai/api/v1
       - key: LLM_MODEL
-        value: dots-studio/dots-3-note-preview:free
+        value: nvidia/nemotron-3.5-super-vl:free
       - key: LLM_FALLBACK_MODELS
-        value: google/gemma-4-31b-it:free,nvidia/nemotron-3.5-super-vl:free
+        value: google/gemma-4-31b-it:free,google/gemma-4-26b-a4b-it:free
       - key: LLM_REASONING
         value: "off"
